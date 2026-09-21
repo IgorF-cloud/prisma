@@ -1,0 +1,48 @@
+appId: com.prisma.desktop
+productName: Prisma
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # Achado 2026-08-31: nenhuma dessas pastas/arquivos era excluída, então
+  # cada build empacotava TUDO isso pra DENTRO do app.asar — inclusive o
+  # instalador\output\Prisma-Setup.exe da build ANTERIOR (o instalador
+  # empacotando a si mesmo, dobrando de tamanho a cada release). installer/
+  # é ferramental de empacotamento, não faz parte do app rodando; dist/ é
+  # a própria saída deste build (só relevante se alguém não limpar antes de
+  # rebuildar); os .md são documentação, .claude/ é local de sessão.
+  - '!installer/**'
+  - '!dist/**'
+  - '!{MEMORIA.md,ROADMAP.md,RELEASE.md}'
+  - '!.claude/**'
+asarUnpack:
+  - 'resources/**'
+# Pedido do usuário (2026-09-01): a pasta locales/ do Electron empacota o
+# idioma de TODAS as strings internas do Chromium (menu de clique-direito,
+# corretor ortográfico, formatação de data/número) — 58 arquivos, ~45MB —
+# sem nenhuma relação com a interface do app (já é português fixo no
+# código React). App é uso exclusivo no Brasil, então só pt-BR interessa;
+# en-US mantido de propósito, é o fallback interno que o próprio Chromium
+# espera ter sempre disponível.
+electronLanguages:
+  - pt-BR
+  - en-US
+win:
+  executableName: Prisma
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+# Só Windows por enquanto — mesmo escopo do taon original (Flutter). Se um
+# dia precisar de mac/linux, os blocos padrão do electron-vite tinham
+# `mac:`/`dmg:`/`linux:`/`appImage:` aqui; removidos pra não confundir.
+npmRebuild: false
+# `publish:` fica pra quando decidirmos o mecanismo de auto-update (o taon
+# tinha um GET /version customizado no token-server — decidir se replica
+# esse formato ou usa o publish/autoUpdater nativo do electron-builder).

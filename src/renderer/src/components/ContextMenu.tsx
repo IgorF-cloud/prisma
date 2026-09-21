@@ -1,0 +1,103 @@
+import { ReactNode, useLayoutEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { useDismissable } from '../lib/useDismissable'
+
+export interface ContextMenuItem {
+  label: string
+  icon?: ReactNode
+  // Pinta o item de vermelho. Pra ações que tiram algo de alguém —
+  // hoje só "Expulsar".
+  danger?: boolean
+  onSelect: () => void
+}
+
+export interface ContextMenuPosition {
+  x: number
+  y: number
+}
+
+interface ContextMenuProps {
+  // Onde o botão direito foi clicado, em coordenadas da janela
+  // (`clientX`/`clientY` do evento).
+  position: ContextMenuPosition
+  items: ContextMenuItem[]
+  onClose: () => void
+}
+
+const EDGE = 8
+
+// Menu de botão direito (2026-09-13, pedido do usuário: "Expulsar" na
+// lista de viewers da minha live).
+//
+// Genérico de propósito, mesmo com um item só hoje: o que ele resolve —
+// portal, posicionar no cursor sem vazar da janela, fechar em
+// clique/Esc/scroll — é igual pra qualquer menu, e o próximo não precisa
+// reescrever nada disso.
+//
+// Não é o menu NATIVO do Electron (`Menu.popup`). Um menu do sistema
+// apareceria com a cara do Windows no meio de uma janela sem moldura e
+// com estilo próprio, e ainda precisaria de uma ida e volta por IPC pra
+// uma decisão que é toda da tela.
+function ContextMenu({ position, items, onClose }: ContextMenuProps): React.JSX.Element {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useDismissable(onClose)
+
+  // Mesma abordagem do UserCardPopover: a posição depende do tamanho do
+  // menu, que só existe depois de renderizar. Escrita direto no
+  // elemento, antes da pintura — ver o comentário longo lá.
+  useLayoutEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+
+    // `offsetWidth/Height` pelo mesmo motivo do UserCardPopover: a
+    // animação de entrada usa `scale`, e o rect viria transformado.
+    const { offsetWidth: width, offsetHeight: height } = el
+    // Abre pra baixo/direita do cursor, como todo menu de contexto; se
+    // não couber, espelha pro outro lado em vez de simplesmente encostar
+    // na borda — assim o menu nunca cobre o item que foi clicado.
+    const left =
+      position.x + width > window.innerWidth - EDGE
+        ? Math.max(position.x - width, EDGE)
+        : position.x
+    const top =
+      position.y + height > window.innerHeight - EDGE
+        ? Math.max(position.y - height, EDGE)
+        : position.y
+
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+    el.style.visibility = 'visible'
+  }, [position])
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="context-menu"
+      style={{ visibility: 'hidden' }}
+      role="menu"
+      // Botão direito DENTRO do menu não abre outro menu por cima.
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          role="menuitem"
+          className={`context-menu-item${item.danger ? ' context-menu-item-danger' : ''}`}
+          // Sem `stopPropagation` aqui, ao contrário do card: o clique
+          // PRECISA chegar ao documento pra fechar o menu. Escolher um
+          // item e o menu continuar aberto seria estranho, e daria pra
+          // disparar a mesma ação duas vezes.
+          onClick={() => item.onSelect()}
+        >
+          {item.icon}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </div>,
+    document.body
+  )
+}
+
+export default ContextMenu

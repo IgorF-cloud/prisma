@@ -1,0 +1,11 @@
+# Os arquivos aqui já estão em LF (prettier/eslint). Sem isto, o Git
+# converteria tudo pra CRLF no checkout do Windows e o primeiro commit
+# na outra máquina viria com o projeto inteiro "modificado".
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.ico binary
+*.icns binary
+*.woff2 binary
+*.mp3 binary

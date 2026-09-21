@@ -1,0 +1,6075 @@
+@import './base.css';
+
+/* Gradiente roxo→azul padronizado (2026-08-30, pedido do usuário) —
+   aplicado em todos os botões/chips de destaque do app: chip de inicial
+   do usuário, "Assistir", "Transmitir", "Iniciar transmissão",
+   "Atualizar transmissão", seletores ativos (pills) e o badge de fonte
+   selecionada. Antes disso, esses elementos usavam DOIS gradientes
+   diferentes (roxo→azul num grupo, azul→ciano noutro) sem motivo —
+   centralizado aqui numa variável só pra não repetir a mesma string 7x
+   e ficar fácil de ajustar o tom no futuro. Tom mais escuro/saturado que
+   o roxo de destaque usado no resto do app (`#a78bfa`, esse continua
+   igual pra bordas/painéis) — só os botões "principais" usam esse
+   gradiente mais forte, pra se destacarem visualmente do resto da UI. */
+:root {
+  --accent-gradient: linear-gradient(135deg, #8b5cf6, #4f46e5);
+  --accent-glow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  /* Cores "chave" do app, centralizadas aqui (2026-09-01, passe de
+     padronização visual) — antes cada lugar repetia o hex literal
+     (#a78bfa/#4ade80/#f87171) na mão; existiam até DUAS variações de
+     vermelho pro mesmo significado "erro/perigo" (#f87171 na maioria dos
+     lugares, #f28b82 só na validação de formulário) — unificadas em
+     `--color-danger`. As variações com transparência (rgba(167, 139,
+     250, ...) etc., usadas em bordas/glows sobre fundo escuro) já
+     usavam sempre os mesmos 3 valores em toda parte — mantidas como
+     estão, não precisam de variável nova. */
+  --accent: #a78bfa;
+  --color-live: #4ade80;
+  /* Largura da barra de SALAS AO VIVO (AppLeftSidebar.tsx). E
+     variavel porque DOIS lugares dependem dela: a propria barra e o
+     `.home-body::before`, que desenha a borda comecando exatamente
+     onde ela acaba. Se os dois numeros se separarem, a linha
+     descola da barra. */
+  --app-left-sidebar-width: 72px;
+  /* Diametro do circulo do avatar na barra. E variavel porque a
+     barrinha de hover precisa saber quanto recuar pra alcancar a borda
+     da janela: a folga de cada lado e (largura da barra - este
+     diametro) / 2. */
+  --app-left-sidebar-avatar: 40px;
+  /* Cor das linhas de "chrome" do layout novo (item 5) — hoje so o "L"
+     do `.home-body::before`, mas as proximas divisorias (sub-barra da
+     sala, barra de usuarios) devem usar esta mesma, senao o layout sai
+     com tons diferentes de cinza.
+
+     Branco com alfa em vez de um cinza fixo (era `--ev-c-gray-3`,
+     #32363f) de proposito: sobre o fundo #1b1b1f isso da ~#3b3b3e, um
+     tom mais claro E mais neutro (o cinza antigo puxava pro azul). E,
+     por ser alfa, acompanha sozinha qualquer fundo que a area receba
+     depois, sem precisar recalcular a cor. */
+  --app-chrome-border: rgba(255, 255, 255, 0.14);
+  --color-danger: #f87171;
+  /* Pedido do usuário (2026-09-03): timers (tile da sala + footer do
+     host) numa fonte mono-espaçada — `font-variant-numeric:
+     tabular-nums` sozinho não bastava porque a fonte do app (Poppins)
+     não tem algarismos tabulares de verdade, os dígitos ainda variavam
+     de largura sutilmente a cada segundo. "gg mono" primeiro na lista —
+     só funciona se essa fonte estiver instalada no Windows do usuário
+     (não é uma fonte do sistema por padrão, nem está empacotada aqui,
+     ver comentário em cima do @font-face do Poppins em base.css — sem
+     o arquivo da fonte, não dá pra @font-face ela); cai pro Consolas
+     (sempre presente no Windows) se não estiver instalada. */
+  --mono-font:
+    'gg mono', Consolas, 'Cascadia Mono', 'Courier New', monospace;
+}
+
+/* TESTE (2026-09-03, pedido do usuário) — titlebar customizada, ver
+   TitleBar.tsx/App.tsx e `titleBarStyle`/`titleBarOverlay` em
+   src/main/index.ts. Se não ficar bom, desfazer os dois lados juntos
+   (aqui + main/index.ts) — some a titleBar nativa padrão de volta.
+   Altura (32px) tem que bater com `titleBarOverlay.height` no main,
+   senão os botões nativos (minimizar/maximizar/fechar, que o Windows
+   desenha por cima, nessa altura) ficam desalinhados com essa faixa.
+   `-webkit-app-region: drag` deixa arrastável a janela por aqui, igual
+   uma titlebar de verdade — nenhum filho tem `no-drag` porque nada aqui
+   é clicável.
+   Transparente (pedido do usuário) — a tela de login tem um fundo
+   customizado (gradiente/manchas de luz) que não batia com uma cor
+   chapada aqui em cima; transparente deixa o fundo de CADA tela
+   aparecer por baixo (mesma ideia do `titleBarOverlay.color`
+   transparente no main, ver src/main/index.ts). */
+.app-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  /* A direita reserva a largura dos botões NATIVOS de janela
+     (2026-09-20). `env(titlebar-area-width)` é a área que o Chromium/
+     Electron deixa pra página quando a titlebar é a nossa e só os
+     controles continuam do Windows (`titleBarOverlay`, ver
+     src/main/index.ts) — medido aqui, deu 136px. Vem do sistema de
+     propósito: essa largura muda com o DPI e com a versão do Windows, e
+     um número fixo no CSS deixaria o botão de atualizar meio escondido
+     embaixo do "minimizar" em alguma máquina. O fallback só existe pro
+     caso da variável não existir. */
+  padding: 0px calc(100vw - env(titlebar-area-width, calc(100vw - 140px))) 0px 8px;
+  background-color: transparent;
+  -webkit-app-region: drag;
+}
+
+/* Pedido do usuário (2026-09-03): "Modo foco" (item 32) — vira opaca
+   (cor de fundo da Home) em vez de transparente sobre o conteúdo. Classe
+   no `<body>` porque `.app-titlebar` (montada no App.tsx) e
+   `.watch-tile-focused` (dentro da HomeScreen) não são
+   ancestral/descendente — não dá pra alcançar via seletor CSS puro. A
+   parte NATIVA da titleBar (botões, desenhados pelo Windows) segue essa
+   mesma cor via `setTitleBarOverlay` (ver useEffect em HomeScreen.tsx +
+   main/index.ts), pra ficar tudo consistente. */
+body.app-focus-mode .app-titlebar {
+  background-color: var(--color-background);
+}
+
+/* Diálogo aberto: a faixa vai pro plano de baixo (2026-09-20, pedido do
+   usuário). Ver o comentário em UpdateDialog.tsx, que é quem liga e
+   desliga esta classe.
+
+   850 é escolhido, não arbitrário: abaixo do `.modal-backdrop` (900),
+   que é o efeito pedido, e ainda acima do `.watch-tile-focused` (500) —
+   o modo foco continua sem cobrir a titlebar, que é a razão do 1000
+   existir. */
+body.app-dialog-open .app-titlebar {
+  z-index: 850;
+}
+
+/* Pedido do usuário (2026-09-08): o ícone do canto + o texto "Prisma"
+   (Poppins 600) saíram da titlebar e no lugar entrou a arte da marca
+   inteira — o lettering "PRISMA" com o símbolo à esquerda (iconName.png, ver
+   TitleBar.tsx). Só a altura é fixa; a largura sai da proporção da arte,
+   pra não distorcer se a imagem um dia for trocada. */
+.app-titlebar-logo {
+  display: block;
+  /* Único número a mexer se a marca ficar grande/pequena demais: a
+     largura acompanha sozinha (a arte é 257x64, ~4x mais larga que alta),
+     então 18px dão ~72px de largura.
+
+     Passou por 16px (conta de manter a ALTURA DA TINTA aprovada na arte
+     anterior — a folga transparente em cima/embaixo muda a cada versão da
+     marca, então o número não se repete) e por 19px, até o usuário fechar
+     em 18 na mão, olhando a tela. É escolha visual, não conta. */
+  height: 18px;
+  width: auto;
+  flex-shrink: 0;
+  
+}
+
+/* Pedido do usuário (2026-09-03): versão do app, depois do nome — mesmo
+   tom discreto do `.app-version` já usado na tela de login/header. */
+.app-titlebar-version {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ev-c-text-2);
+}
+
+/* Rótulo de canal ("BETA") no lugar do número da versão — ver
+   VERSION_LABEL em TitleBar.tsx. Vira um chip discreto em vez de texto
+   solto: "BETA" sem moldura, do lado do lettering, parece parte da
+   marca; com a pílula, lê-se como estado da build, que é o que é.
+   Some junto com o VERSION_LABEL quando a 1.0.0 for publicada. */
+.app-titlebar-channel {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background-color: rgba(139, 92, 246, 0.14);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  /* A titlebar é área de arrastar (-webkit-app-region: drag); o chip
+     não precisa de interação nenhuma, então nada a fazer aqui além de
+     não atrapalhar o arrasto. */
+}
+
+/* BOTÃO DE ATUALIZAR (2026-09-20, pedido do usuário) — o único filho
+   clicável da faixa.
+   --------------------------------------------------------------------
+   `no-drag` porque a faixa inteira é `drag`: sem isso o clique vira um
+   arrasto da janela e o botão nunca dispara.
+
+   `margin-left: auto` encosta ele na direita, e quem garante que ele
+   não vai parar EMBAIXO dos botões de minimizar/maximizar/fechar é o
+   `padding-right` da própria faixa (ver `.app-titlebar`).
+
+   Verde (`--color-live`) a pedido do usuário. É a mesma cor do "ao
+   vivo", e aqui ela diz a mesma coisa que lá: tem algo novo agora. */
+/* Quem empurra o botão pra direita é ESTE seletor, e não o botão: o
+   Tooltip envolve o filho num <span class="tooltip-anchor"> (ver
+   Tooltip.tsx), então o item flex da faixa é o span. Um `margin-left:
+   auto` no botão empurraria ele dentro de um span que continua encostado
+   na versão. */
+.app-titlebar > .tooltip-anchor {
+  margin-left: auto;
+}
+
+.app-titlebar-update {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  /* Afasta dos botões de janela (2026-09-20, pedido do usuário) — o
+     `padding-right` da faixa encosta ele na borda da área útil, e um
+     botão colado no "minimizar" parece parte dele. */
+  margin-right: 8px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  /* Mesmo tamanho do número da versão ao lado (`.app-titlebar-version`),
+     meio ponto mais pesado — a faixa tem uma tipografia só, e um botão
+     com corpo próprio aqui brigaria com a marca.
+
+     Verde (`--color-live`) no ícone E no texto, a pedido do usuário. É a
+     mesma cor do "ao vivo", dizendo a mesma coisa que lá: tem algo novo
+     agora. O `currentColor` do ícone (ver o <svg> em TitleBar.tsx) já
+     pega daqui, então é uma declaração só pros dois. */
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-live);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.app-titlebar-update svg {
+  flex-shrink: 0;
+}
+
+.app-titlebar-update:hover {
+  /* Só o fundo muda: o mesmo cinza dos outros botões de ícone (ver
+     `.icon-button`). O verde é a identidade do botão — clarear ou
+     apagar ele no hover só tiraria a atenção de onde ela deve estar. */
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+/* Aviso de "isso vai derrubar sua live" no diálogo de atualização —
+   só aparece com transmissão no ar (ver UpdateDialog.tsx). */
+.update-dialog-warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 10px;
+  background-color: rgba(248, 113, 113, 0.1);
+  color: var(--color-danger);
+  font-size: 12px;
+  text-align: left;
+}
+
+.update-dialog-warning svg {
+  flex-shrink: 0;
+}
+
+/* Scrollbar customizada (2026-08-30, pedido do usuário) — a padrão do
+   Chromium tem uma trilha branca que destoa completamente do tema
+   escuro do app. Global (`::-webkit-scrollbar` sem seletor na frente),
+   de propósito — pega TODO lugar com scroll (modal de atualizar
+   transmissão, tela de configurar live, painéis de participantes/
+   espectadores, sidebar de salas), não só um caso específico. Só
+   funciona em Chromium/WebKit (`::-webkit-scrollbar`), mas essa app só
+   roda em Electron, então não precisa de fallback pra outros motores. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--ev-c-gray-2);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent);
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-image: url('./wavy-lines.svg');
+  background-size: cover;
+  user-select: none;
+}
+
+code {
+  font-weight: 600;
+  padding: 3px 5px;
+  border-radius: 2px;
+  background-color: var(--color-background-mute);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+  font-size: 85%;
+}
+
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  margin-bottom: 80px;
+}
+
+.logo {
+  margin-bottom: 20px;
+  -webkit-user-drag: none;
+  height: 128px;
+  width: 128px;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 1.2em #6988e6aa);
+}
+
+.creator {
+  font-size: 14px;
+  line-height: 16px;
+  color: var(--ev-c-text-2);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.text {
+  font-size: 28px;
+  color: var(--ev-c-text-1);
+  font-weight: 700;
+  line-height: 32px;
+  text-align: center;
+  margin: 0 10px;
+  padding: 16px 0;
+}
+
+.tip {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--ev-c-text-2);
+  font-weight: 600;
+}
+
+.react {
+  background: -webkit-linear-gradient(315deg, #087ea4 55%, #7c93ee);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.ts {
+  background: -webkit-linear-gradient(315deg, #3178c6 45%, #f0dc4e);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  padding-top: 32px;
+  margin: -6px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.action {
+  flex-shrink: 0;
+  padding: 6px;
+}
+
+.action a {
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  border: 1px solid transparent;
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 20px;
+  padding: 0 20px;
+  line-height: 38px;
+  font-size: 14px;
+  border-color: var(--ev-button-alt-border);
+  color: var(--ev-button-alt-text);
+  background-color: var(--ev-button-alt-bg);
+}
+
+.action a:hover {
+  border-color: var(--ev-button-alt-hover-border);
+  color: var(--ev-button-alt-hover-text);
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+.versions {
+  position: absolute;
+  bottom: 30px;
+  margin: 0 auto;
+  padding: 15px 0;
+  font-family: 'Menlo', 'Lucida Console', monospace;
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  border-radius: 22px;
+  background-color: #202127;
+  backdrop-filter: blur(24px);
+}
+
+.versions li {
+  display: block;
+  float: left;
+  border-right: 1px solid var(--ev-c-gray-1);
+  padding: 0 20px;
+  font-size: 14px;
+  line-height: 14px;
+  opacity: 0.8;
+  &:last-child {
+    border: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .text {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 620px) {
+  .versions {
+    display: none;
+  }
+}
+
+@media (max-width: 350px) {
+  .tip,
+  .actions {
+    display: none;
+  }
+}
+
+/* Login/Cadastro redesenhados (2026-08-30, a partir de referência visual
+   do usuário) — layout dividido em duas colunas (logo+nome de um lado,
+   card do formulário do outro). A ORDEM das colunas é espelhada entre as
+   duas telas de propósito (login: logo à esquerda/card à direita;
+   cadastro: card à esquerda/logo à direita) — replicado 1:1 da
+   referência, é só a ordem dos elementos no JSX (mesmas classes CSS nos
+   dois). Cores do card/botão seguem o mesmo `--accent-gradient`/
+   `--accent-glow` já padronizado no resto do app. */
+.auth-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* Cobre o `background-image` padrão do template do Electron (linhas
+     onduladas) no `body` — igual .home-page já faz. */
+  background-color: var(--color-background);
+  /* TESTE (2026-09-03): abre espaço pra `.app-titlebar` (fixed, topo da
+     janela, ver App.tsx/TitleBar.tsx) não cobrir o conteúdo — antes essa
+     faixa era a titlebar NATIVA do Windows, fora da área da página; com
+     `titleBarStyle: 'hidden'` (ver main/index.ts) ela virou parte da
+     própria página. */
+  padding-top: 32px;
+}
+
+/* Manchas de luz desfocadas no fundo — só decorativas, atrás de tudo
+   (.auth-split tem z-index:1 pra ficar por cima). */
+.auth-page::before,
+.auth-page::after {
+  content: '';
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.auth-page::before {
+  top: -140px;
+  left: -140px;
+  background: #8b5cf6;
+}
+
+.auth-page::after {
+  bottom: -160px;
+  right: -160px;
+  background: #4f46e5;
+}
+
+/* Ancorado no CARD (não na janela) de propósito — pedido do usuário:
+   fixo no canto da janela, ficava longe do conteúdo quando maximizada.
+   `.auth-card` abaixo ganhou `position: relative` pra isso funcionar. */
+.auth-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: none;
+  border: none;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.auth-back:hover {
+  color: var(--ev-c-text-1);
+  background-color: var(--ev-c-black-mute);
+}
+
+.auth-split {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 96px;
+  padding: 24px;
+}
+
+.auth-branding {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Pedido do usuário (2026-09-08): era o tile de 52px + o texto "Prisma"
+   em 28px ao lado; virou a arte da marca inteira (iconName.png), a MESMA
+   usada na titlebar. Por isso o `.auth-branding span` sumiu daqui e das
+   três telas que montavam esse bloco (App.tsx no splash de "carregando
+   sessão", LoginScreen e RegisterScreen) — o nome já está na arte.
+
+   Mesma regra da titlebar: só a altura é fixa, a largura sai da
+   proporção (257x64), então 46px dão ~185px de largura — perto da
+   largura que o bloco antigo (tile + texto) ocupava. O 46 segue a mesma
+   conta de altura-da-tinta explicada em `.app-titlebar-logo`. Ninguém
+   olhou esse número ainda, e essas telas mudam no item 7 do roadmap. */
+.auth-branding img {
+  height: 46px;
+  width: auto;
+}
+
+/* Spinner do splash (2026-09-13). Fica na mesma linha da marca, à
+   direita — o `.auth-branding` já é um flex com gap.
+
+   Nasceu quando o splash passou a ESPERAR de verdade: antes ele só
+   segurava o piso de 1s (SPLASH_MIN_MS); hoje ele revalida o token no
+   /me e abre o WebSocket de salas antes de liberar a Home. Sem sinal de
+   atividade, esse tempo lê como travamento.
+
+   Um anel com um lado transparente girando — 12 linhas de CSS, nenhum
+   SVG e nenhum ícone novo no bundle. `currentColor` no topo faz ele
+   herdar a cor do texto, então funciona em qualquer fundo. */
+.splash-spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent);
+  animation: splash-spin 0.7s linear infinite;
+}
+
+@keyframes splash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Quem pediu menos movimento no sistema recebe um ponto pulsando de
+   leve em vez do giro — o sinal de "estou trabalhando" continua, sem a
+   rotação. */
+@media (prefers-reduced-motion: reduce) {
+  .splash-spinner {
+    animation: splash-pulse 1.4s ease-in-out infinite;
+    border-top-color: rgba(255, 255, 255, 0.14);
+    background-color: var(--accent);
+  }
+}
+
+@keyframes splash-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.auth-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 360px;
+  padding: 32px 28px;
+  border-radius: 20px;
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.auth-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.auth-card-title {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+  margin: 0;
+}
+
+/* REMOVIDA em 2026-09-17: `.auth-pending-text`.
+   Era o parágrafo da tela de situação da conta, quando ela ainda usava a
+   casca do login. A tela foi redesenhada com cartão próprio e o
+   equivalente lá é `.status-card-body`, no fim deste arquivo. */
+
+.auth-card-subtitle {
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+  text-align: center;
+  margin: 0 0 20px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.auth-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.auth-form input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px 0 40px;
+  border-radius: 10px;
+  border: 1px solid var(--ev-c-gray-2);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--ev-c-text-1);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.auth-form input::placeholder {
+  color: var(--ev-c-text-3);
+}
+
+.auth-form input:focus {
+  border-color: var(--accent);
+}
+
+.auth-form input.input-invalid,
+.user-chip-edit-form input.input-invalid {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.auth-form input.input-invalid:focus {
+  border-color: var(--color-danger);
+}
+
+.password-toggle {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: none;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.password-toggle:hover {
+  color: var(--ev-c-text-1);
+  background-color: var(--ev-c-black-mute);
+}
+
+.auth-form .auth-input-group:has(.password-toggle) input {
+  padding-right: 38px;
+}
+
+.auth-remember {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+}
+
+.auth-remember input {
+  width: auto;
+  height: auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.auth-error {
+  color: var(--color-danger);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Confirmacao de "codigo enviado" na tela de recuperar senha
+   (ForgotPasswordScreen.tsx, 2026-09-10). Verde do --color-live, o mesmo
+   que o app ja usa pra "esta no ar / deu certo", com fundo translucido
+   da propria cor em vez de um bloco solido. */
+.auth-sent-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  background-color: rgba(74, 222, 128, 0.1);
+  color: var(--color-live);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Campo do código de recuperação (2026-09-10) — ForgotPasswordScreen.
+   Dígitos grandes e espaçados: é um código pra CONFERIR contra o que
+   está no e-mail, e os seis caracteres precisam ser distinguíveis de
+   relance. Monoespaçada porque, com a fonte do app, a largura variável
+   dos dígitos faz o campo "andar" enquanto se digita. */
+.auth-code-input {
+  font-family: var(--mono-font);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  /* Compensa o `letter-spacing`, que também é aplicado DEPOIS do último
+     caractere e jogaria o texto pra esquerda do centro visual. */
+  text-indent: 0.34em;
+  text-align: center;
+}
+
+/* "Não recebeu? Enviar de novo". Fica abaixo do botão principal e
+   precisa parecer secundário — mesmo tom do `.auth-switch`, que já é o
+   link discreto das telas de autenticação. */
+.auth-resend {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.auth-resend:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Link discreto "Esqueci minha senha", abaixo do campo de senha no
+   login. Alinhado a direita pra nao competir com o "Manter conectado"
+   que fica na mesma faixa. */
+.auth-forgot {
+  align-self: flex-end;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.auth-forgot:hover {
+  color: var(--accent);
+}
+
+.auth-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  margin-top: 4px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Pedido do usuário (2026-09-01): mesma label da HomeScreen (.app-version)
+   embaixo do botão "Entrar", alinhada à direita — só o posicionamento
+   muda aqui, o estilo (tamanho/cor) vem de `.app-version` mesmo. */
+.auth-version {
+  display: block;
+  margin-top: 4px;
+  text-align: right;
+}
+
+.auth-switch-line {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+}
+
+.auth-switch {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-switch:hover {
+  text-decoration: underline;
+}
+
+.transmission-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-background);
+}
+
+.transmission-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding:40px 20px 20px 20px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.transmission-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--ev-c-gray-2);
+  background: none;
+  color: var(--ev-c-text-1);
+  cursor: pointer;
+}
+
+.transmission-back:hover:not(:disabled) {
+  background-color: var(--ev-c-black-mute);
+}
+
+.transmission-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+}
+
+.transmission-title svg {
+  color: var(--accent);
+}
+
+.transmission-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+  flex-wrap: wrap;
+}
+
+.settings-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Item novo (2026-09-04, "sala com senha"): linha com o seletor
+   Monitor/Janela à esquerda e o campo de senha à direita. A privacidade
+   saiu daqui em 2026-09-11 (virou switch na barra de cima), então hoje
+   sobrou só o seletor — o `space-between` fica sem par, mas a classe se
+   mantém porque a linha deve voltar a ter uma segunda opção. Antes:
+   `justify-content: space-between` empurra
+   o segundo `.settings-group` (senha) pro canto oposto do primeiro. */
+.settings-group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.settings-group-label {
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+}
+
+/* "(opcional)" num tom mais claro que o resto do label — pedido do
+   usuário. */
+/* --------------------------------------------------------------------
+   "Transmissão privada" — tela de iniciar live
+
+   Substituiu o campo de PIN em 2026-09-10 como checkbox, e virou este
+   switch em 2026-09-11 (pedido do usuário), subindo pra barra de
+   cima. O motivo de ser switch e não checkbox: um checkbox lê como
+   "marque para confirmar" (aceitar termos, lembrar senha); um switch
+   lê como "liga/desliga um modo", que é exatamente o que isso é.
+   -------------------------------------------------------------------- */
+
+/* `margin-left: auto` empurra pro canto direito da barra. É a única
+   opção da linha que NÃO é ajuste de qualidade — juntá-la aos pills de
+   resolução/FPS faria ela ser lida como mais um deles. */
+.private-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  padding: 7px 8px 7px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.private-switch:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--app-chrome-border);
+}
+
+/* Ligado: a pílula inteira ganha o roxo do app. Sem isso o único
+   sinal de estado seria o switch de 36px no canto — fácil de não
+   registrar de relance, justo num ajuste que muda quem consegue
+   entrar na live. */
+.private-switch:has(.private-switch-input:checked) {
+  background-color: rgba(139, 92, 246, 0.12);
+  border-color: rgba(167, 139, 250, 0.32);
+}
+
+.private-switch-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.private-switch-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ev-c-text-2);
+  white-space: nowrap;
+  transition: color 0.18s ease;
+}
+
+.private-switch:has(.private-switch-input:checked) .private-switch-title {
+  color: var(--ev-c-text-1);
+}
+
+.private-switch:has(.private-switch-input:checked) .private-switch-title svg {
+  color: var(--accent);
+}
+
+/* O <input> continua existindo e recebendo foco — só não é desenhado.
+   `appearance: none` + tamanho zero some com ele sem `display: none`,
+   que o tiraria da ordem de tabulação e quebraria o teclado. */
+.private-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.private-switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-2);
+  transition: background-color 0.2s ease;
+}
+
+.private-switch-input:checked + .private-switch-track {
+  background: var(--accent-gradient);
+}
+
+/* Foco visível no TRACK, não no input invisível — senão navegar por
+   teclado não mostraria nada. */
+.private-switch-input:focus-visible + .private-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.private-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  /* `translateX` e não `left`: anima na GPU, sem recalcular layout a
+     cada quadro. A curva com overshoot dá o "encaixe" do switch. */
+  transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.private-switch-input:checked + .private-switch-track .private-switch-thumb {
+  transform: translateX(16px);
+}
+
+/* O aviso. Fica FORA da barra de propósito: aparecer/sumir muda a
+   altura, e dentro da barra ele faria a linha inteira de opções
+   dançar a cada clique. */
+.private-switch-notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 11px 24px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+  background-color: rgba(139, 92, 246, 0.1);
+  color: var(--ev-c-text-1);
+  font-size: 12.5px;
+  font-weight: 500;
+  animation: private-notice-in 0.22s ease-out;
+}
+
+.private-switch-notice svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+@keyframes private-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Selo "Privada" — no footer da propria live (pra o host lembrar por que
+   ninguem entra) e no painel de detalhes da sala. Roxo em vez do verde
+   de "ao vivo": e informacao de escopo, nao de estado. */
+.live-tile-private-chip,
+.room-details-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background-color: rgba(167, 139, 250, 0.16);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.room-details-subline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-group-label-optional {
+  color: var(--ev-c-text-3);
+  font-weight: 400;
+}
+
+.pill-group {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background-color: var(--ev-c-black-mute);
+}
+
+.pill-option {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill-option:hover:not(.pill-option-active) {
+  color: var(--ev-c-text-1);
+}
+
+.pill-option-active {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+/* `overflow: hidden` (não mais `auto`) — pedido do usuário (2026-09-01):
+   o seletor "Capturar" (monitor/janela) e a dica de texto, ambos filhos
+   diretos daqui, precisam ficar FIXOS; só a grade de thumbnails rola,
+   dentro do próprio container de scroll (.transmission-source-scroll,
+   único filho que cresce — `flex: 1` — e tem overflow próprio). */
+.transmission-content {
+  flex: 1;
+  overflow: hidden;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Pedido do usuário (2026-09-01): a barra de scroll precisa ficar colada
+   na borda da JANELA, com o padding entre ela e as thumbnails (não o
+   contrário). O padding direito de `.transmission-content` (pai, sem
+   scroll) não resolve isso sozinho — um filho sem padding próprio nasce
+   INSETADO por esse padding, e a barra de scroll dele (que sempre cola
+   na borda do PRÓPRIO elemento) fica 24px pra dentro da janela, com o
+   padding sobrando do lado de FORA dela. Cancela o padding direito
+   herdado (`margin-right` negativo, mesmo valor) e recria como padding
+   PRÓPRIO deste elemento — mesmo truque que já funciona sozinho no
+   `.update-modal-body` (que tem o padding nele mesmo, não num pai) —
+   agora a barra nasce na borda de verdade, com o padding entre ela e o
+   conteúdo. */
+.transmission-source-scroll {
+  flex: 1;
+  overflow-y: auto;
+  margin-right: -24px;
+  padding-right: 24px;
+}
+
+.source-hint {
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+  margin: 0;
+}
+
+/* Pedido do usuário (2026-09-01): thumbnails maiores, no máximo ~4
+   colunas por linha, sem sobrar espaço morto na direita quando a linha
+   está cheia. `minmax(max(200px, 100% / 5), 1fr)` é o truque padrão de
+   "grid com teto de N colunas que preenche a linha": o mínimo de cada
+   coluna nunca é menor que 1/5 do container (100%/(4+1)) — 5 colunas
+   dessas não caberiam mais que 4 de verdade, então o grid nunca cria
+   uma 5ª — e o `1fr` estica as que existem até preencher a linha
+   inteira. O `max(200px, ...)` garante um piso absoluto (nunca menor que
+   200px), pra encolher em COLUNAS (não em thumbnails minúsculas) em
+   janelas mais estreitas. Antes disso era `minmax(160px, 160px)` (largura
+   fixa) de propósito, pra ficar idêntico entre esta tela e o box de
+   atualizar transmissão (bem mais estreito) — trade-off aceito agora: os
+   dois ainda usam a mesma regra, só que cada um estica pro seu próprio
+   espaço disponível, então o tamanho final não é mais idêntico entre os
+   dois (mas cada um preenche a própria largura direito, que era o pedido
+   novo). */
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(200px, 100% / 5), 1fr));
+  gap: 12px;
+}
+
+.source-item {
+  position: relative;
+  display: flex;
+  border-radius: 8px;
+  border: 2px solid var(--ev-c-gray-2);
+  background-color: var(--ev-c-black-mute);
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+}
+
+.source-item-active {
+  border-color: var(--accent);
+}
+
+.source-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: var(--ev-c-gray-1);
+}
+
+/* Fontes "extras" (2026-08-31, ver screenCapture.ts) sem thumbnail —
+   ícone genérico de janela centralizado, fundo preto (mesmo tom do
+   .source-item por trás, sem precisar de cor própria aqui). */
+.source-thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ev-c-text-2);
+}
+
+.source-check-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.source-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.transmission-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  height: var(--footer-height);
+  padding: 0 24px;
+  border-top: 1px solid var(--ev-c-gray-3);
+}
+
+.transmission-cancel {
+  height: var(--action-button-height);
+  padding: 0 14px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-2);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.transmission-cancel:hover:not(:disabled) {
+  color: var(--ev-c-text-1);
+}
+
+.transmission-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--action-button-height);
+  padding: 0 20px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+  font-weight: 400;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.transmission-start:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.transmission-start:disabled,
+.transmission-cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 900;
+}
+
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 90vw);
+  max-height: 80vh;
+  border-radius: 16px;
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: var(--color-background);
+  overflow: hidden;
+}
+
+/* Diálogo de auto-atualização (ver UpdateDialog.tsx/useAppUpdate.ts) —
+   card estreito e centralizado, mesma linguagem visual do resto do app
+   (ícone circular com --accent-gradient, igual .auth-card-icon). */
+.update-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(360px, 90vw);
+  padding: 28px;
+  border-radius: 16px;
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: var(--color-background);
+  text-align: center;
+}
+
+.update-dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.update-dialog-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+}
+
+.update-dialog-status {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+.update-dialog-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+}
+
+.update-dialog-highlight {
+  color: var(--accent);
+}
+
+.update-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.update-dialog-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background-color: var(--ev-c-black-mute);
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.update-dialog-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  transition: width 0.15s ease;
+}
+
+.update-dialog-progress-label {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+}
+
+.update-dialog-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 3px solid rgba(167, 139, 250, 0.25);
+  border-top-color: var(--accent);
+  animation: watch-loading-spin 0.8s linear infinite;
+  margin-bottom: 8px;
+}
+
+.update-dialog-error-icon {
+  color: var(--color-danger);
+  margin-bottom: 4px;
+}
+
+.update-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.modal-close {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+}
+
+.modal-close:hover:not(:disabled) {
+  color: var(--ev-c-text-1);
+  background-color: var(--ev-c-black-mute);
+}
+
+.update-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.update-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--ev-c-gray-3);
+  flex-wrap: wrap;
+}
+
+.update-modal-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+/* Chip flutuante no canto inferior esquerdo (voltou a ser flutuante,
+   não mais a barra full-width) — fundo cinza-escuro (não preto puro),
+   sem borda, arredondado, com sombra de profundidade. Ícone (não o
+   texto) muda de cor pra indicar erro vs. aviso neutro, ver
+   .snackbar-icon abaixo. Sobe ao aparecer/desce ao sumir (ver
+   .snackbar-closing + @keyframes), timing controlado pelo próprio
+   componente (ver EXIT_DURATION_MS em Snackbar.tsx). */
+.snackbar {
+  position: fixed;
+  left: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background-color: rgba(45, 45, 52, 0.95);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  animation: snackbar-slide-in 0.22s ease;
+}
+
+.snackbar.snackbar-closing {
+  animation: snackbar-slide-out 0.22s ease forwards;
+}
+
+.snackbar-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.snackbar-error .snackbar-icon {
+  color: var(--color-danger);
+}
+
+.snackbar-text {
+  flex: 1;
+  text-align: left;
+}
+
+.snackbar-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.snackbar-close:hover {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+@keyframes snackbar-slide-in {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes snackbar-slide-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+
+.home-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-background);
+  /* TESTE (2026-09-03): mesmo motivo do `.auth-page` — abre espaço pra
+     `.app-titlebar` (fixed, topo da janela) não cobrir o conteúdo. */
+  padding-top: 32px;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+  flex-wrap: wrap;
+}
+
+.home-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.app-logo {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.app-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+}
+
+.app-version {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ev-c-text-2);
+}
+
+.home-live-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Só usada pelo estado "Parando transmissão..." agora (item 42 tirou o
+   resto — dot/AO VIVO/código/timer viraram `.live-tile-*`, tile sem
+   fundo/borda no canto esquerdo do footer). Mantida como pill de
+   propósito só nesse estado transitório, pra ficar visualmente diferente
+   do "AO VIVO" (mesmo formato de tag da versão anterior, cor roxa em vez
+   de verde). */
+
+.live-status-stopping-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid rgba(167, 139, 250, 0.3);
+  border-top-color: var(--accent);
+  flex-shrink: 0;
+  animation: watch-loading-spin 0.8s linear infinite;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: none;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-button-alt-text);
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+.icon-button-danger {
+  color: var(--color-danger);
+}
+
+.icon-button-danger:hover:not(:disabled) {
+  background-color: rgba(248, 113, 113, 0.15);
+}
+
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--action-button-height);
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-button-alt-text);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill-button:hover:not(:disabled) {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+.pill-button-accent {
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+}
+
+.pill-button-accent:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.home-header-right {
+  display: flex;
+  align-items: center;
+}
+
+.user-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+}
+
+.user-chip-icon:hover {
+  color: var(--ev-c-text-1);
+  background-color: var(--ev-c-black-soft);
+}
+
+.user-chip-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-chip-edit-form input {
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--ev-c-gray-2);
+  background-color: var(--ev-c-black-mute);
+  color: var(--ev-c-text-1);
+  font-size: 13px;
+  width: 120px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.user-chip-edit-form input:focus {
+  border-color: var(--accent);
+  background-color: rgba(167, 139, 250, 0.08);
+}
+
+.user-chip-edit-form input.input-invalid:focus {
+  border-color: var(--color-danger);
+  background-color: rgba(242, 139, 130, 0.08);
+}
+
+.user-chip-edit-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  transition: filter 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.user-chip-edit-form button[type='submit'] {
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+}
+
+.user-chip-edit-form button[type='submit']:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.user-chip-edit-form button[type='button'] {
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-c-text-2);
+}
+
+.user-chip-edit-form button[type='button']:hover:not(:disabled) {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: var(--color-danger);
+}
+
+.user-chip-edit-form button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* `min-height` (não `height` fixo) desde o item 42 — o `.live-tile` do
+   canto esquerdo (título + subtítulo + botão de espectadores, 3 linhas
+   empilhadas) pode ficar mais alto que os `--footer-height` originais
+   (pensados só pra uma linha de botões); com `min-height` o footer cresce
+   pra caber, mas continua no tamanho compacto de sempre fora desse
+   estado (parado, ou só o botão "Transmitir"). */
+/* `flex-shrink: 0` (2026-09-05): o footer tem tamanho fixo na coluna —
+   quem cede espaço é a `.watch-area` (ver `min-height: 0` lá embaixo).
+   Sem isso, com a coluna apertada o footer seria espremido junto (o
+   `min-height` acima é só um piso pro CONTEÚDO, não impede o flex de
+   encolher a caixa). */
+.home-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* `height` fixo em vez de `min-height` (2026-09-05): com `min-height`,
+     o `.live-tile` da live ligada (título + subtítulo empilhados)
+     empurrava o footer de 66 pra 67px. O motivo original era casar com o
+     "profile tile" da sidebar antiga, que ficava ao lado — esse tile não
+     existe mais (2026-09-09), mas o `height` fixo continua valendo por
+     si: é ele que impede o footer de crescer 1px quando a live liga. O
+     conteúdo cabe nos 42px internos (66 - 12 - 12) — ver o `line-height`
+     do subtítulo mais abaixo. */
+  /* 66px fixos. Era `var(--profile-tile-height)` até 2026-09-09: a
+     variável existia pra casar esta altura com a do "profile tile" da
+     sidebar de salas, que ficava ao lado — a sidebar saiu e a variável
+     foi junto, porque não sincronizava mais nada. */
+  height: 66px;
+  flex-shrink: 0;
+  margin: 16px;
+  padding: 12px 16px 12px 16px;
+  --border-top: 1px solid var(--ev-c-gray-3);
+  border-radius: 8px;
+}
+
+/* Pedido do usuário (2026-09-05): o fundo (mesmo tom do "profile tile"
+   da sidebar) só aparece com a live ON — parado, o footer volta a ser
+   transparente, deixando ver o `--color-background` da `.home-page`.
+   Só a COR é condicional: tamanho, margem e raio ficam na regra base
+   acima, então nada se mexe ao ligar/desligar a transmissão. */
+.home-footer-live {
+  background-color: var(--ev-c-black-mute);
+}
+
+/* SEM `flex: 1` de propósito (removido, 2026-09-02) — tentativa anterior
+   pra dar mais espaço ao subtítulo, mas causava um bug real: a CAIXA
+   ficava esticada até o `.home-footer-right`, e como os filhos (avatar +
+   `.live-tile`) não preenchiam esse espaço todo, sobrava uma área vazia
+   dentro da própria caixa que ainda disparava o hover (pedido do
+   usuário: hover só deve ir até o NOME quando a live está OFF, ou até o
+   TIMER quando está ON — nunca até o limite disponível do footer). Sem
+   `flex: 1`, a caixa volta a ter exatamente o tamanho do próprio
+   conteúdo (`.live-tile-title` já não estica mais — `align-self:
+   flex-start` — e o subtítulo já é travado no limite do título via JS,
+   ver HomeScreen.tsx — então o conteúdo já é bem dimensionado sozinho,
+   não precisava do `flex: 1` pra isso).
+   Hover vermelho + padding (2026-09-02, pedido do usuário) — o tile
+   inteiro (avatar + informações) fica com esse hover, sinalizando que é
+   clicável (ainda sem função nenhuma ligada, preparado pra um futuro
+   uso). */
+/* Pedido do usuário (2026-09-04): virou só as infos da MINHA
+   transmissão (AO VIVO/PIN/timer + jogo/janela) — nada clicável, sem
+   hover, sem card. O "USER INFO" que morava aqui virou o "profile tile"
+   da sidebar de salas, e em 2026-09-09, com a sidebar removida, virou o
+   avatar do rodapé da `.app-left-sidebar`. */
+.home-footer-left {
+  display: flex;
+  align-items: center;
+  /* Toma todo o espaço que sobra (2026-09-14, pedido do usuário). O
+     `gap` do `.home-footer` é o que garante a folga até os botões da
+     direita — daí não precisar de margem aqui. */
+  flex: 1;
+  min-width: 0;
+}
+
+.home-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Com o lado esquerdo em `flex: 1`, sem isto os botões seriam os
+     primeiros a encolher numa janela estreita — eles têm tamanho
+     fixo e é o TEXTO da esquerda que deve truncar. */
+  flex-shrink: 0;
+}
+
+/* Pedido do usuário (2026-09-04): "aba" que fica colada na borda de
+   cima do footer (precisa de `position: relative` aqui pra servir de
+   referência pro `.participants-tab-wrapper` abaixo, que sai do fluxo
+   normal do `.home-live-controls` pra ficar ancorado bem na linha da
+   borda, e não mais dentro do padding do footer). */
+.home-footer {
+  position: relative;
+}
+
+/* `bottom: 100%` relativo ao PRÓPRIO `.home-footer` (não mais a um
+   wrapper que vivia dentro do padding dele) — a aba/lista fica com a
+   base exatamente na borda de cima do footer, sem vão. Sem `top`
+   definido, a altura fica livre (auto): conforme a lista cresce, ela
+   empurra pra CIMA (a base fica sempre colada na borda), nunca empurra
+   os outros botões do footer (fora do fluxo, `position: absolute`). */
+.participants-tab-wrapper {
+  position: absolute;
+  bottom: 100%;
+  right: 24px;
+  display: flex;
+}
+
+/* Pedido do usuário (2026-09-04): o botão fechado vira uma ABA que
+   nasce da própria borda do footer — arredondado só no topo, sem borda
+   embaixo (funde com o footer ali), fundo igual ao fundo da HOME (não
+   mais o tom de botão) pra parecer uma continuação do conteúdo, não um
+   botão flutuante solto. */
+.participants-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid var(--ev-c-gray-3);
+  border-bottom: none;
+  /* Pedido do usuário (2026-09-05): mesma cor do footer com a live ON
+     (era `--color-background`) — a aba só existe durante a transmissão,
+     então acompanha o footer sempre e os dois leem como uma peça só. */
+  background-color: var(--ev-c-black-mute);
+  color: var(--ev-c-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Botão de recolher (seta) dentro do header da lista aberta — não é
+   mais o mesmo `.participants-tab` (esse agora é só a aba fechada, com
+   um visual específico de "nascer da borda"); esse aqui é um botão
+   normal, redondo, igual aos outros `.icon-button` do footer. */
+.participants-collapse-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-c-text-1);
+  cursor: pointer;
+}
+
+.participants-collapse-button:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+/* Pedido do usuário (2026-09-04): não é mais revelado por HOVER — vira a
+   LISTA de espectadores de verdade (controlada por estado em
+   HomeScreen.tsx, `viewersExpanded`), expandindo sozinha automaticamente
+   só na primeira vez que alguém entra na live atual; depois disso (ou
+   se o host recolher manualmente antes disso acontecer), só o botão de
+   seta no header abre/fecha. Mesmo visual de "aba" do `.participants-tab`
+   acima: arredondado só no topo, sem borda embaixo, fundo igual ao da
+   HOME — a lista é só a versão "aberta" da mesma aba. */
+.participants-panel {
+  /* Largura fixa de 350px (pedido do usuário, 2026-09-04) — antes
+     variava entre 140-200px conforme o conteúdo. */
+  width: 220px;
+  padding: 10px;
+  border-radius: 10px 10px 0 0;
+  border: 1px solid var(--ev-c-gray-3);
+  border-bottom: none;
+  /* Mesma cor do footer com a live ON, pelo mesmo motivo do
+     `.participants-tab` acima — a lista é só a versão "aberta" da
+     mesma aba. */
+  background-color: var(--ev-c-black-mute);
+  color: var(--ev-c-text-1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.participants-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.participants-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.participants-list {
+  display: flex;
+  flex-direction: column;
+  /* 2px desde 2026-09-14: o tile ganhou padding próprio, e 5px de gap
+     somados a ele deixavam a lista esparsa. Mesmo valor da lista de
+     usuários. */
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+
+.participants-empty {
+  font-size: 12px;
+  margin: 0;
+  opacity: 0.8;
+}
+
+/* Pedido do usuário (2026-09-02): "USER INFO" — avatar (placeholder
+   circular de "foto do usuário") + nome do usuário SEMPRE aparecem
+   nesse tile; o resto (título com AO VIVO/código/timer, subtítulo do
+   jogo/janela) só durante uma transmissão, ver HomeScreen.tsx.
+   Tamanho do avatar fixo em px — `--footer-height` (64px) menos o
+   padding vertical do próprio `.home-footer` (12px em cima + 12px
+   embaixo, ver `padding: 12px 12px` lá). Chegou aqui depois de uma
+   tentativa com `aspect-ratio` + `align-items: stretch` que parecia
+   funcionar parado, mas achatava a largura assim que a live ligava
+   (interação instável entre aspect-ratio e stretch em flexbox) — valor
+   fixo resolve de vez, sem depender de resolução dinâmica nenhuma. */
+.footer-user-avatar {
+  position: relative;
+  width: calc(var(--footer-height) - 26px);
+  height: calc(var(--footer-height) - 26px);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  --border: 1px solid var(--ev-c-gray-3);
+  --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  /* Item 43 do roadmap: recorta uma foto de avatar customizada
+     (<img width/height 100%>, ver UserAvatar.tsx) nos cantos do
+     círculo — sem isso, a foto (sempre quadrada, 96x96) vazaria pros
+     cantos por fora do border-radius. Fundo/cor NÃO ficam mais fixos
+     aqui — quem define é o próprio UserAvatar.tsx (fundo colorido do
+     preset ou roxo padrão do app, ícone sempre branco). */
+  overflow: hidden;
+}
+
+/* Item 43 do roadmap: foto de avatar customizada — preenche todo o
+   círculo do container (footer, tile da sala, listas de viewers), cada
+   um já responsável pelo próprio tamanho/border-radius/overflow. */
+/* O boneco do placeholder (2026-09-13) — um PNG branco com
+   transparencia em volta, desenhado pelo usuario. O tamanho vem do
+   `style` inline (prop `size`), igual era com o icone do lucide.
+
+   `contain` e nao `cover`: a silhueta tem proporcao propria, e
+   `cover` recortaria os ombros pra preencher o quadrado. */
+.user-avatar-placeholder {
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.user-avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Item 43 do roadmap: o placeholder de quem não tem foto — cinza médio
+   com o boneco branco preenchido (2026-09-11; era o roxo do app com o
+   ícone só de contorno). Preenche todo o círculo do container ao redor
+   (footer/tile da sala/listas de viewers/box de perfil/sobreposição),
+   que só cuida de tamanho/borda/sombra/overflow.
+
+   A COR vive no UserAvatar.tsx, não aqui: ela é aplicada inline porque
+   um dia foi variável por preset. Hoje é fixa e poderia subir pro CSS —
+   mantida lá por ora pra a explicação ficar junto da decisão. */
+.user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Item 43 do roadmap: avatar pequeno (16px) reaproveitado em 3 lugares —
+   tile da sala (host), lista de quem assiste MINHA live, e lista de quem
+   mais assiste uma live que eu estou vendo. Mesmo padrão visual do
+   `.footer-user-avatar` (fundo colorido + ícone branco, ver
+   UserAvatar.tsx), só menor e sem borda/sombra (esses lugares já são
+   compactos por natureza). */
+.mini-avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* Pedido do usuário (2026-09-05): o tile virou uma LINHA (arte no
+   leading + coluna de infos) com 350px FIXOS. A largura fixa é o que
+   permitiu apagar o ResizeObserver que media o título pra limitar o
+   subtítulo (ver HomeScreen.tsx): com o tile travado, um nome de jogo
+   comprido não estica mais nada, só trunca.
+   `flex-shrink: 0` porque o `.home-footer` é flex e o lado direito
+   (controles da live) cresce quando a live está ON — sem isso os 350px
+   seriam comprimidos numa janela estreita. */
+.live-tile {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  /* Largura livre desde 2026-09-14 (era 280px fixos, e antes 350).
+
+     A largura fixa existia de quando a linha de cima era só
+     "AO VIVO + timer". Com o selo "Privada" e o código da sala
+     (2026-09-13) o conteúdo passou do limite e a linha quebrava em
+     duas — num rodapé de altura FIXA (66px), o que quebra some.
+
+     Ocupar o espaço livre resolve sem escolher um número novo que
+     ficaria errado no próximo item que entrar aqui. */
+  flex: 1;
+  min-width: 0;
+}
+
+/* A coluna que antes era o próprio `.live-tile` (título em cima,
+   subtítulo embaixo). `min-width: 0` + `overflow: hidden` são o que faz
+   o subtítulo truncar na largura que sobra dos 350px depois da arte, em
+   vez de vazar pra fora do tile. */
+.live-tile-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  gap: 0px;
+}
+
+/* Quadrado da arte, no leading do tile: ocupa a altura TODA do footer
+   descontado o padding (66 - 12 - 12 = 42px), e a largura acompanha a
+   altura — os dois saem da mesma conta de propósito, pra continuar
+   quadrado se a altura do footer mudar um dia.
+   Pedido do usuário (2026-09-06): o fundo roxo saiu daqui e foi pro
+   `.live-tile-art-placeholder` abaixo — boa parte das artes do CDN do
+   Discord é PNG com fundo transparente, e o roxo vazava por trás do
+   logo do jogo (a suposição antiga de que "a imagem cobre o quadrado
+   inteiro" só vale pras artes opacas). */
+.live-tile-art {
+  /* 42px = os 66px do `.home-footer` menos os 12+12 de padding dele.
+     Vinha de `calc(var(--profile-tile-height) - 24px)` até 2026-09-09;
+     virou literal junto com a remoção da variável. Amarrar de volta à
+     altura do footer também deixou de fazer sentido: esta classe é
+     usada em DOIS lugares agora — o tile da live no footer e o
+     `NowPlayingArt` do painel de detalhes da sala, que não tem nada a
+     ver com o footer. */
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  overflow: hidden;
+  color: #fff;
+}
+
+/* Só quando NÃO tem arte (jogo sem ícone na lista, monitor, janela, ou
+   imagem que falhou ao carregar — ver NowPlayingArt.tsx): mesmo `--accent`
+   que o avatar já usa como placeholder (ver UserAvatar.tsx), então os
+   três casos leem como a mesma família visual do resto do app. */
+/* O desenho de placeholder (2026-09-14): sem fundo, só o traço branco
+   centrado no quadrado.
+
+   Era um quadrado ROXO com ícone do lucide dentro. Saiu a pedido do
+   usuário, que desenhou os três PNGs (monitor, janela, Steam). O roxo
+   dava a um estado NEUTRO — "não achei arte" — o mesmo peso visual de
+   um botão de ação, já que é a cor de destaque do app.
+
+   `contain` + padding: o PNG tem proporção própria e transparência em
+   volta; `cover` (que a arte de verdade usa, pra preencher o quadrado)
+   recortaria o desenho. */
+.live-tile-art-placeholder {
+  object-fit: contain;
+  padding: 5px;
+  opacity: 0.85;
+}
+
+/* `object-fit: cover` porque a arte do CDN do Discord nem sempre é
+   quadrada — recorta em vez de distorcer. `display: block` tira o
+   espaço de linha de base que um <img> inline deixaria embaixo. */
+.live-tile-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.live-tile-art svg {
+  flex-shrink: 0;
+}
+
+/* `align-self: flex-start` (não estica pra largura do `.live-tile`) —
+   precisa do tamanho de CONTEÚDO de verdade, não da largura do
+   container: é esse valor que `HomeScreen.tsx` mede (ResizeObserver) e
+   aplica como `max-width` do `.live-tile-subtitle` logo abaixo (pedido
+   do usuário, 2026-09-02: o subtítulo nunca deixa o tile mais largo que
+   o título, trunca com "..." nesse limite em vez disso). */
+.live-tile-title {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  gap: 8px;
+  /* Duas defesas contra a quebra, e as duas são necessárias.
+
+     `nowrap` impede o TEXTO de cada pedaço (o "AO VIVO", o "Privada")
+     de virar duas linhas quando o espaço aperta — era assim que a
+     linha quebrava, e não por wrap do flex (que já é nowrap por
+     padrão).
+
+     `flex-shrink: 0` nos filhos impede que eles sejam espremidos
+     abaixo do próprio conteúdo: são todos curtos e de tamanho
+     conhecido, e quem deve ceder espaço numa janela estreita é o nome
+     do jogo na linha de baixo, que já trunca com reticências. */
+  white-space: nowrap;
+}
+
+.live-tile-title > * {
+  flex-shrink: 0;
+}
+
+/* Nome do usuário — SEMPRE visível (item novo, "USER INFO"), diferente
+   do resto da linha (AO VIVO/código/timer ou "Parando..."), que só
+   aparece durante uma transmissão. */
+.live-tile-username {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+.live-tile-stopping-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Pedido do usuário (2026-09-03): "Parando transmissão..." saiu do tile
+   da esquerda (junto do "USER INFO") e virou o próprio conteúdo do
+   `.home-footer-right` enquanto para a live — sempre alinhado à direita
+   do footer, no lugar onde os controles normais (preview/atualizar/
+   parar) ficariam. */
+.footer-stopping-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Mesmo dot verde com glow do resto do app (.room-tile-live-dot etc.). */
+.live-tile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+  flex-shrink: 0;
+}
+
+.live-tile-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-live);
+  letter-spacing: 0.3px;
+}
+
+/* Pedido do usuário (2026-09-02): separação mais clara entre AO VIVO /
+   código / timer — traço vertical fino e discreto (não um "|" de texto,
+   nem um chip/fundo em cada segmento — pedido explícito era sutil, não
+   chamativo), mesmo espírito de divisor usado em barra de status de
+   player de vídeo. */
+/* Codigo da MINHA sala no tile do rodape (2026-09-13, pedido do
+   usuario): so os numeros, em branco.
+
+   Branco e nao verde: o verde ao lado (o "AO VIVO" e o timer) e uma
+   informacao de ESTADO, que a pessoa le de relance. O codigo e o unico
+   dado dali que ela precisa LER e ditar pra alguem, e o branco e o que
+   o destaca do resto da linha.
+
+   Mesma fonte mono do timer: numero ditado em voz alta se le melhor com
+   digitos de largura fixa, e o 0 da mono nao se confunde com o O. */
+.live-tile-code {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.live-tile-divider {
+  width: 1px;
+  height: 12px;
+  background-color: var(--ev-c-gray-2);
+  flex-shrink: 0;
+}
+
+/* Item 42 do roadmap: duração da própria live — mesmo tratamento do
+   timer no tile da lista de salas (`.room-tile-timer`), 11px/verde/400.
+   Pedido do usuário (2026-09-03): fonte mono-espaçada (`--mono-font`,
+   ver :root) — mais confiável que só `tabular-nums` pra manter a
+   largura fixa dígito a dígito. */
+.live-tile-timer {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-live);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono-font);
+}
+
+/* Item 29 do roadmap: jogo (Steam/lista do Discord) ou título da janela
+   sendo transmitida agora — legenda ("Jogando:"/"Transmitindo:",
+   conforme `nowPlaying.kind`) + nome NA MESMA LINHA (pedido do usuário,
+   2026-09-02 — antes ficavam empilhados numa tag à parte). Estilo de
+   texto de cada um sem mudança (`.now-playing-caption`/`.now-playing-name`
+   abaixo), só o container que virou linha em vez de coluna. */
+/* Pedido do usuário (2026-09-02): nunca quebra pra uma segunda linha
+   (título de janela pode ser bem comprido) — sem isso o footer cresceria
+   demais (`.home-footer` usa `min-height`, ver acima, então ele de fato
+   cresce pra caber qualquer conteúdo). `overflow: hidden` no container +
+   `white-space: nowrap`/`text-overflow: ellipsis`/`max-width` já no
+   `.now-playing-name` truncam o nome em vez de quebrar linha. */
+.live-tile-subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* O `line-height: 1.6` herdado do `body` dava 20.8px de caixa pro
+   subtítulo (`.now-playing-name` é 13px), e com os 22.4px do
+   `.live-tile-title` em cima o `.live-tile` pedia 43.2px — 1.2px a
+   mais que os 42px internos do footer (ver `height` lá em cima). 1.3
+   aperta só a CAIXA da linha (o texto continua com o mesmo tamanho) e
+   traz o conjunto pra ~39px, com folga. Escopo no `.home-footer` de
+   propósito: a mesma classe também é usada no "profile tile" da
+   sidebar (`.live-tile-edit-hint`), que não tem esse aperto. */
+.home-footer .live-tile-subtitle {
+  line-height: 1.3;
+}
+
+.now-playing-caption {
+  font-size: 11px;
+  color: var(--ev-c-text-2);
+  flex-shrink: 0;
+}
+
+.now-playing-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+  /* Sem teto fixo em px (removido, 2026-09-02) — quem realmente limita a
+     largura agora é o `max-width` inline aplicado no
+     `.live-tile-subtitle` (pai direto), calculado em JS a partir da
+     largura de `.live-tile-title` (ver HomeScreen.tsx). */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Convite pra editar avatar/nome (2026-09-02, pedido do usuário) — só
+   aparece com a live OFF, no mesmo lugar onde o subtítulo do jogo/janela
+   ficaria se estivesse ligada (reaproveita `.live-tile-subtitle` como
+   base, ver HomeScreen.tsx). Tom neutro (não usa `--accent`/`--color-live`
+   de propósito — é só uma dica discreta, não um indicador de estado). */
+.live-tile-edit-hint {
+  font-size: 11px;
+  color: var(--ev-c-text-2);
+}
+
+.live-tile-edit-hint svg {
+  flex-shrink: 0;
+}
+
+.home-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  /* ancora do ::before abaixo */
+  position: relative;
+}
+
+/* Pedido do usuario (2026-09-09): a borda da direita da barra de SALAS
+   AO VIVO sobe ate o topo da area de conteudo, curva pra direita e
+   segue horizontalmente ate a borda da janela.
+
+   E um traco so, entao e um elemento so: uma caixa que comeca onde a
+   barra acaba e vai ate os cantos, com borda apenas na ESQUERDA e no
+   TOPO — o `border-top-left-radius` faz a curva que emenda as duas. O
+   resto da caixa nao tem borda nenhuma, entao nada fecha embaixo nem a
+   direita.
+
+   Feito com pseudo-elemento pra nao precisar embrulhar a sidebar de
+   salas + a `.watch-column` num container novo so por causa de uma
+   linha decorativa. `pointer-events: none` e obrigatorio: a caixa cobre
+   a area toda de conteudo e engoliria todo clique sem isso.
+
+   O topo aqui e o topo da AREA DE CONTEUDO, logo abaixo da faixa de
+   32px da titlebar (ver `padding-top` da `.home-page`) — nao o topo
+   absoluto da janela, que cruzaria os botoes de minimizar/fechar. */
+.home-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--app-left-sidebar-width);
+  right: 0;
+  border-left: 1px solid var(--app-chrome-border);
+  border-top: 1px solid var(--app-chrome-border);
+  border-top-left-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ---------------------------------------------------------------------
+   Convite pra live privada (2026-09-10) — InviteToast.tsx
+
+   Canto superior DIREITO, por pedido do usuario. Longe do `.snackbar`
+   generico, que vive embaixo: os dois podem estar na tela ao mesmo
+   tempo e no mesmo canto um cobriria o outro.
+
+   Fica ABAIXO da faixa de 32px da titlebar (top: 44px) pra nao cobrir os
+   botoes de minimizar/fechar do Windows — a titlebar e area arrastavel e
+   um card por cima dela roubaria o arrasto.
+   --------------------------------------------------------------------- */
+.invite-toast {
+  position: fixed;
+  top: 44px;
+  right: 16px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 14px 14px 17px;
+  border-radius: 14px;
+  /* Fundo em duas camadas: um brilho roxo no canto superior esquerdo
+     (mesma linguagem do popover de perfil) por cima da cor base. */
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(167, 139, 250, 0.18), transparent 70%),
+    #26262c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 18px 50px -10px rgba(0, 0, 0, 0.6),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+  /* `overflow: hidden` prende a barra de timeout nos cantos
+     arredondados — sem ele ela vaza pelo canto de baixo. */
+  overflow: hidden;
+  animation:
+    invite-toast-in 0.42s cubic-bezier(0.22, 1.2, 0.36, 1),
+    invite-toast-glow 2.4s ease-in-out 0.42s infinite;
+}
+
+/* Entra deslizando da direita (de onde ele "vem"), com um leve
+   afundamento e escala — as tres juntas dao o efeito de "chegou",
+   enquanto so o deslize pareceria um empurrao. A curva passa um pouco
+   do lugar e volta, que e o que tira a sensacao mecanica. */
+@keyframes invite-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(28px, -8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+/* Respiracao lenta na sombra roxa depois que ele assenta. Chama a
+   atencao sem piscar nem se mexer — o convite tem 10s de vida e nao
+   pode passar despercebido, mas tambem nao pode incomodar. */
+@keyframes invite-toast-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 18px 50px -10px rgba(0, 0, 0, 0.6),
+      0 4px 14px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(167, 139, 250, 0.08);
+  }
+  50% {
+    box-shadow:
+      0 18px 50px -10px rgba(0, 0, 0, 0.6),
+      0 4px 14px rgba(0, 0, 0, 0.35),
+      0 0 22px 2px rgba(167, 139, 250, 0.22);
+  }
+}
+
+/* Barra de tempo restante (10s), colada na base do card. A largura e
+   animada por CSS, nao por state: um contador em React
+   re-renderizaria o componente centenas de vezes em 10s pra desenhar o
+   que a GPU faz sozinha.
+
+   O tempo aqui e SO visual — quem de fato recusa o convite e o
+   setTimeout do InviteToast.tsx. Os dois precisam do mesmo valor: se
+   mudar um, mudar o outro (INVITE_TIMEOUT_MS la). */
+.invite-toast-timeout {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  transform-origin: left center;
+  background: var(--accent-gradient);
+  /* 30s desde 2026-09-13 — TEM que bater com INVITE_TIMEOUT_MS em
+     InviteToast.tsx. */
+  animation: invite-timeout 30s linear forwards;
+}
+
+/* `scaleX` e nao `width`: escala roda na composicao, largura obriga o
+   navegador a refazer layout a cada quadro. */
+@keyframes invite-timeout {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.invite-toast-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.invite-toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  color: #fff;
+  box-shadow: var(--accent-glow);
+}
+
+.invite-toast-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ev-c-text-1);
+}
+
+.invite-toast-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.invite-toast-accept,
+.invite-toast-decline {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease;
+}
+
+/* So o "Aceitar" tem cor: duas acoes com o mesmo peso fariam a pessoa
+   ter que ler as duas pra decidir qual e a principal. */
+.invite-toast-accept {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.invite-toast-accept:hover {
+  filter: brightness(1.1);
+}
+
+.invite-toast-decline {
+  background: none;
+  color: var(--ev-c-text-2);
+}
+
+.invite-toast-decline:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+  color: var(--ev-c-text-1);
+}
+
+/* ---------------------------------------------------------------------
+   Lista de usuarios (2026-09-10) — UsersSidebar.tsx
+   --------------------------------------------------------------------- */
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.users-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.users-list-item:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.users-list-item .mini-avatar {
+  width: 30px;
+  height: 30px;
+  /* `overflow: visible` pro dot de status poder vazar pro canto — o
+     `.mini-avatar` base recorta, pra foto de avatar ficar redonda. */
+  overflow: visible;
+}
+
+/* A foto precisa continuar recortada mesmo com o overflow liberado
+   acima; sem isto ela vira um quadrado. */
+.users-list-item .mini-avatar > :first-child {
+  border-radius: 999px;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+/* Mesma ideia do dot de "ao vivo" da barra da esquerda: borda na cor do
+   fundo, pra parecer recortado do avatar em vez de colado por cima. */
+.user-status-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  border: 2px solid var(--color-background);
+}
+
+.user-status-online {
+  background-color: var(--color-live);
+}
+
+/* Amarelo pra "ocupado".
+
+   Chegou a virar vermelho em 2026-09-11 (a pedido) e voltou no mesmo
+   dia, depois da ressalva: verde e vermelho já significam "ao vivo" e
+   "erro/perigo" no resto do app, e usar vermelho aqui emprestaria um
+   peso de ALARME a um estado que é só uma preferência — a pessoa não
+   tem problema nenhum, só não quer ser incomodada.
+
+   Definido num lugar só de propósito: o dot do rodapé, o do box de
+   perfil e o da lista de usuários leem todos daqui, então não têm como
+   divergir. */
+.user-status-busy {
+  background-color: #fbbf24;
+}
+
+/* Offline nao usa cor, usa AUSENCIA de cor: um cinza vazado, que le como
+   "apagado" sem competir com os outros dois. */
+.user-status-offline {
+  background-color: var(--ev-c-gray-2);
+}
+
+.users-list-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.users-list-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ev-c-text-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.users-list-status {
+  font-size: 11px;
+  color: var(--ev-c-text-2);
+}
+
+/* So aparece no hover da linha: com uma dezena de usuarios, um botao
+   fixo em cada um viraria uma coluna de icones competindo com os nomes.
+   Continua visivel no foco por teclado, senao some pra quem navega por
+   Tab. */
+.users-list-invite {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.users-list-item:hover .users-list-invite,
+.users-list-invite:focus-visible {
+  opacity: 1;
+}
+
+.users-list-invite:hover:not(:disabled) {
+  background-color: rgba(167, 139, 250, 0.16);
+  color: var(--accent);
+}
+
+/* Desabilitado = CONVITE JA ENVIADO: verde, e visivel mesmo sem hover,
+   pra o host lembrar que ja mandou. */
+.users-list-invite:disabled {
+  cursor: default;
+  color: var(--color-live);
+  opacity: 1;
+}
+
+/* Desabilitado por OUTRO motivo (2026-09-13): a live ainda nao entrou no
+   ar de verdade — ver liveReadyForInvites na HomeScreen.
+
+   Precisa de visual proprio porque a regra acima pinta de VERDE, que no
+   app significa "enviado". Um botao verde enquanto nada foi enviado
+   diria exatamente o contrario do que esta acontecendo. Aqui e cinza e
+   apagado: le como "ainda nao da", que e a verdade. O tooltip explica o
+   porque. */
+.users-list-invite-waiting:disabled {
+  color: var(--ev-c-text-3);
+  opacity: 0.45;
+}
+
+/* ---------------------------------------------------------------------
+   Entrar com codigo (2026-09-10) — JoinByCodeModal.tsx
+   --------------------------------------------------------------------- */
+.join-code-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: min(360px, 90vw);
+  padding: 28px;
+  border-radius: 16px;
+  background:
+    radial-gradient(110% 70% at 50% 0%, rgba(167, 139, 250, 0.14), transparent 70%),
+    var(--ev-c-black-mute);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+}
+
+.join-code-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.join-code-title {
+  margin: 8px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+}
+
+.join-code-subtitle {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+  text-align: center;
+}
+
+.join-code-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Fonte mono e `letter-spacing` largo: o codigo e um numero pra CONFERIR
+   digito a digito, nao um texto pra ler corrido — a mesma razao da fonte
+   mono nos timers do app. */
+.join-code-input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--app-chrome-border);
+  background-color: rgba(0, 0, 0, 0.25);
+  color: var(--ev-c-text-1);
+  font-family: var(--mono-font);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.35em;
+  text-align: center;
+  /* Compensa o letter-spacing, que tambem entra DEPOIS do ultimo digito
+     e desloca o texto pra esquerda. */
+  text-indent: 0.35em;
+  transition: border-color 0.15s ease;
+}
+
+.join-code-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.join-code-input::placeholder {
+  color: var(--ev-c-gray-2);
+}
+
+/* A janela da sobreposição carrega o MESMO CSS da janela principal, e o
+   `body`/`#root` de lá têm fundo opaco, altura de tela cheia e
+   centralização — o que pintaria um retângulo escuro cobrindo tudo e
+   anularia a transparência da janela. A classe é posta em main.tsx
+   quando a URL tem `#overlay`. */
+body.overlay-window {
+  background: transparent;
+  min-height: 0;
+  overflow: hidden;
+  /* O `body` do app é um flex que CENTRALIZA o conteúdo (ver a regra
+     lá em cima). Numa janela de 240px isso empurrava a caixa da
+     sobreposição uns 69px pra dentro — somados à margem da janela,
+     davam uma folga esquerda enorme e sem explicação. Aqui o conteúdo
+     encosta no canto, e quem define a distância da borda da tela passa
+     a ser só o MARGIN do overlay.ts (2026-09-20, pedido do usuário). */
+  display: block;
+}
+
+body.overlay-window #root {
+  display: block;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------
+   Sobreposição de espectadores (2026-09-10) — ViewerOverlay.tsx
+
+   Mora numa JANELA PRÓPRIA, transparente e sem moldura (ver
+   src/main/overlay.ts). Por isso tudo aqui precisa do próprio fundo: não
+   existe `body` com cor por trás, o que estiver transparente mostra o
+   desktop/jogo.
+   --------------------------------------------------------------------- */
+.viewer-overlay {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  /* Fundo bem translúcido + blur: legível sobre imagem clara ou escura
+     sem virar um bloco opaco tampando o jogo. */
+  background-color: rgba(18, 18, 22, 0.55);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* A janela tem largura fixa (240px, ver overlay.ts); o conteúdo ocupa
+     só o que precisa e a altura é reportada de volta pro main. */
+  max-width: 100%;
+  /* Nenhum clique chega aqui (a janela usa setIgnoreMouseEvents), mas
+     deixar explícito evita que alguém tente ligar um onClick e passe uma
+     tarde entendendo por que não funciona. */
+  pointer-events: none;
+  user-select: none;
+  animation: viewer-overlay-in 0.25s ease-out;
+}
+
+@keyframes viewer-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Chip "AO VIVO" com o verde do app, translúcido pra combinar com o
+   resto da sobreposição em vez de gritar. */
+.viewer-overlay-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.16);
+  color: var(--color-live);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* Pulsa devagar — é o que diferencia "está no ar agora" de um rótulo
+   estático, sem precisar de mais texto. */
+.viewer-overlay-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  animation: viewer-overlay-pulse 2s ease-in-out infinite;
+}
+
+@keyframes viewer-overlay-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.viewer-overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.viewer-overlay-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.viewer-overlay-avatar {
+  width: 22px;
+  height: 22px;
+}
+
+/* Sombra no texto, e não só cor: a sobreposição pode cair sobre uma área
+   clara do jogo, e aí branco sobre branco some. */
+.viewer-overlay-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.viewer-overlay-empty {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* Aviso do modo Borderless na tela de configurações. Amarelo de atenção,
+   não vermelho: não é erro, é uma condição do ambiente. */
+.settings-row-note {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border-left: 2px solid #fbbf24;
+  background-color: rgba(251, 191, 36, 0.08);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ev-c-text-2);
+}
+
+/* Tooltip generico do app (2026-09-09, pedido do usuario) — ver
+   Tooltip.tsx. Renderizado num portal no <body> com `position: fixed`,
+   entao NAO herda nada do lugar onde foi usado: as coordenadas vem
+   prontas no `style` inline, e o `transform` abaixo e que centraliza o
+   balao no eixo transversal (o JS ancora pelo centro justamente pra nao
+   precisar medir a largura do texto).
+
+   `pointer-events: none` importa: sem isso o balao aparece debaixo do
+   cursor, dispara o `mouseleave` do elemento, some, o mouse volta pro
+   elemento, reabre — e fica piscando em loop. */
+.tooltip {
+  position: fixed;
+  z-index: 2000;
+  max-width: 260px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  /* Pedido do usuario (2026-09-09): quase a cor de fundo do app
+     (`--ev-c-black`, #1b1b1f) — so um tom acima, mantendo o mesmo
+     azulado da familia, em vez do #101013 quase preto de antes.
+
+     A borda saiu e voltou (2026-09-09): a primeira, `--app-chrome-border`
+     (branco a 14%), lia como BRANCA. Esta e o mesmo branco a 8%, que
+     sobre este fundo da ~#313135 — cinza, no limite do perceptivel.
+     Alfa em vez de cor fixa porque `background-clip` e `border-box` por
+     padrao: a borda assenta sobre o proprio fundo do balao, entao o
+     resultado e previsivel e acompanha o fundo se ele mudar.
+
+     1px e o minimo que da uma linha nitida em 100% de DPI; abaixo disso
+     o navegador arredonda e a borda fica irregular de um lado. Pra
+     suavizar mais, mexer no ALFA, nao na espessura.
+
+     A sombra e quem da a profundidade aqui, ja que o fundo e quase o do
+     app e a borda e quase invisivel. Pedido do usuario (2026-09-09): mais
+     clara e mais espalhada — o alfa caiu (0.8/0.55 -> 0.5/0.3) e o blur
+     subiu (34/10 -> 48/16), o que troca a mancha dura por um halo largo.
+     Sao duas camadas de proposito: a de baixo, larga e deslocada, e a
+     "distancia" do balao ate a tela; a de cima, curta, e o contato na
+     borda, que impede o balao de parecer flutuando solto. */
+  --tooltip-bg: #26262c;
+  --tooltip-border: rgba(255, 255, 255, 0.08);
+  background-color: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  box-shadow:
+    0 16px 48px -8px rgba(0, 0, 0, 0.5),
+    0 4px 16px rgba(0, 0, 0, 0.3);
+  color: var(--ev-c-text-1);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  /* Sem `overflow: hidden` (e sem o `text-overflow: ellipsis` que
+     dependia dele): a setinha fica metade pra fora do balao e seria
+     cortada. Texto comprido agora QUEBRA em vez de virar reticencias —
+     por isso o `nowrap` tambem saiu, senao ele estouraria pra fora do
+     `max-width` sem nada pra conter. */
+  word-break: break-word;
+  pointer-events: none;
+  animation: tooltip-in 0.12s ease-out;
+}
+
+/* Cada posicao puxa o balao pro lado certo do ponto ancorado, e a
+   animacao entra deslizando 4px na direcao contraria. */
+.tooltip[data-placement="right"] {
+  transform: translateY(-50%);
+  transform-origin: left center;
+}
+
+.tooltip[data-placement="left"] {
+  transform: translate(-100%, -50%);
+  transform-origin: right center;
+}
+
+.tooltip[data-placement="top"] {
+  transform: translate(-50%, -100%);
+  transform-origin: center bottom;
+}
+
+.tooltip[data-placement="bottom"] {
+  transform: translateX(-50%);
+  transform-origin: center top;
+}
+
+/* Setinha apontando de volta pro elemento (pedido do usuario,
+   2026-09-09). E um QUADRADO girado 45 graus, metade pra dentro do
+   balao e metade pra fora — nao um triangulo de `border-width`, que nao
+   teria como acompanhar a borda do balao.
+
+   O truque esta em manter so DUAS bordas, as que caem no lado de fora
+   depois do giro: assim a linha do balao parece contornar a setinha, e
+   as bordas do lado de dentro (que apareceriam como um risco atravessado
+   no balao) simplesmente nao existem. O fundo do quadrado tapa o pedaco
+   da borda do balao que fica atras dele.
+
+   Girado, o par de bordas que fica pra fora e sempre o das duas faces
+   opostas ao balao — por isso cada posicao apaga um par diferente. */
+.tooltip::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  transform: rotate(45deg);
+}
+
+/* Balao a DIREITA do elemento: setinha na esquerda, apontando pra
+   esquerda. Faces de fora = borda esquerda + inferior. */
+.tooltip[data-placement="right"]::after {
+  top: 50%;
+  left: -5px;
+  margin-top: -5px;
+  border-top-color: transparent;
+  border-right-color: transparent;
+}
+
+.tooltip[data-placement="left"]::after {
+  top: 50%;
+  right: -5px;
+  margin-top: -5px;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+}
+
+.tooltip[data-placement="top"]::after {
+  left: 50%;
+  bottom: -5px;
+  margin-left: -5px;
+  border-top-color: transparent;
+  border-left-color: transparent;
+}
+
+.tooltip[data-placement="bottom"]::after {
+  left: 50%;
+  top: -5px;
+  margin-left: -5px;
+  border-bottom-color: transparent;
+  border-right-color: transparent;
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* O wrapper nao pode alterar o layout de quem ele envolve: `contents`
+   faria o elemento sumir da caixa e o ref perderia o rect, entao
+   `inline-flex`, que encosta no tamanho do filho. */
+.tooltip-anchor {
+  display: inline-flex;
+}
+
+/* Item 5 do roadmap, 2a parte (2026-09-09, pedido do usuario): a casca
+   da SUB-BARRA. Dinamica — so existe no DOM enquanto algo esta
+   selecionado na barra da esquerda (ver `sidePanel` na HomeScreen).
+
+   Generica porque ja sao DOIS conteudos diferentes: os detalhes de uma
+   sala (RoomDetailsSidebar) e a lista de usuarios do app
+   (UsersSidebar). O que e comum — largura, respiro, borda, animacao de
+   entrada, cabecalho com titulo e botao de colapsar — mora aqui como
+   `.side-panel*`; o que e especifico de cada um continua com o prefixo
+   proprio (`.room-details-*`).
+
+   Fica logo a direita da barra de salas ao vivo. Comecou com os 285px
+   da sidebar antiga (que conviveu com ela por um tempo) e foi pra 275 a
+   pedido do usuario, ja depois da remocao. */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 280px;
+  flex-shrink: 0;
+  /* SEM padding embaixo (2026-09-18, pedido do usuário): os dois painéis
+     que usam esta casca terminam numa lista que rola, e a folga no pé
+     cortava a lista antes do fim da janela — sobrava uma faixa vazia
+     embaixo do último item, como se a lista tivesse acabado ali.
+
+     Sem ela, a lista vai até a borda e o próprio conteúdo indica que há
+     mais coisa abaixo. */
+  padding: 16px 16px 0;
+  min-height: 0;
+  border-right: 1px solid var(--app-chrome-border);
+  animation: side-panel-in 0.16s ease-out;
+}
+
+/* Entra deslizando de dentro da barra da esquerda. Sem `width` na
+   animacao de proposito: animar largura re-layouta a Home inteira a cada
+   quadro; `translateX` roda so na composicao. */
+@keyframes side-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* `min-width: 0` deixa o titulo truncar: sem isso um nome comprido
+   empurra o botao de fechar pra fora da barra (o padrao de um flex item
+   e nao encolher abaixo do conteudo). */
+.side-panel-heading {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.side-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-details-timer {
+  font-size: 11px;
+  color: var(--color-live);
+}
+
+.room-details-now-playing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.room-details-now-playing-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.room-details-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-2);
+}
+
+.room-details-count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-3);
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--ev-c-text-1);
+}
+
+.room-details-game {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ev-c-text-1);
+}
+
+.room-details-locked,
+.room-details-empty {
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+}
+
+/* O botao que de fato entra na live — de proposito o unico elemento com
+   a cor de acento aqui: abrir o painel nao entra na sala, entao esta e a
+   acao que precisa se destacar do resto da ficha. */
+.room-details-watch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-gradient, var(--accent));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.room-details-watch:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: var(--accent-glow, 0 6px 18px rgba(167, 139, 250, 0.35));
+}
+
+/* Ja assistindo: o botao vira so um rotulo de estado. Nao some, pra
+   barra nao mudar de altura ao entrar na live. */
+.room-details-watch:disabled {
+  background: var(--ev-c-gray-3);
+  color: var(--ev-c-text-2);
+  cursor: default;
+}
+
+/* JÁ ASSISTINDO (2026-09-20, pedido do usuário) — no lugar do botão
+   "Assistir" apagado.
+   --------------------------------------------------------------------
+   Um botão desabilitado comunicava "não dá pra clicar" quando a mensagem
+   real é outra: "você já está aqui, e pode sair".
+
+   O visual é o mesmo dos chips que flutuam sobre a live (ver
+   `.watch-tile-label` e `.tile-top-right-actions`): mesmo fundo, mesmo
+   raio de 12px, sem borda, e a saída ocupando a ponta direita inteira —
+   mais uma sombra, que é o que o diferencia deles. Lá o chip flutua
+   sobre o vídeo e se destaca sozinho; aqui ele está sobre o fundo da
+   ficha, e a sombra é o que o levanta.
+
+   `height` explícito (e não altura vinda de padding) porque a saída
+   precisa PREENCHER a altura toda pro realce do hover ir de borda a
+   borda, como no chip da live. 40px é a altura do
+   `.room-details-watch`, o botão que este chip substitui — se aquele
+   mudar, a ficha "pula" ao entrar na live. */
+.room-details-watching {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 40px;
+  /* Nada à direita: lá a saída encosta na borda, igual ao chip da
+     live. */
+  padding: 0 0 0 14px;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-button-alt-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: normal;
+}
+
+/* Só o ícone do OLHO — o "x" da saída fica dentro do <button> e continua
+   vermelho. */
+.room-details-watching > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Mesma saída do chip da live (`.leave-toggle`): sem fundo até o mouse
+   chegar, e então o vermelho apagado de sempre — preenchendo o canto
+   inteiro, com o mesmo raio do chip do lado de fora. */
+.room-details-leave {
+  /* O que empurra a saída pra ponta direita do chip. */
+  margin-left: auto;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 0 12px 12px 0;
+  background: none;
+  color: var(--color-danger);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.room-details-leave:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+}
+
+/* `flex: 1` aqui e o que reserva o rodape pra futura secao de
+   COMENTARIOS: a lista de viewers e quem absorve a sobra de altura,
+   entao os comentarios encostam embaixo sem remexer no resto. */
+.room-details-viewers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.room-details-viewers-list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* O truncamento do nome existia so escopado na sidebar antiga
+   (`.viewers-list.room-tile-viewers-list .viewer-name`), entao aqui
+   precisa de novo — sem isto um nome comprido estoura a largura da
+   barra. O `min-width: 0` no <li> e o que permite o <span> encolher:
+   por padrao um flex item nao encolhe abaixo do proprio conteudo, e o
+   `text-overflow` nunca chega a valer. */
+/* Tambem na lista da minha live (2026-09-14): os dois tiles sao o mesmo
+   tile, entao o que permite o nome truncar vale nos dois. */
+.room-details-viewers-list li,
+.participants-list li {
+  min-width: 0;
+}
+
+.room-details-viewers-list .viewer-name,
+.participants-list .viewer-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Escopado, e nao mexendo no `.mini-avatar` base (30px): a mesma classe
+   aparece no tile da sala, no footer e no box de perfil, e encolher la
+   seria efeito colateral. A sidebar antiga faz igual, com 24px — aqui
+   22, pedido do usuario (2026-09-09).
+
+   A lista da MINHA live entrou aqui em 2026-09-14: ela usava o tamanho
+   base e ficava visivelmente maior que a da sala, que o usuario tomou
+   como referencia. */
+.room-details-viewers-list .mini-avatar,
+.participants-list .mini-avatar {
+  width: 22px;
+  height: 22px;
+}
+
+/* Item 5 do roadmap, 1a parte (2026-09-09, pedido do usuario): a barra
+   vertical fina de SALAS AO VIVO, primeira coluna da Home. Só avatares
+   redondos — o host de cada sala transmitindo, e o usuario logado fixo no
+   rodape. Ver AppLeftSidebar.tsx.
+
+
+   Sem `overflow: hidden` no <aside> de proposito — o popover de perfil
+   (`.profile-popover`, 240px) precisa vazar pra fora desses 50px. Quem
+   rola e a lista de cima, so no eixo Y. */
+.app-left-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: var(--app-left-sidebar-width);
+  flex-shrink: 0;
+  padding: 12px 0;
+  min-height: 0;
+  /* Sem `border-right` aqui: a linha da direita virou parte do "L"
+     desenhado pelo `.home-body::before` (ver la), pra poder curvar no
+     topo e seguir horizontalmente. */
+}
+
+/* Pedido do usuario (2026-09-09): tile FIXO no topo da barra, acima da
+   lista de lives — abre a sub-barra com os usuarios do app.
+
+   Fica FORA da `.app-left-sidebar-lives` de proposito: ali dentro ele
+   rolaria junto das salas, e "fixo no topo" e justamente o contrario.
+   De quebra escapa do `overflow` daquela lista.
+
+   Reaproveita `.app-left-sidebar-live` pra herdar a barrinha branca
+   (hover e selecao) e as medidas; o que muda e o circulo em si, que
+   aqui e um fundo cinza com icone branco em vez de um avatar, e que
+   troca pro roxo do app quando o cursor entra. */
+.app-left-sidebar-users-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--app-left-sidebar-avatar);
+  height: var(--app-left-sidebar-avatar);
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-3);
+  color: #fff;
+  transition: background-color 0.18s ease;
+}
+
+/* Ativo entra junto do hover: com a barrinha em altura cheia e o
+   circulo cinza, o tile seguiria parecendo "apagado" enquanto o painel
+   dele esta aberto. */
+.app-left-sidebar-live:hover .app-left-sidebar-users-icon,
+.app-left-sidebar-live:focus-visible .app-left-sidebar-users-icon,
+.app-left-sidebar-live-active .app-left-sidebar-users-icon {
+  background-color: var(--accent);
+}
+
+/* Botao redondo da barra SEM a barrinha branca — ela e o indicador de
+   "sala selecionada", e o refresh nao seleciona nada, so dispara uma
+   acao. Por isso nao reaproveita `.app-left-sidebar-live`: herdaria o
+   `::before` junto. */
+.app-left-sidebar-plain {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 999px;
+}
+
+.app-left-sidebar-plain:hover:not(:disabled) .app-left-sidebar-users-icon,
+.app-left-sidebar-plain:focus-visible .app-left-sidebar-users-icon {
+  background-color: var(--accent);
+}
+
+.app-left-sidebar-plain:focus-visible {
+  outline: none;
+}
+
+.app-left-sidebar-plain:disabled {
+  cursor: default;
+}
+
+/* Circulo branco menor DENTRO do tile, com o "+" vazado na cor do fundo
+   do proprio tile (pedido do usuario, 2026-09-09).
+
+   O "+" nao tem cor propria: ele acompanha o fundo do tile, e o tile
+   troca de cinza pra roxo no hover — por isso a regra de hover abaixo
+   muda o `color` daqui junto. Se as duas saissem de sincronia, o "+"
+   deixaria de parecer recortado e viraria um simbolo colado por cima. */
+.app-left-sidebar-add-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background-color: #fff;
+  color: var(--ev-c-gray-3);
+  transition: color 0.18s ease;
+}
+
+.app-left-sidebar-plain:hover:not(:disabled) .app-left-sidebar-add-badge,
+.app-left-sidebar-plain:focus-visible .app-left-sidebar-add-badge {
+  color: var(--accent);
+}
+
+/* Nenhuma sala ao vivo: circulo tracejado, so pra diferenciar "ninguem
+   transmitindo" de "a lista nao carregou". */
+.app-left-sidebar-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--app-left-sidebar-avatar);
+  height: var(--app-left-sidebar-avatar);
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px dashed var(--app-chrome-border);
+  color: var(--ev-c-text-2);
+}
+
+/* Separa o tile fixo da lista de salas. Estreito de proposito — ocupar
+   os 72px inteiros pesaria mais que a propria barra. */
+.app-left-sidebar-divider {
+  width: 30px;
+  height: 1px;
+  flex-shrink: 0;
+  background-color: var(--app-chrome-border);
+}
+
+.app-left-sidebar-lives {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  /* A folga vertical existe pro `.app-left-sidebar-live-pill` do
+     primeiro circulo, que vaza 5px pra cima: sem ela o `overflow-y`
+     abaixo corta o pedaco que passa da borda da lista. Eram 4px quando
+     o selo era um dot de 3px (ate 2026-09-13). Na horizontal nao ha
+     problema: o selo vaza 6px pra esquerda e sobra 15px de cada lado
+     do circulo dentro dos 66px da barra. */
+  padding: 6px 0;
+  /* `width: 100%` NAO e decorativo: sem ele esta div fica com a largura
+     do conteudo (o circulo, 36px) por causa do `align-items: center` da
+     `.app-left-sidebar`, e como o `overflow-y` abaixo recorta TAMBEM na
+     horizontal (regra do CSS: overflow nao-visivel num eixo forca o
+     outro a recortar junto), a barrinha branca de hover — que fica em
+     x=0, na borda da janela — seria cortada. */
+  width: 100%;
+  overflow-y: auto;
+  /* A scrollbar global tem 8px e comeria a barra inteira; aqui ela some
+     e a lista rola na roda do mouse mesmo. */
+  scrollbar-width: none;
+}
+
+.app-left-sidebar-lives::-webkit-scrollbar {
+  display: none;
+}
+
+/* Base dos dois botoes redondos da barra. `position: relative` ancora o
+   que e desenhado por cima/ao redor deles: nos tiles de sala, o dot verde
+   e a barrinha branca (::before); no perfil, so o anel do hover.
+
+   O HOVER de cada um e diferente de proposito (ver abaixo): barrinha nas
+   salas, circulo crescendo no perfil. */
+.app-left-sidebar-live,
+.app-left-sidebar-profile {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 999px;
+}
+
+/* ---------------------------------------------------------------------
+   "Transmitir" — tile da barra da esquerda (2026-09-13)
+
+   Era um pill com texto no canto direito do rodapé. Virou este círculo,
+   logo acima do avatar, a pedido do usuário: é a ação mais importante
+   do app e estava no canto mais discreto da tela.
+
+   É o ÚNICO elemento colorido da barra — todos os outros tiles são
+   cinza neutro. Essa é a razão de ele funcionar: destaque só existe por
+   contraste, e se mais alguma coisa aqui ganhar gradiente, ele deixa de
+   chamar atenção.
+   --------------------------------------------------------------------- */
+.app-left-sidebar-cast {
+  /* Âncora do `::after` (o anel que pulsa). Sem isto ele se
+     posicionaria pelo ancestral posicionado mais próximo — a barra
+     inteira — e o anel apareceria em qualquer lugar menos em volta do
+     botão. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Mesmo diâmetro do avatar logo abaixo (40px): os dois são os tiles
+     "de baixo" da barra e alinhar o tamanho é o que os faz ler como um
+     par, em vez de dois elementos soltos. */
+  width: var(--app-left-sidebar-avatar);
+  height: var(--app-left-sidebar-avatar);
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  color: #fff;
+  cursor: pointer;
+  /* Duas sombras: a roxa difusa é o "brilho" que tira o botão do plano
+     da barra; a preta curta é o que dá a impressão de peso apoiado. Só
+     a roxa ficaria flutuando sem apoio; só a preta seria um botão
+     comum. */
+  box-shadow:
+    0 4px 14px rgba(124, 58, 237, 0.4),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.2s ease;
+}
+
+.app-left-sidebar-cast:hover {
+  transform: scale(1.08);
+  box-shadow:
+    0 6px 20px rgba(124, 58, 237, 0.55),
+    0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+.app-left-sidebar-cast:active {
+  transform: scale(0.96);
+}
+
+.app-left-sidebar-cast:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Um anel que pulsa por trás do botão, sem tocar no layout.
+
+   `::after` com `inset: 0` e `animation` num pseudo-elemento: o botão
+   em si não anima, então o `transform` do hover continua livre. Se o
+   pulso estivesse no próprio botão, os dois brigariam pela mesma
+   propriedade e o hover engasgaria.
+
+   `pointer-events: none` porque o anel cresce PRA FORA do botão — sem
+   isso ele roubaria o clique perto da borda. */
+.app-left-sidebar-cast::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1.5px solid rgba(167, 139, 250, 0.6);
+  pointer-events: none;
+  animation: cast-pulse 2.6s ease-out infinite;
+}
+
+/* Some no hover: com o botão já crescendo e brilhando, o anel vira
+   ruído. O pulso é pra atrair o olhar de longe, não pra competir com o
+   retorno do próprio hover. */
+.app-left-sidebar-cast:hover::after {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes cast-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  70%,
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+/* Quem pediu menos movimento no sistema fica só com o botão parado — o
+   gradiente e a sombra já dão o destaque sozinhos. */
+@media (prefers-reduced-motion: reduce) {
+  .app-left-sidebar-cast::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Pedido do usuario (2026-09-09, 2a rodada): saiu o hover de escala +
+   anel roxo + sombra, e entrou uma barrinha branca na lateral ESQUERDA,
+   encostada na borda da janela — o circulo em si nao reage mais.
+
+   O recuo negativo e o que leva a barrinha do circulo ate a borda: o
+   botao tem a largura do avatar e fica centralizado na barra, entao a
+   folga de cada lado e (largura da barra - diametro) / 2, e a barrinha
+   anda esse tanto pra esquerda. As duas medidas sao variaveis pra conta
+   continuar certa se qualquer uma mudar.
+
+   Anima a ALTURA, de 0 ate 20px, sempre centralizada. Entrada e saida
+   tem curvas diferentes de proposito: ao entrar usa um easing com
+   overshoot (passa um pouco de 20px e volta), que da o efeito elastico;
+   ao sair, uma curva simples e mais rapida, porque overshoot na saida
+   encolheria abaixo de zero e ficaria travado no 0 no meio da
+   animacao. */
+.app-left-sidebar-live::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(
+    (var(--app-left-sidebar-width) - var(--app-left-sidebar-avatar)) / -2
+  );
+  width: 4px;
+  height: 0;
+  transform: translateY(-50%);
+  /* Reto contra a borda da janela, arredondado so do lado de dentro. */
+  border-radius: 0 4px 4px 0;
+  background-color: #fff;
+  pointer-events: none;
+  transition: height 0.16s ease-in;
+}
+
+.app-left-sidebar-live:hover::before,
+.app-left-sidebar-live:focus-visible::before {
+  height: 22px;
+  transition: height 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Sala com a sub-barra de detalhes aberta (pedido do usuario,
+   2026-09-09): a barrinha fica FIXA e em altura cheia, do tamanho do
+   circulo. E o unico sinal de "esta selecionada" na barra, e sai
+   sozinho quando os detalhes fecham (a classe cai junto).
+
+   Precisa vir DEPOIS da regra de hover e repetir o `:hover` no seletor:
+   as duas tem a mesma especificidade, entao sem isso passar o mouse por
+   cima de um tile ja selecionado encolheria a barra de 36 pra 20px. */
+.app-left-sidebar-live-active::before,
+.app-left-sidebar-live-active:hover::before {
+  height: var(--app-left-sidebar-avatar);
+  transition: height 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.app-left-sidebar-live:focus-visible,
+.app-left-sidebar-profile:focus-visible {
+  outline: none;
+}
+
+/* Pedido do usuario (2026-09-09): o avatar do usuario logado, no rodape,
+   NAO usa a barrinha branca — ela e o indicador de "sala", e aparecer
+   aqui sugeriria que o perfil e mais uma sala da lista. O hover dele e
+   o circulo crescendo com um anel em volta.
+
+   Sao duas camadas no mesmo `box-shadow`: um anel fino de 2px, que faz o
+   papel da borda, e um brilho SEM spread (`0 0 10px`), difuso, que so
+   sugere volume. A primeira versao (2026-09-09) usava o roxo chapado num
+   anel de 5px e ficou berrante — o ajuste foi baixar o alfa e trocar o
+   segundo anel duro por esse brilho borrado, que e o que deixa sutil sem
+   virar "sem efeito nenhum".
+
+   `box-shadow` e nao `border` porque sombra nao ocupa espaco no layout:
+   com borda de verdade, o circulo empurraria o que esta em volta a cada
+   passada do mouse.
+
+   A escala usa a mesma curva com overshoot da barrinha das salas, pros
+   dois hovers da barra parecerem da mesma familia mesmo sendo desenhos
+   diferentes. */
+.app-left-sidebar-profile {
+  transition:
+    transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.18s ease;
+}
+
+.app-left-sidebar-profile:hover,
+.app-left-sidebar-profile:focus-visible {
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 2px rgba(167, 139, 250, 0.28),
+    0 0 10px rgba(167, 139, 250, 0.12);
+}
+
+.app-left-sidebar-profile:active {
+  transform: scale(1.02);
+}
+
+/* Mesmo papel do `.footer-user-avatar`: o container cuida de tamanho e
+   recorte, o conteudo vem do UserAvatar.tsx (foto ou fundo colorido). */
+.app-left-sidebar-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--app-left-sidebar-avatar);
+  height: var(--app-left-sidebar-avatar);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* A borda e da cor do FUNDO da tela, nao uma cor propria: e o que faz o
+   dot parecer recortado do avatar em vez de colado por cima. Se o fundo
+   da barra mudar, essa cor tem que mudar junto. */
+/* Selo "LIVE" no canto de cima do avatar do host, na barra de salas.
+
+   Substituiu o dot verde que ficava do outro lado em 2026-09-13 (pedido
+   do usuario). O dot dizia "tem alguma coisa acontecendo aqui" e
+   dependia de a pessoa ja saber o codigo de cores do app; a palavra nao
+   depende de nada. Vermelho porque e a convencao de transmissao ao vivo
+   fora do app (YouTube, Twitch) — o verde daqui continua significando
+   "disponivel" nos dots de presenca, e os dois no mesmo lugar se
+   confundiam.
+
+   A borda e da cor do FUNDO da tela, nao uma cor propria: e o mesmo
+   truque do dot antigo, que faz o selo parecer recortado do avatar em
+   vez de colado por cima.
+
+   Canto ESQUERDO: o pill e largo, e a direita e onde encosta a borda do
+   painel de detalhes quando ele abre. */
+/* "Você está assistindo esta sala" (2026-09-14, pedido do usuário).
+
+   Canto INFERIOR direito, diagonalmente oposto ao selo LIVE. A divisão
+   é de significado, não de estética: o selo de cima fala da SALA (está
+   no ar) e este fala de MIM (estou dentro dela). Amontoados no mesmo
+   canto de um círculo de 36px eles seriam lidos como um borrão só.
+
+   Roxo do app, e não verde/vermelho: os dois já têm significado fixo
+   aqui (ao vivo e transmissão), e este badge não é status de nada — é
+   uma marca de "seu". O gradiente é o mesmo do botão de transmitir,
+   que é o outro elemento da barra que fala de mim.
+
+   A borda é da cor do FUNDO da tela, o mesmo truque do selo LIVE e dos
+   dots de presença: dá o recorte que separa o badge do avatar sem
+   desenhar uma linha de cor própria. */
+.app-left-sidebar-watching-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  border: 2px solid var(--color-background);
+  color: #fff;
+  /* O olho fica um pelo mais claro que o fundo roxo em telas escuras;
+     a sombra devolve o contorno e faz o badge parecer apoiado sobre o
+     avatar, em vez de recortado dentro dele. */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  /* O <svg> do lucide é inline: sem isto ele herda a folga da linha de
+     texto e desalinha 1px pra baixo. */
+  line-height: 0;
+  pointer-events: none;
+}
+
+.app-left-sidebar-live-pill {
+  position: absolute;
+  top: -5px;
+  left: -6px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background-color: #ef4444;
+  border: 2px solid var(--color-background);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+/* `position: relative` aqui e o que o `.profile-popover` (absolute,
+   bottom: 100%) usa de ancora — mesmo arranjo do
+   `.rooms-sidebar-profile-wrapper`. */
+/* `display: flex` e nao `line-height: 0` pra matar o espaco extra
+   embaixo do avatar. Os dois resolvem o mesmo sintoma (a ancora do
+   tooltip e inline-flex, e um elemento inline-level gera uma linha com
+   folga de descida), mas `line-height` HERDA — e o popover de perfil e
+   filho daqui, entao ele herdava 0 e TODO o texto dele colapsava. Foi
+   assim que o nome do usuario sumiu do popover (2026-09-09). Com flex
+   nao existe linha nenhuma pra compensar, e nada e herdado. */
+.app-left-sidebar-profile-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+/* Ícone de "atualizar" girando enquanto o refresh manual da lista de
+   salas está em andamento (ver HomeScreen.tsx, botão ao lado do de
+   recolher). Reaproveita o mesmo keyframe do spinner de "Aguardando
+   transmissão". */
+.icon-spinning {
+  animation: watch-loading-spin 0.8s linear infinite;
+}
+
+/* MarqueeText.tsx: container mede o espaço disponível (clientWidth) contra
+   o texto (scrollWidth) e só ativa a animação (.marquee-active) quando não
+   cabe — a distância do deslocamento (--marquee-distance) é calculada em
+   JS, varia por texto.
+   Pedido do usuário (2026-09-03): `display: flex` (era o padrão, um
+   <div> comum) — sem isso, o <span> de dentro (`.marquee-text`, um
+   inline-block) formava uma "linha fantasma" com o line-height herdado
+   do body (1.6) ao redor dele, adicionando um espaço vazio acima/abaixo
+   do texto que nenhum ajuste de `gap`/`line-height` nas classes vizinhas
+   conseguia tirar (o espaço vinha do PRÓPRIO container, não do texto). */
+.marquee-container {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.marquee-text {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* Pedido do usuário (2026-09-01): pausas assimétricas — 8s parado
+   alinhado à ESQUERDA (início) antes de mover, só 2s parado alinhado à
+   DIREITA (fim) antes de voltar — e deslize mais lento, 10s pra cada
+   lado (era 5s). Ciclo total 30s: 0%-26.67% parado à esquerda (8s),
+   26.67%-60% desliza pra direita (10s), 60%-66.67% parado à direita
+   (2s), 66.67%-100% desliza de volta pra esquerda (10s). Um keyframe só
+   (sem `alternate`) cobre o ciclo INTEIRO ida-e-volta — cada repetição
+   do `infinite` já reinicia com a pausa de 8s da esquerda. */
+.marquee-text.marquee-active {
+  animation: marquee-pingpong 30s ease-in-out infinite;
+}
+
+@keyframes marquee-pingpong {
+  0%,
+  26.67% {
+    transform: translateX(0);
+  }
+  60%,
+  66.67% {
+    transform: translateX(calc(-1 * var(--marquee-distance)));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Pedido do usuário (2026-09-04): o footer (agora só filho daqui, ver
+   HomeScreen.tsx) precisa acompanhar a largura da área de exibição de
+   lives, não a janela inteira — esse wrapper (coluna) é o que faz o
+   footer parar de ficar embaixo da sidebar também. `min-width: 0` +
+   `overflow: hidden` evita que `.watch-area` (flex: 1 dentro dele)
+   estoure a largura disponível do `.home-body` (mesma cautela que já
+   existia implicitamente antes, quando `.watch-area` era filho direto
+   de `.home-body`). */
+.watch-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* `min-height: 0` + `overflow: hidden` (2026-09-05): sem isso o footer
+   era EMPURRADO pra fora da janela conforme ela ficava mais larga. Como
+   item flex de uma coluna, `.watch-area` nasce com `min-height: auto`,
+   ou seja, nunca encolhe abaixo da altura MÍNIMA do conteúdo — e o
+   conteúdo aqui é 16:9 (`.watch-video-frame`), então quanto mais larga
+   a janela, mais ALTA essa altura mínima fica. Passava da altura
+   disponível, `flex: 1` não conseguia encolher, e a sobra saía embaixo,
+   levando o `.home-footer` (irmão de baixo no `.watch-column`) junto.
+   Com `min-height: 0` a área volta a respeitar só o espaço que sobrou
+   depois do footer, e `overflow: hidden` garante que nenhum tile
+   transborde por cima dele num caso extremo (ex.: tiles empilhados no
+   `@media (max-aspect-ratio)` abaixo). O modo foco continua intacto —
+   `.watch-tile-focused` é `position: fixed` e não existe transform/
+   filter em nenhum ancestral, então ele não é recortado por esse
+   `overflow`. */
+.watch-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.watch-grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+  /* Tamanho da CÉLULA de cada live — a "fatia" da grade que sobra pra um
+     tile depois de descontar as outras colunas/linhas e os `gap`. O
+     valor muda conforme a quantidade de tiles (ver o @media de baixo);
+     aqui ficam os defaults de UMA live só, ocupando a grade inteira. */
+  --tile-w: 100cqw;
+  --tile-h: 100cqh;
+}
+
+/* Por que `container-type` e por que só FORA do modo foco (2026-09-20):
+   as células precisam de uma conta que mistura as duas dimensões da
+   grade (o tile é o maior 16:9 que cabe na fatia — ver o @media), e
+   porcentagem de LARGURA não enxerga a ALTURA disponível. `cqw`/`cqh`
+   resolvem isso, mas exigem transformar a grade num container de
+   tamanho — e `container-type: size` implica `contain: layout`, que
+   faria a grade virar o bloco de contenção dos descendentes
+   `position: fixed`. Isso quebraria o modo foco, cujo tile é justamente
+   um `fixed` que precisa cobrir a JANELA inteira (header/sidebar/footer
+   incluídos, ver `.watch-tile-focused`). Com o `:not()`, a contenção
+   existe exatamente enquanto o layout em grade existe, e some no
+   instante em que alguém entra no modo foco — onde ela não faz falta,
+   porque lá o tamanho vem de `inset`/`vw`/`vh`, não de `cq*`. */
+.watch-grid:not(.watch-grid-has-focus) {
+  container-type: size;
+}
+
+.watch-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Item 23 do roadmap, experimental (o usuário pediu pra testar e
+   desfazer se não ficar bom): quando a janela fica mais "quadrada/alta"
+   que larga (altura >= 97% da largura, ou seja largura/altura <=
+   100/97 — era 70%/10:7, baixado pra 60%/5:3, subido pra 80%/5:4,
+   90%/10:9, 100%/1:1 e depois pra 97%/100:97, a pedido do usuário em
+   2026-08-31), os tiles empilham em coluna em vez de ficarem lado a
+   lado — evita cada tile virar uma faixa fina demais numa janela
+   estreita.
+   `.watch-tile` também troca de "cresce igual pra dividir a altura toda"
+   (`flex: 1; height: 100%`, bom pra lado a lado) pra "tamanho natural,
+   só a largura" — senão, numa janela bem alta, cada tile ganhava uma
+   fatia de altura maior que o vídeo (16:9) realmente precisa, e como o
+   conteúdo fica centralizado dentro dela, sobrava um espaço vazio
+   crescente entre os tiles (quanto mais alta a janela, maior o espaço).
+   Empilhados pelo tamanho natural + `justify-content: center` no
+   `.watch-grid`, ficam colados um no outro, só com o `gap` fixo entre
+   eles. */
+@media (max-aspect-ratio: 100/97) {
+  .watch-grid {
+    flex-direction: column;
+  }
+
+  .watch-tile {
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+  }
+}
+
+/* Quando NÃO está em coluna (janela mais larga que alta) e existem 3
+   tiles ou mais (preview do host conta) — em vez de espremer todo mundo
+   numa fileira só cada vez mais fina, quebra em duas linhas (2 em cima,
+   1 embaixo; 2x2 pra 4; etc.). Com só 2 tiles, continua lado a lado
+   (flex mesmo, sem grade).
+   `:has(.watch-tile:nth-child(3))` checa se existe um 3º `.watch-tile`
+   filho direto — forma de "contar >= 3" sem precisar de JS. */
+@media (min-aspect-ratio: 100/97) {
+  /* DUAS COLUNAS DE VERDADE (2026-09-20).
+     Era `flex-wrap: wrap`, que só quebra a linha quando os tiles não
+     cabem mais nela. Isso funcionava enquanto cada tile ocupava METADE
+     da largura, mas agora ele tem o tamanho do vídeo: numa janela bem
+     larga, três tiles passaram a caber lado a lado, desmanchando o
+     "2 em cima, 1 embaixo" (e deixando duas faixas enormes de vazio em
+     cima e embaixo, porque a altura da célula continua calculada pra 2
+     linhas). `grid` com duas colunas `auto` fixa o número de colunas
+     independentemente do tamanho da janela, e as colunas continuam
+     sendo do tamanho exato do conteúdo — sem folga entre elas. */
+  .watch-grid:has(.watch-tile:nth-child(3)) {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    justify-content: center;
+    align-content: center;
+  }
+
+  /* Quantidade ímpar: o último tile fica sozinho na linha de baixo e
+     ocupa as duas colunas, pra se centralizar na GRADE inteira em vez
+     de encostar na coluna da esquerda. */
+  .watch-grid:has(.watch-tile:nth-child(3)) .watch-tile:last-child:nth-child(odd) {
+    grid-column: span 2;
+    justify-self: center;
+  }
+
+  /* Quantas colunas/linhas a grade tem, traduzido em tamanho de célula:
+     2+ tiles = 2 colunas; 3+ = 2 linhas; 5+ = 3 linhas; 7+ = 4. Cada
+     `16px` descontado é um `gap` entre células. São poucos degraus e
+     eles saem em regras literais de propósito — dividir por uma
+     `var(--linhas)` dentro do `calc` daria na mesma e é bem mais difícil
+     de ler. (Acima de 4 lives a grade antiga estourava a altura e o
+     excesso sumia no `overflow: hidden` da `.watch-area`; com as células
+     calculadas assim, ela só continua encolhendo.) */
+  .watch-grid:has(.watch-tile:nth-child(2)) {
+    --tile-w: calc((100cqw - 16px) / 2);
+  }
+
+  .watch-grid:has(.watch-tile:nth-child(3)) {
+    --tile-h: calc((100cqh - 16px) / 2);
+  }
+
+  .watch-grid:has(.watch-tile:nth-child(5)) {
+    --tile-h: calc((100cqh - 32px) / 3);
+  }
+
+  .watch-grid:has(.watch-tile:nth-child(7)) {
+    --tile-h: calc((100cqh - 48px) / 4);
+  }
+
+  /* BURACOS ENTRE AS LIVES (2026-09-20, pedido do usuário).
+     ------------------------------------------------------------------
+     Antes, cada tile era a FATIA inteira da grade (`flex: 0 1 calc(50% -
+     8px)` + `height: calc(50% - 8px)`) e o vídeo 16:9 se centralizava
+     DENTRO dela. Como a fatia raramente é 16:9, sobrava faixa vazia
+     dentro de cada célula — e, como a sobra fica de cada lado do vídeo,
+     ela aparecia no meio da grade: uma coluna de vazio entre as duas
+     lives de cima, ou uma faixa entre a linha de cima e a de baixo.
+     Aumentar a janela só aumentava esse vazio interno.
+
+     Agora o tile é do tamanho do vídeo: a maior caixa 16:9 que cabe na
+     fatia (limitada pela largura OU pela altura, o que apertar
+     primeiro). Sem folga dentro da célula, não há o que sobrar entre
+     elas — as lives ficam coladas, só com o `gap` de 16px, e o
+     `justify-content`/`align-content: center` da grade joga todo o
+     espaço extra pras BORDAS (laterais, topo, base), que é o
+     comportamento pedido.
+
+     O 16:9 é a proporção real do que chega: todas as resoluções de
+     transmissão são 16:9 (RESOLUTION_DIMENSIONS em
+     transmissionSettings.ts) — é a mesma suposição que
+     `.watch-video-frame-loading` já fazia.
+
+     O empilhamento em coluna (@media acima) fica intacto, como pedido:
+     lá o tile já tem altura natural e não sobra nada dentro dele. */
+  .watch-grid:not(.watch-grid-has-focus) .watch-tile {
+    flex: 0 0 auto;
+    width: min(var(--tile-w), var(--tile-h) * 16 / 9);
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+.watch-tile-self .watch-video-frame {
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.35);
+}
+
+/* Item 32 do roadmap ("Modo foco") — clicar em qualquer live assistida
+   (ou no preview do host) expande ela pra ocupar a janela toda, sem sair
+   do app/entrar em fullscreen nativo (ver handleFrameClick em
+   ViewerTile.tsx/HostPreviewTile.tsx). Os OUTROS tiles continuam
+   montados (processos/conexões seguem rodando por trás — pedido
+   explícito do usuário), só ficam com `display: none` enquanto isso.
+   `position: fixed` tira o tile do fluxo do `.watch-grid` (flex/gap não
+   importam mais aqui), cobrindo literalmente a janela toda — inclusive
+   header/sidebar/footer, não só a `.watch-area`. */
+.watch-grid-has-focus > *:not(.watch-tile-focused) {
+  display: none;
+}
+
+/* A área do modo foco: tudo abaixo da titlebar. Os 32px de cima são
+   reservados pra ela desde 2026-09-03 (antes era `inset: 0`, cobrindo a
+   janela TODA — dava certo enquanto a titleBar era transparente, mas no
+   foco ela fica opaca e precisa de espaço de verdade, não de ficar por
+   cima; ver `.app-titlebar`/`body.app-focus-mode` e o `titleBarOverlay`
+   em main/index.ts). Eram um `top: 16px` + a altura do frame que se
+   compensavam; agora o recuo está aqui, direto.
+   `width`/`height: auto` porque a regra base de `.watch-tile` traz
+   `height: 100%`, e altura explícita ganha de `bottom` num elemento
+   posicionado: sem isso a caixa não era a área real, e a live só caía no
+   lugar certo por causa da centralização.
+
+   O FUNDO (2026-09-20, pedido do usuário): as bordas que sobram quando a
+   proporção da janela não bate com a da live agora são a cor de fundo do
+   app, e não mais o cinza do `.watch-video-frame` — que, esticado pra
+   janela inteira, era o que pintava aquelas faixas. Como o frame agora
+   encolhe até o tamanho do vídeo (abaixo), é este elemento que cobre a
+   janela, então é dele a cor. */
+.watch-tile-focused {
+  position: fixed;
+  top: 32px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  z-index: 500;
+  background: var(--color-background);
+}
+
+/* CHIPS COLADOS NA LIVE (2026-09-20, pedido do usuário).
+   --------------------------------------------------------------------
+   Os controles flutuantes (`.tile-overlay`, `inset: 0`) moram DENTRO do
+   frame, então eles cobrem exatamente o que o frame cobrir. Antes o
+   frame era a janela inteira (`100vw` x `100vh - 32px`) e o vídeo se
+   encaixava dentro dele por `object-fit: contain` — ou seja, os chips
+   se ancoravam na JANELA, não na live, e iam parar em cima das bordas
+   vazias conforme a janela mudava de proporção.
+
+   Agora quem tem tamanho é o VÍDEO (limitado pela janela, mantendo a
+   proporção dele sozinho) e o frame, que é `inline-flex`, encolhe até
+   encostar nele. Os chips passam a acompanhar a área real de exibição.
+   Repare que o limite vai no vídeo em unidades de viewport, não em
+   `100%`: porcentagem aqui mediria o frame, que por sua vez está
+   medindo o vídeo — circular, e o navegador ignoraria. */
+.watch-tile-focused .watch-video-frame {
+  width: auto;
+  height: auto;
+  max-width: 100vw;
+  max-height: calc(100vh - 32px);
+  border-radius: 0;
+}
+
+.watch-tile-focused .watch-video-frame .watch-video {
+  width: auto;
+  height: auto;
+  max-width: 100vw;
+  max-height: calc(100vh - 32px);
+  object-fit: contain;
+}
+
+/* Sem vídeo ainda ("Aguardando transmissão"): não há o que medir, então
+   o placeholder cai na mesma conta 16:9 do resto do app — a maior caixa
+   que cabe na área do foco. Sem isso ele encolheria até o tamanho do
+   spinner, porque o `width: 100%` de `.watch-video-frame-loading` perde
+   pro `width: auto` da regra acima (que é mais específica). */
+.watch-tile-focused .watch-video-frame-loading {
+  width: min(100vw, (100vh - 32px) * 16 / 9);
+}
+
+/* Controles de cada live assistida (tag do host, espectadores,
+   estatísticas, sair, volume, fullscreen) só aparecem com o mouse em
+   movimento sobre o vídeo, e somem 3s depois de parar (ver
+   useAutoHideOverlay em ViewerTile.tsx) — igual player de vídeo. Nunca
+   se aplica ao preview do host (HostPreviewTile), que fica sempre
+   visível de propósito. */
+.tile-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.tile-overlay > * {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.tile-overlay.tile-overlay-visible > * {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Pedido do usuário (2026-09-03): unifica com o padrão dos botões de
+   controle da live (footer, `.icon-button`) e do botão de viewers da
+   MINHA live (`.participants-tab`) — sem o vidro fosco preto+borda roxa
+   de antes, mesma cor neutra "um pouco mais clara que o fundo" usada em
+   todo canto flutuante agora. Sem hover aqui de propósito — é só uma
+   etiqueta informativa, não um botão. */
+.watch-tile-label {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-button-alt-text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.watch-tile-label-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+  flex-shrink: 0;
+}
+
+/* Item 28 do roadmap + item 26 + botão de sair: canto superior direito
+   de cada live assistida — os 3 viram um ÚNICO chip (fundo/cor
+   unificados, mesmo padrão do resto). SEM `overflow: hidden` aqui —
+   o painel de estatísticas (ver `.stats-panel-anchor` abaixo) precisa
+   poder "vazar" pra baixo do chip; em vez de recortar os cantos dos
+   botões via overflow, cada botão de ponta arredonda o próprio canto
+   (ver `.viewers-toggle`/`.leave-toggle` abaixo — o do meio,
+   `.stats-toggle`, fica reto mesmo, é o miolo do segmento). Continua
+   sendo reaproveitado pelo HostPreviewTile (só com o botão de
+   estatísticas dentro — esse usa `.stats-toggle-solo`, que arredonda os
+   4 cantos por ser o único botão do chip). */
+.tile-top-right-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  border-radius: 12px;
+  background-color: var(--ev-button-alt-bg);
+}
+
+/* Item 28 do roadmap: contagem de quem mais está assistindo essa live.
+   Pedido do usuário (2026-09-03): virou só informativo — sem hover, sem
+   painel/lista de nomes (removidos; a lista de espectadores por sala já
+   aparece embaixo do tile na sidebar, ver HomeScreen.tsx). */
+.viewers-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: 12px 0 0 12px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stats-toggle-wrapper {
+  position: relative;
+  display: flex;
+}
+
+.viewers-list {
+  display: flex;
+  flex-direction: column;
+  /* 2px desde 2026-09-14 — ver o mesmo comentário em
+     `.participants-list`. */
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+/* O TILE das duas listas de viewers (2026-09-14, pedido do usuário).
+
+   Uma regra só pras duas — a da sala e a da minha live — porque elas
+   precisam ser IDÊNTICAS, e é exatamente isso que se perde quando cada
+   uma tem seu próprio bloco: foi assim que o avatar da minha live
+   acabou 8px maior que o da sala (ela usava o `.mini-avatar` base, de
+   30px, e a outra tinha um override de 22px).
+
+   O hover é o mesmo da lista de usuários, de propósito e na mesma cor:
+   as três listas mostram a mesma coisa (uma pessoa clicável) e não há
+   razão pra uma delas responder ao mouse de um jeito diferente.
+
+   O padding indenta o conteúdo em 6px em relação ao rótulo acima da
+   lista. É o preço de ter um retângulo de hover com folga em volta do
+   texto — a alternativa (margem negativa pra compensar) seria recortada
+   pelo `overflow-y` da lista de viewers da sala. */
+.viewers-list li,
+.participants-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.viewers-list li:hover,
+.participants-list li:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+/* Item 26 do roadmap: botão de estatísticas — sem borda/fundo próprios,
+   fica dentro do chip único do .tile-top-right-actions acima. Reto (sem
+   border-radius) de propósito — no ViewerTile.tsx é o botão do MEIO do
+   segmento (viewers/estatísticas/sair), só as pontas arredondam (ver
+   `.viewers-toggle`/`.leave-toggle`). No HostPreviewTile.tsx (único
+   botão do chip) usa `.stats-toggle-solo` também, que arredonda os 4
+   cantos. */
+.stats-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.stats-toggle-solo {
+  border-radius: 12px;
+}
+
+.stats-toggle:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+/* Botão de sair da live assistida — mesma lógica dos outros dois (sem
+   borda/fundo próprios), só o ícone fica vermelho (única ação
+   destrutiva do grupo) — hover continua com o tingimento vermelho
+   próprio, não o neutro dos outros dois (é a única ação destrutiva). */
+.leave-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 0 12px 12px 0;
+  background: none;
+  color: var(--color-danger);
+  cursor: pointer;
+}
+
+.leave-toggle:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+}
+
+/* Chip de volume/mute — canto inferior esquerdo. Pedido do usuário
+   (2026-09-03): mesma cor neutra dos outros floating buttons, sem
+   borda roxa e SEM hover nenhum (nem no botão de mudo, que antes trocava
+   de cor no hover) — tamanho do chip/ícones mantidos como estavam. */
+.volume-chip {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 12px;
+  background-color: var(--ev-button-alt-bg);
+}
+
+.volume-mute-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 56px;
+  height: 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  /* background (o preenchimento roxo até o valor atual) vem inline, via
+     style, calculado a partir do volume — input[type=range] não tem
+     como fazer isso só com CSS estático. */
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background-color: #fff;
+  cursor: pointer;
+}
+
+/* Reveal via opacity+translateY, "caindo de cima pra baixo" no hover do
+   `.stats-toggle-wrapper` (ver ViewerTile.tsx/HostPreviewTile.tsx) —
+   posicionado relativo ao próprio wrapper, funciona igual nos dois
+   lugares que reaproveitam essa classe. */
+.stats-panel-anchor {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.stats-panel-anchor-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.stats-panel {
+  min-width: 160px;
+  padding: 10px;
+  border-radius: 12px;
+  background-color: var(--ev-button-alt-bg);
+  color: #fff;
+}
+
+.stats-loading {
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+  margin: 0;
+}
+
+.stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 11px;
+}
+
+.stats-row + .stats-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.stats-label {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.stats-value {
+  color: #fff;
+  font-weight: 600;
+  text-align: right;
+}
+
+.watch-video-frame {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  background-color: var(--ev-c-black-mute);
+  overflow: hidden;
+  /* Item 32 do roadmap: o frame inteiro é clicável (modo foco). */
+  cursor: pointer;
+}
+
+/* Pedido do usuário (2026-08-31): enquanto "Aguardando transmissão"
+   (`!hasVideo`), o `<video>` ainda não tem dimensão nenhuma (sem
+   frame/metadata carregado, o navegador usa um tamanho mínimo padrão) —
+   sem isso, o `.watch-video-frame` (que normalmente cresce pra caber o
+   conteúdo, `display: inline-flex`) encolhia pra esse quadradinho quase
+   vazio. Primeira tentativa (`width/height: 100%`) ocupava o
+   `.watch-area` inteiro, mas isso já era demais — o pedido era só
+   ocupar o mesmo espaço que a LIVE ocupa quando tem conteúdo (16:9,
+   `RESOLUTION_DIMENSIONS` em transmissionSettings.ts são todas 16:9),
+   não a área toda. `aspect-ratio` faz o frame se comportar como o
+   `<video>` real (que só cresce até `max-width/max-height: 100%`
+   herdado da regra base, mantendo a proporção) — maior 16:9 possível
+   dentro do espaço que `.watch-tile` reserva pra essa live, sem
+   distorcer nem estourar (as mesmas regras de divisão entre múltiplas
+   lives continuam intactas, é só o frame que passa a ter o tamanho
+   "de verdade" em vez do mínimo). */
+.watch-video-frame-loading {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.watch-video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
+/* "Aguardando transmissão" — cobre o quadrado preto do <video> sem
+   conteúdo ainda (some sozinho no primeiro frame, ver onLoadedData em
+   ViewerTile.tsx/HostPreviewTile.tsx). Sutil de propósito: mesmo tom
+   apagado do resto da UI, sem fundo/borda própria (o preto já vem do
+   .watch-video-frame atrás). `pointer-events: none` pra nunca atrapalhar
+   os controles por cima. */
+.watch-loading {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Item 34 do roadmap: botão de sair, só durante "Aguardando
+   transmissão" (sem os outros controles flutuantes, que só aparecem com
+   `hasVideo`) — mesmo visual do .leave-toggle normal (ícone vermelho),
+   mas em pé sozinho (não faz parte do chip de ações). `pointer-events:
+   auto` de propósito: o `.watch-loading` (pai) é `pointer-events: none`
+   pra nunca atrapalhar nada, esse botão precisa furar essa regra. */
+.leave-toggle-loading {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 12px;
+  border: 0px;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.leave-toggle-loading:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+}
+
+.watch-loading-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 3px solid rgba(167, 139, 250, 0.25);
+  border-top-color: var(--accent);
+  animation: watch-loading-spin 0.8s linear infinite;
+}
+
+.watch-loading-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-2);
+  letter-spacing: 0.2px;
+}
+
+@keyframes watch-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Item 25 do roadmap: fullscreen nativo por live (Fullscreen API do
+   próprio Chromium/Electron no .watch-video-frame — o mesmo elemento
+   que já hospeda os chips/botões, então eles continuam visíveis e
+   clicáveis em fullscreen). Sem isso, o vídeo ficaria no tamanho
+   "natural" da tela mesmo ocupando o monitor inteiro. */
+.watch-video-frame:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  border-radius: 0;
+  background-color: #000;
+}
+
+.watch-video-frame:fullscreen .watch-video {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Mini player (2026-09-20, pedido do usuário) — ao lado do botão de tela
+   cheia, com o mesmo corpo: os dois respondem à mesma pergunta ("onde
+   esta live aparece"), então pareciam pertencer ao mesmo par.
+
+   Num contêiner flex ancorado pelo canto, e não cada um no seu `right:`
+   fixo: assim a posição de um não depende da largura do outro escrita à
+   mão. O que o texto de cada botão diz fica com o Tooltip (ver
+   ViewerTile.tsx) — aqui embaixo já houve um rótulo que abria no hover,
+   removido a pedido do usuário em favor do balão padrão do app. */
+.tile-corner-controls {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Item 25 do roadmap: canto inferior direito (os outros 3 já são
+   ocupados — label do host, chip de volume, ações do canto superior
+   direito) — mesmo padrão de design do .viewers-toggle (item 28):
+   ícone branco, fundo preto com opacidade, borda branca fina,
+   arredondado. */
+/* Pedido do usuário (2026-09-03): mesma cor/hover dos demais botões
+   flutuantes agora — tamanho/raio mantidos como estavam. */
+.popin-toggle,
+.fullscreen-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 12px;
+  background-color: var(--ev-button-alt-bg);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.popin-toggle:hover,
+.fullscreen-toggle:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+.watch-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.watch-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background-color: rgba(167, 139, 250, 0.15);
+  color: var(--accent);
+}
+
+.watch-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+}
+
+.watch-empty-subtitle {
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+  max-width: 320px;
+}
+
+/* Pedido do usuário (2026-09-04): trocou de modal centralizado (com
+   backdrop escurecendo a tela toda) pra um popover ancorado direto no
+   "profile tile" — renderizado como irmão dele (não filho, ver
+   `.rooms-sidebar-profile-wrapper` acima: precisava sair de dentro do
+   tile pra não disparar o hover dele, ver comentário lá) dentro de um
+   wrapper com `position: relative`, então esse `position: absolute`
+   flutua exatamente acima daquele tile, sem precisar saber a posição
+   dele em pixels. Esse tile já morou no footer antes (item "USER INFO")
+   e virou parte fixa da sidebar de salas depois.
+   Pedido do usuário (2026-09-04, 2ª rodada): "mais moderno, bonito e
+   estilizado" — borda roxa bem sutil (diferencia do fundo sem ficar
+   dura) + glow suave (`radial-gradient`) atrás do avatar, no mesmo
+   espírito do resto do app (`--accent`). */
+.profile-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 10px;
+  width: min(260px, 90vw);
+  display: flex;
+  flex-direction: column;
+  /* 11px desde 2026-09-13 (era 14, pedido do usuario): com o canto
+     menos redondo a caixa fica mais proxima da linguagem do resto do
+     app, onde os raios grandes sao dos elementos circulares. A ficha
+     de usuario (.user-card) acompanhou. */
+  border-radius: 11px;
+  background: var(--ev-c-black-mute);
+  border: 1px solid var(--app-chrome-border);
+  box-shadow:
+    0 20px 50px -10px rgba(0, 0, 0, 0.7),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+  /* `visible` desde 2026-09-11: o submenu de status é posicionado
+     PRA FORA da caixa (left: 100%), e com `hidden` ele era recortado
+     e simplesmente não aparecia. Os cantos arredondados continuam
+     valendo porque as seções internas não pintam fundo até a borda. */
+  overflow: visible;
+  cursor: default;
+  z-index: 950;
+}
+
+/* Duas "sessões" empilhadas (pedido do usuário) — a segunda (logout)
+   ganha uma borda fina em cima pra separar visualmente, mesmo tom já
+   usado na borda de cima do próprio footer. */
+.profile-popover-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+/* Cabecalho do popover (2026-09-09): coluna, nao linha — o avatar e a
+   identidade ficam numa linha propria (`-identity-row`) pra que os
+   avisos de erro caiam ABAIXO, e nao espremidos ao lado do avatar como
+   antes.
+
+   O brilho roxo no topo e so um `radial-gradient` de fundo: da
+   profundidade ao bloco sem precisar de mais um elemento no DOM. */
+.profile-popover-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 18px 16px 16px;
+  /* Duas camadas (2026-09-11): o brilho roxo do canto, que já
+     existia, mais uma faixa escura descendo. A segunda é o que dá
+     fundo pro texto no pé do cabeçalho — só o radial deixava o
+     e-mail flutuando num tom quase igual ao do corpo. */
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(167, 139, 250, 0.2), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent);
+  border-bottom: 1px solid var(--app-chrome-border);
+}
+
+.profile-popover-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.profile-popover-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* E-mail (2026-09-11). Só o texto — o ícone de envelope saiu no
+   mesmo dia, a pedido: num popover estreito ele roubava largura de
+   um dado que já se identifica sozinho pelo formato.
+
+   `block` e não `flex` agora que é um texto só, e o `min-width: 0`
+   pode sair junto: ele existia pro <span> encolher DENTRO do flex.
+   O truncamento continua, pra um endereço longo não estourar os
+   260px do popover — o `title` no elemento mostra o e-mail inteiro
+   no hover. */
+.profile-popover-email {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ev-c-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Um degrau ABAIXO do e-mail na hierarquia: é dica de interação, não
+   dado da conta. Sem essa diferença os dois competiriam. */
+.profile-popover-hint {
+  font-size: 10.5px;
+  color: var(--ev-c-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-popover-logout-section {
+  padding: 6px;
+}
+
+/* Mesma linguagem visual do `.footer-user-avatar` (círculo, ícone na
+   cor de destaque), só que o botão em si (não só o container) — clicar
+   abre o seletor de arquivo. Sem preset de cor pra escolher mais (item
+   43 do roadmap, pedido do usuário: sem foto customizada cai direto no
+   roxo padrão do app, `UserAvatar.tsx`) — só a foto OU o roxo.
+   Pedido do usuário (2026-09-04, 2ª rodada): "aumente um pouco o
+   avatar" (32px -> 46px) + sombra ambiente em repouso que cresce num
+   leve halo roxo + zoom sutil no hover, mesma linguagem que o resto do
+   app usa pra avatares clicáveis. */
+/* Ancora do dot de status (2026-09-11). Existe porque o botão do
+   avatar logo abaixo tem `overflow: hidden` — um dot dentro dele
+   seria recortado pela borda do círculo. `line-height: 0` evita a
+   folga que um inline-block herda da linha de texto. */
+.profile-popover-avatar-wrapper {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+/* O avatar do popover é maior (56px), então o dot cresce junto — o de
+   11px da lista sumia aqui. E a borda usa o fundo do POPOVER
+   (`--ev-c-black-mute`), não o da tela: é o contraste com o fundo
+   IMEDIATO que cria o recorte em volta do ponto; a cor da tela
+   deixaria um anel escuro visível.
+
+   16px pra 56 de avatar mantém a mesma proporção que os 11px têm
+   para os 36 do rodapé — foi assim que o tamanho saiu, não no olho. */
+.profile-avatar-status {
+  width: 16px;
+  height: 16px;
+  right: 1px;
+  bottom: 1px;
+  border-width: 3px;
+  border-color: var(--ev-c-black-mute);
+}
+
+.profile-popover-avatar {
+  position: relative;
+  /* 56px desde 2026-09-11 (era 46). O popover tem 260px e o avatar
+     divide a linha com nome e e-mail — 56 é o ponto em que ele vira
+     o elemento âncora do bloco sem espremer o texto ao lado. */
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  font: inherit;
+}
+
+
+.profile-popover-avatar:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* Fundo preto translúcido + ícone de lápis, só no hover — mesmo padrão
+   já usado em outros hovers de foto do app. */
+.profile-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  
+}
+
+.profile-popover-avatar:hover .profile-avatar-overlay {
+  opacity: 1;
+}
+
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Nome: o elemento de maior peso do popover (2026-09-11). Antes
+   dividia o tamanho com a dica logo abaixo e o bloco ficava chapado. */
+.profile-name-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+  letter-spacing: 0.1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* `.user-chip-edit-form` (mesmo formulário do header) fica bem estreito
+   fora dali (o input tem `width: 120px` fixo, pensado pro chip pequeno
+   do header) — um pouco mais largo aqui. */
+.profile-name-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-name-form input {
+  width: 100%;
+}
+
+/* Botão de sair — mesmo padrão de hover já usado em `.icon-button`/
+   `.participants-tab` no resto do app (fundo levemente mais claro que o
+   do popover no hover), só que ocupando a linha toda (ícone + texto),
+   não um círculo isolado. */
+.profile-popover-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.profile-popover-logout:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+
+/* ---------------------------------------------------------------------
+   Modal de Configurações (2026-09-06, pedido do usuário)
+   Aberto pelo botão "Configurações" do popover de perfil. Centralizado
+   via `.modal-backdrop`, que já existia. Cabeçalho com ícone em pill +
+   título/subtítulo, corpo como LISTA de linhas — a segunda preferência
+   entra como mais uma `.settings-row`, sem redesenho.
+   --------------------------------------------------------------------- */
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 90vw);
+  max-height: 80vh;
+  border-radius: 16px;
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: var(--color-background);
+  overflow: hidden;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.settings-modal-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Mesmo ícone-em-pill do `.auth-card-icon`/`.update-dialog-icon` — é a
+   assinatura visual de "cabeçalho de card" já usada no app. */
+.settings-modal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.settings-modal-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+.settings-modal-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+}
+
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+/* Cada preferência: ícone + (título/descrição) + controle à direita.
+   `min-width: 0` na coluna de texto pra descrição longa quebrar dentro
+   da linha em vez de empurrar o switch pra fora. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background-color: var(--ev-c-black-mute);
+}
+
+.settings-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--accent);
+}
+
+.settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+.settings-row-description {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ev-c-text-2);
+}
+
+/* Switch: trilho + bolinha. É um <button role="switch">, não um
+   <input type="checkbox"> escondido — ver o comentário em
+   SettingsModal.tsx. Largura/altura fixas pra a bolinha ter um curso
+   previsível (o `translateX` do estado ligado é calculado a partir
+   delas: 44 - 20 - 2*2 = 20px). */
+.settings-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-3);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.settings-switch-on {
+  background-color: var(--accent);
+}
+
+.settings-switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.settings-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background-color: #fff;
+  transition: transform 0.2s ease;
+}
+
+.settings-switch-on .settings-switch-thumb {
+  transform: translateX(20px);
+}
+
+/* Seletor de presenca no popover de perfil (item 11, 2026-09-10). Duas
+   opcoes lado a lado, e nao um dropdown: com so dois estados, um menu
+   custaria dois cliques pra fazer o que um resolve. */
+/* Status (2026-09-11): eram dois botões lado a lado; virou UMA linha
+   com o estado atual, que abre o submenu à direita no hover.
+
+   `position: relative` aqui é o que ancora o submenu — ele é
+   `absolute` e sai PRA FORA do popover, que tem `overflow: hidden`.
+   Por isso o `overflow` precisou virar `visible` no popover (ver a
+   regra logo abaixo): sem isso o submenu seria recortado e ninguém
+   entenderia o porquê. */
+.profile-status-section {
+  position: relative;
+  display: block;
+  padding: 8px;
+  border-top: 1px solid var(--app-chrome-border);
+}
+
+.profile-status-trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--ev-c-text-1);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.profile-status-trigger-label {
+  flex: 1;
+}
+
+/* A seta gira pra baixo quando o submenu abre — sinaliza o estado sem
+   precisar de um segundo ícone. */
+.profile-status-chevron {
+  color: var(--ev-c-text-3);
+  transition: transform 0.2s ease;
+}
+
+.profile-status-section:hover .profile-status-trigger,
+.profile-status-trigger:focus-visible {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.profile-status-section:hover .profile-status-chevron {
+  transform: translateX(2px);
+  color: var(--ev-c-text-2);
+}
+
+.profile-status-trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* O submenu. `left: 100%` + uma folga negativa pequena: encostado
+   demais o cursor sai do bloco no caminho e o menu fecha no meio do
+   percurso; sobrepor 4px dá margem pro mouse atravessar. */
+.profile-status-menu {
+  position: absolute;
+  left: calc(100% - 4px);
+  bottom: 4px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 158px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--app-chrome-border);
+  background-color: var(--ev-c-black-mute);
+  box-shadow:
+    0 16px 40px -8px rgba(0, 0, 0, 0.7),
+    0 3px 10px rgba(0, 0, 0, 0.35);
+  animation: profile-status-menu-in 0.14s ease-out;
+}
+
+@keyframes profile-status-menu-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.profile-status-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--ev-c-text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.profile-status-option span {
+  flex: 1;
+}
+
+.profile-status-option:hover:not(:disabled) {
+  background-color: var(--ev-button-alt-hover-bg);
+  color: var(--ev-c-text-1);
+}
+
+.profile-status-option-on {
+  color: var(--ev-c-text-1);
+}
+
+.profile-status-check {
+  color: var(--accent);
+}
+
+.profile-status-option:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* O ponto colorido carrega o significado; o icone e so a forma dele.
+   Amarelo pro ocupado pelo mesmo motivo da lista de usuarios: verde e
+   vermelho ja significam ao-vivo e erro no resto do app. */
+.profile-status-dot-online {
+  color: var(--color-live);
+  fill: var(--color-live);
+}
+
+.profile-status-dot-busy {
+  color: #fbbf24;
+}
+
+/* Botões do rodapé do popover de perfil — "Configurações" e "Sair"
+   compartilham a mesma base agora (2026-09-06). `.profile-popover-logout`
+   ficou só como gancho pra uma cor própria no futuro; hoje os dois são
+   idênticos, e o rodapé virou coluna pra empilhar os dois. */
+.profile-popover-logout-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Separa as duas secoes sem precisar de um <hr> no markup. */
+  border-top: 1px solid var(--app-chrome-border);
+}
+
+.profile-popover-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.profile-popover-action:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+}
+
+/* O icone puxa a cor de acento so no hover — em repouso a linha inteira
+   fica neutra, senao duas linhas coloridas competem pela atencao. */
+.profile-popover-action:hover svg {
+  color: var(--accent);
+}
+
+/* Sair e a unica acao destrutiva daqui, entao ganha o vermelho — mas so
+   no hover, pelo mesmo motivo acima. */
+.profile-popover-action.profile-popover-logout:hover {
+  color: var(--color-danger);
+  background-color: rgba(248, 113, 113, 0.1);
+}
+
+.profile-popover-action.profile-popover-logout:hover svg {
+  color: var(--color-danger);
+}
+
+/* =====================================================================
+   FICHA DE USUARIO E MENU DE CONTEXTO (2026-09-13, pedido do usuario)
+
+   Duas caixas flutuantes que nascem de um clique num tile de usuario:
+   a ficha (clique esquerdo, nas tres listas) e o menu de "Expulsar"
+   (clique direito, so na lista da minha propria live).
+
+   Escritas no FIM do arquivo de proposito: as duas sao componentes
+   novos e independentes, entao nao ha regra existente que precise ser
+   partida ao meio pra encaixa-las — foi assim que o bloco do botao
+   "Transmitir" acabou vazando sombra pros tiles vizinhos em
+   2026-09-13 (ver o comentario dele).
+   ===================================================================== */
+
+/* A parte CLICAVEL do tile (avatar + nome), nas tres listas.
+
+   Um <button> de verdade, e nao um <li> com onClick: e a unica forma
+   de o tile responder a Enter/Espaco e entrar na ordem do Tab. O botao
+   de convidar continua irmao dele, fora daqui — clicar em convidar nao
+   pode abrir a ficha. */
+.user-tile-button {
+  display: flex;
+  align-items: center;
+  /* Herda o espacamento da propria lista (10px na de usuarios, 6px nas
+     de viewers). E o que faz o botao desaparecer visualmente: o layout
+     fica identico ao de antes de o tile virar clicavel. */
+  gap: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+
+.user-tile-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Tile com a ficha ABERTA (2026-09-13, pedido do usuario): continua com
+   a cara de hover ate a ficha fechar. E o que liga a caixa flutuante ao
+   item que a abriu — sem isso, com o mouse ja longe da lista, nada na
+   tela diz de QUEM e aquela ficha.
+
+   Uma classe so pras tres listas, e desde 2026-09-14 todas respondem
+   igual: fundo mais claro que o do hover. Antes as listas de viewers
+   so clareavam o NOME, porque os tiles delas nao tinham padding pra
+   comportar um retangulo — ganharam padding no mesmo dia. */
+.users-list-item.user-tile-active,
+.users-list-item.user-tile-active:hover,
+.viewers-list li.user-tile-active,
+.viewers-list li.user-tile-active:hover,
+.participants-list li.user-tile-active,
+.participants-list li.user-tile-active:hover {
+  /* Mais claro que o hover (0.04): o hover diz "da pra clicar", este
+     diz "esta aberto". Iguais, o tile da ficha aberta se perderia no
+     meio da lista assim que o mouse passasse por outro. */
+  background-color: rgba(255, 255, 255, 0.09);
+}
+
+
+/* --------------------------------------------------------------- ficha */
+
+/* `fixed` porque o componente e um portal no <body> (ver
+   UserCardPopover.tsx): as tres listas rolam por dentro de paineis com
+   `overflow`, que recortariam qualquer caixa posicionada la dentro.
+
+   `top`/`left` NAO aparecem aqui: sao escritos pelo proprio componente
+   depois de medir a caixa. */
+.user-card {
+  position: fixed;
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 204px;
+  padding: 20px 16px 16px;
+  /* Mesmo raio da caixa de perfil (ver .profile-popover): sao duas
+     caixas irmas, uma mostra voce e a outra mostra os outros. */
+  border-radius: 11px;
+  /* Sem borda desde 2026-09-13 (pedido do usuario): a sombra ja faz a
+     separacao do fundo, e o fio claro em volta dava a esta caixa
+     pequena um contorno duro que ela nao precisa. */
+  /* Mesmo brilho roxo do cabecalho do box de perfil, so que centrado
+     no topo em vez do canto: aqui a caixa e simetrica e o avatar fica
+     no meio, entao o brilho nasce atras dele. */
+  background:
+    radial-gradient(120% 85% at 50% 0%, rgba(167, 139, 250, 0.22), transparent 70%),
+    var(--ev-c-black-mute);
+  box-shadow:
+    0 20px 50px -10px rgba(0, 0, 0, 0.7),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+  cursor: default;
+  animation: user-card-in 0.14s ease-out;
+}
+
+@keyframes user-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.user-card-avatar-wrapper {
+  position: relative;
+  display: inline-block;
+  /* Sem isto o inline-block herda a folga da linha de texto e o dot
+     fica desalinhado do canto do circulo. */
+  line-height: 0;
+}
+
+/* 64px — um degrau acima dos 56 do box de perfil, que e o maior avatar
+   do app ate aqui. O pedido era "um pouco maior", e esta caixa nao
+   divide a linha com texto nenhum: o avatar E o conteudo. */
+.user-card-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  overflow: hidden;
+  /* Anel roxo fino. `box-shadow` e nao `border`: borda entraria no
+     tamanho da caixa e espremeria a foto pra dentro. */
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.28);
+}
+
+/* A cor da borda e a do FUNDO DA CAIXA, nao a da tela — e o contraste
+   com o fundo imediato que da o efeito de recorte. Mesma razao do dot
+   do box de perfil. */
+.user-card-status-dot {
+  width: 17px;
+  height: 17px;
+  right: 2px;
+  bottom: 2px;
+  border-width: 3px;
+  border-color: var(--ev-c-black-mute);
+}
+
+.user-card-name {
+  margin-top: 12px;
+  max-width: 100%;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-card-status {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+}
+
+/* ---------------------------------------------------------- menu direito */
+
+/* Mesma linguagem do submenu de status do box de perfil
+   (`.profile-status-menu`): mesmo raio, mesma borda, mesma sombra. Nao
+   reusa aquelas classes porque aquele e `absolute` dentro do popover e
+   este e um portal `fixed` — o que muda e justamente o
+   posicionamento. */
+.context-menu {
+  position: fixed;
+  z-index: 970;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 152px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--app-chrome-border);
+  background-color: var(--ev-c-black-mute);
+  box-shadow:
+    0 16px 40px -8px rgba(0, 0, 0, 0.7),
+    0 3px 10px rgba(0, 0, 0, 0.35);
+  animation: context-menu-in 0.12s ease-out;
+}
+
+@keyframes context-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--ev-c-text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+  color: var(--ev-c-text-1);
+}
+
+/* Vermelho desde parado, nao so no hover: expulsar alguem e a unica
+   acao do menu e precisa ser lida como destrutiva ANTES do cursor
+   chegar nela. Mesmo vermelho do resto do app. */
+.context-menu-item-danger {
+  color: var(--color-danger);
+}
+
+.context-menu-item-danger:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: var(--color-danger);
+}
+
+/* Chip do canal da build ("BETA") ao lado do número da versão, fora da
+   titlebar — hoje na tela de login (2026-09-17).
+   -----------------------------------------------------------------------
+   Antes o rótulo SUBSTITUÍA o número, e a versão instalada não aparecia
+   em canto nenhum do app: na hora de um relato de problema, "qual versão
+   você está usando?" não tinha resposta sem abrir o instalador. São dois
+   dados diferentes — o que a build é, e qual build é — e agora saem
+   juntos.
+
+   O chip fica menor e mais apagado que o número: quem procura ali quer o
+   número; o "BETA" é contexto. */
+.version-channel {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background-color: rgba(139, 92, 246, 0.14);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  vertical-align: 1px;
+}
+
+/* A titlebar agora mostra os dois, então o chip precisa de um respiro do
+   número que passou a vir depois dele. */
+.app-titlebar-channel + .app-titlebar-version {
+  margin-left: 6px;
+}
+
+/* ----------------------------------------------------------------------
+   Tela de situação da conta — pendente / recusada / bloqueada
+   (redesenhada em 2026-09-17, pedido do usuário)
+
+   Deliberadamente DIFERENTE do login e do cadastro. Lá existe algo a
+   fazer, e a marca fica ao lado do formulário como boas-vindas. Aqui não
+   há o que preencher: a tela é um recado. Então o cartão é um só,
+   centrado, com a marca dentro — ele passa a ser a tela inteira, e não
+   uma metade dela.
+
+   O fundo continua o mesmo (`.auth-page`, com os dois brilhos): é a
+   mesma casa, só outro cômodo.
+   -------------------------------------------------------------------- */
+.status-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 440px;
+  max-width: calc(100vw - 48px);
+  padding: 36px 40px 32px;
+  border-radius: 24px;
+  border: 1px solid var(--ev-c-gray-3);
+  /* Um respiro roxo no topo, de dentro pra fora: dá profundidade ao
+     cartão sem precisar de mais uma borda. */
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(139, 92, 246, 0.13), transparent 62%),
+    rgba(255, 255, 255, 0.032);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+/* A marca, dentro do cartão e no topo. Discreta de propósito (opacidade
+   e tamanho menores que no login): aqui ela diz "isto é o Prisma
+   falando", não "bem-vindo". */
+.status-card-logo {
+  height: 26px;
+  width: auto;
+  opacity: 0.75;
+  margin-bottom: 26px;
+}
+
+.status-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 20px;
+  border-radius: 999px;
+  color: #fff;
+}
+
+/* A cor do círculo diz a situação antes de qualquer texto ser lido.
+   Âmbar pra pendente (espere), vermelho pros dois desfechos negativos —
+   e o anel externo, feito com um segundo box-shadow, é o que dá volume
+   sem borda. */
+.status-card-icon-pending {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  box-shadow:
+    0 10px 28px rgba(245, 158, 11, 0.32),
+    0 0 0 6px rgba(251, 191, 36, 0.1);
+}
+
+.status-card-icon-rejected,
+.status-card-icon-blocked {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+  box-shadow:
+    0 10px 28px rgba(220, 38, 38, 0.32),
+    0 0 0 6px rgba(248, 113, 113, 0.1);
+}
+
+.status-card-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ev-c-text-1);
+}
+
+/* O nome da conta vira um chip, em vez de entrar no meio da frase.
+   Assim a pessoa confere num relance SE é a conta dela — que é a
+   primeira dúvida de quem lê "cadastro não aprovado". */
+.status-card-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--ev-c-gray-2);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--ev-c-text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-card-account svg {
+  color: var(--accent);
+}
+
+.status-card-lead {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ev-c-text-2);
+}
+
+/* O parágrafo longo ganha bloco próprio: separa "o que aconteceu"
+   (acima) de "o que fazer a respeito" (aqui), que é a única coisa
+   acionável da tela. A barra lateral repete a cor da situação. */
+.status-card-body {
+  width: 100%;
+  margin: 22px 0 26px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.028);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ev-c-text-2);
+  text-align: left;
+}
+
+.status-card-body-pending {
+  border-left: 3px solid rgba(251, 191, 36, 0.8);
+}
+
+.status-card-body-rejected,
+.status-card-body-blocked {
+  border-left: 3px solid rgba(248, 113, 113, 0.8);
+}
+
+/* Mais largo que o botão do formulário (2026-09-17, pedido do usuário):
+   é a única ação da tela, então ocupa a largura inteira do cartão em vez
+   de flutuar no meio com o tamanho do texto. */
+.status-card-back {
+  width: 100%;
+  height: 48px;
+  margin-top: 0;
+}
+
+/* Confirmação de cadastro (2026-09-18) — o mesmo cartão das telas de
+   recusa, com o verde do produto. Reaproveita `.status-card` inteiro: é
+   a mesma forma ("uma frase e um botão"), e só o tom muda.
+
+   O verde aqui não é decoração: é o que diferencia num relance esta tela
+   das outras duas do mesmo formato, que são negativas. */
+.status-card-icon-created {
+  background: linear-gradient(135deg, #4ade80, #16a34a);
+  box-shadow:
+    0 10px 28px rgba(22, 163, 74, 0.32),
+    0 0 0 6px rgba(74, 222, 128, 0.1);
+}
+
+.status-card-body-created {
+  border-left: 3px solid rgba(74, 222, 128, 0.8);
+}
+
+/* Sem vagas: âmbar, não vermelho. Não é erro de quem tentou nem defeito
+   do app — é uma espera, e vermelho diria que algo quebrou. */
+.status-card-icon-limitReached {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  box-shadow:
+    0 10px 28px rgba(245, 158, 11, 0.32),
+    0 0 0 6px rgba(251, 191, 36, 0.1);
+}
+
+.status-card-body-limitReached {
+  border-left: 3px solid rgba(251, 191, 36, 0.8);
+}
+
+/* ----------------------------------------------------------------------
+   Scrollbar das listas dos painéis laterais (2026-09-18)
+
+   Três mudanças pedidas pelo usuário, e cada uma resolve uma coisa
+   diferente:
+
+   1. COLADA NA BORDA. O `.side-panel` tem 16px de padding, então a barra
+      nascia flutuando no meio do vazio, longe da linha que separa o
+      painel da área de lives. O truque é o mesmo que o
+      `.transmission-source-scroll` já usa: margem negativa esticando a
+      caixa até a borda do painel, e padding do MESMO valor recriando o
+      respiro por dentro. A barra passa a nascer na borda de verdade, e o
+      conteúdo não se mexe.
+
+   2. MAIS FINA E MAIS CLARA. A global tem 8px e usa `--ev-c-gray-2`, que
+      some no fundo escuro. Aqui são 5px e um cinza claro de baixa
+      opacidade.
+
+   3. SÓ NO HOVER DA LISTA. E a largura NÃO muda entre os dois estados —
+      só a cor do polegar. Animar a largura reflui o conteúdo a cada
+      entrada e saída do mouse, e a lista inteira daria um pulo lateral;
+      com a largura fixa e o polegar transparente, o espaço está sempre
+      reservado e só a tinta aparece.
+
+      ⚠️ Quem liga e desliga é a classe `.scroll-visible`, posta e tirada
+      no `onMouseEnter`/`onMouseLeave` da própria lista — e NÃO um
+      `:hover` em CSS, que foi a primeira tentativa (2026-09-18) e não
+      funcionou de forma confiável. O Chromium não repinta os
+      pseudo-elementos de scrollbar quando só o estado `:hover` do
+      elemento que rola muda; ele costuma repintar ao tocar a barra ou ao
+      rolar. Trocar uma CLASSE força o recálculo de estilo, e aí a
+      mudança aparece na hora.
+   -------------------------------------------------------------------- */
+.users-list,
+.room-details-viewers-list {
+  margin-right: -16px;
+  padding-right: 16px;
+}
+
+.users-list::-webkit-scrollbar,
+.room-details-viewers-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.users-list::-webkit-scrollbar-track,
+.room-details-viewers-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Transparente em repouso — ver o ponto 3 acima. */
+.users-list::-webkit-scrollbar-thumb,
+.room-details-viewers-list::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+}
+
+/* Cursor em cima da LISTA: o polegar ganha o cinza padrão. */
+.users-list.scroll-visible::-webkit-scrollbar-thumb,
+.room-details-viewers-list.scroll-visible::-webkit-scrollbar-thumb {
+  background-color: rgba(235, 235, 245, 0.32);
+}
+
+/* Cursor em cima do PRÓPRIO polegar: acende mais. É o retorno de "dá pra
+   arrastar isto". Sem o roxo da barra global, que neste tamanho gritaria
+   mais que a própria lista.
+
+   Este `:hover` funciona bem, ao contrário do que estava no elemento que
+   rola: é o Chromium repintando a barra porque o cursor está SOBRE ela,
+   que é justamente o caso que ele trata. */
+.users-list::-webkit-scrollbar-thumb:hover,
+.room-details-viewers-list::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(235, 235, 245, 0.55);
+}
+
+/* ===================================================================
+   MINI PLAYER (2026-09-20, pedido do usuário)
+   ===================================================================
+   Estas regras valem dentro da JANELINHA, um documento à parte que
+   recebe uma cópia deste mesmo CSS (ver copiarEstilos em
+   PopinPlayer.tsx). Por isso elas não podem depender de nada do layout
+   do app: ali não existe `.app-titlebar`, nem `#root`, nem a árvore da
+   Home — só o que o portal desenha. */
+.popin-body {
+  margin: 0;
+  overflow: hidden;
+  background-color: #000;
+  /* A janela inteira é área de arrasto (o arrasto é feito na mão, ver
+     PopinPlayer.tsx), então o cursor de texto atrapalharia: selecionar
+     texto no meio de um arrasto deixa um rastro azul na tela. */
+  user-select: none;
+  cursor: default;
+}
+
+.popin {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.popin-video {
+  width: 100%;
+  height: 100%;
+  /* A janela é travada em 16:9 (ver setAspectRatio em popin.ts), então
+     `contain` aqui preenche exatamente — ele está por segurança, pra uma
+     fonte que não seja 16:9 aparecer inteira em vez de cortada. */
+  object-fit: contain;
+  display: block;
+  background-color: #000;
+}
+
+/* O escurecido do hover (pedido do usuário): sobe junto com os chips,
+   pra eles terem contraste contra qualquer cena clara da live. */
+.popin-dim {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.popin-hovered .popin-dim {
+  opacity: 1;
+}
+
+/* Os três cantos de controles. Somem junto com o escurecido — mesma
+   regra de auto-hide dos chips do tile (useAutoHideOverlay.ts), que era
+   pedido explícito do usuário valer aqui também. */
+.popin-top-left,
+.popin-top-right,
+.popin-volume {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.popin-hovered .popin-top-left,
+.popin-hovered .popin-top-right,
+.popin-hovered .popin-volume {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.popin-top-left {
+  top: 10px;
+  left: 10px;
+}
+
+.popin-top-right {
+  top: 10px;
+  right: 10px;
+}
+
+.popin-volume {
+  bottom: 10px;
+  left: 10px;
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background-color: rgba(28, 28, 32, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.popin-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: rgba(28, 28, 32, 0.82);
+  backdrop-filter: blur(6px);
+  color: var(--ev-c-text-1);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.popin-button:hover {
+  background-color: rgba(48, 48, 56, 0.92);
+}
+
+/* Sair da SALA fica vermelho no hover — é a única ação da janelinha que
+   desfaz algo de verdade (as outras só mudam onde a live aparece). */
+.popin-button-leave:hover {
+  background-color: rgba(248, 113, 113, 0.9);
+  color: #fff;
+}
+
+.popin-host,
+.popin-viewers {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: rgba(28, 28, 32, 0.82);
+  backdrop-filter: blur(6px);
+  color: var(--ev-c-text-1);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 45vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popin-host-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  flex-shrink: 0;
+}
+
+/* O slider é o mesmo do tile (`.volume-slider`), só mais curto: a
+   janelinha pode ter 356px de largura e o chip não pode comer metade
+   dela. */
+.popin-volume .volume-slider {
+  width: 64px;
+}
+
+.popin-volume .volume-mute-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ev-c-text-1);
+  cursor: pointer;
+}

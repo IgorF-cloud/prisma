@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Prisma</title>
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!-- connect-src precisa liberar ws:/http: pro livekit-client (roda
+    aqui no renderer) conseguir falar direto com o LiveKit Server — o
+    endereço é configurável (.env, LAN local ou VM), não dá pra travar
+    num host fixo. Sem connect-src explícito, o default-src 'self' vira o
+    fallback e bloqueia qualquer WebSocket/fetch pra fora da própria
+    página (mesmo request contra o servidor certo, não é CORS).
+    img-src precisa da mesma liberação (item 43 do roadmap, 2026-09-03):
+    avatar customizado é um <img src> apontando pro token-server
+    (/avatars/<id>.webp), fora da própria página — só 'self' data:
+    bloqueava esse carregamento (aparecia como "imagem não reconhecida",
+    a CSP nunca deixava a requisição sair, não era falha no upload nem
+    no estado do React). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; connect-src 'self' ws: wss: http: https:"
+    />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

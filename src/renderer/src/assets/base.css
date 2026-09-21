@@ -1,0 +1,120 @@
+/* Poppins (2026-08-30, pedido do usuário) — arquivos baixados e
+   hospedados localmente (não via Google Fonts direto) de propósito: é
+   um app desktop distribuído, não pode depender de internet disponível
+   toda vez que abre pra carregar a fonte. Só os 3 pesos que o app
+   realmente usa (400 regular pro texto corrido, 600/700 pros
+   destaques/títulos — ver font-weight usado em main.css) e só o subset
+   "latin" (cobre acentuação do português: ç, ã, õ, á, é, etc, todos
+   dentro do Latin-1 Supplement) — sem devanagari/latin-ext, que esse
+   app não usa. */
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/poppins-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/poppins-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/poppins-700.woff2') format('woff2');
+}
+
+:root {
+  --ev-c-white: #ffffff;
+  --ev-c-white-soft: #f8f8f8;
+  --ev-c-white-mute: #f2f2f2;
+
+  --ev-c-black: #1b1b1f;
+  --ev-c-black-soft: #222222;
+  --ev-c-black-mute: #282828;
+
+  --ev-c-gray-1: #515c67;
+  --ev-c-gray-2: #414853;
+  --ev-c-gray-3: #32363f;
+
+  --ev-c-text-1: rgba(255, 255, 245, 0.86);
+  --ev-c-text-2: rgba(235, 235, 245, 0.6);
+  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+
+  --ev-button-alt-border: transparent;
+  --ev-button-alt-text: var(--ev-c-text-1);
+  --ev-button-alt-bg: var(--ev-c-gray-3);
+  --ev-button-alt-hover-border: transparent;
+  --ev-button-alt-hover-text: var(--ev-c-text-1);
+  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
+
+  /* Altura padrão dos botões de ação em rodapés (Transmitir/Iniciar
+     transmissão/Parar/Cancelar) e dos próprios rodapés (Home, Configurar
+     transmissão) — mesma altura nas duas telas, de propósito. */
+  --action-button-height: 36px;
+  --footer-height: 64px;
+
+}
+
+:root {
+  --color-background: var(--ev-c-black);
+  --color-background-soft: var(--ev-c-black-soft);
+  --color-background-mute: var(--ev-c-black-mute);
+
+  --color-text: var(--ev-c-text-1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+ul {
+  list-style: none;
+}
+
+/* `<button>`/`<input>`/`<select>`/`<textarea>` NÃO herdam font-family
+   do body por padrão (usam a fonte do sistema operacional via
+   stylesheet nativo do navegador, independente do que for definido
+   aqui) — sem isso, a Poppins nunca apareceria nos botões/pills/campos
+   de formulário do app inteiro, só no texto "solto" (Bug real visto na
+   prática em 2026-08-30, ao trocar de Inter pra Poppins). */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-background);
+  line-height: 1.6;
+  font-family:
+    'Poppins',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

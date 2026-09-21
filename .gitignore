@@ -1,0 +1,33 @@
+# Dependências e saídas de build
+node_modules
+dist
+out
+*.tsbuildinfo
+
+# Segredos e configuração local
+.env
+.env.*
+!.env.example.template
+
+# Instalador: os binários do GStreamer (36 MB) e o Prisma-Setup.exe (97 MB)
+# não cabem no Git — o .exe está a 3 MB do limite de arquivo do GitHub.
+# A pasta inteira é levada na mão de uma máquina pra outra (ver RELEASE.md).
+/installer
+
+# Documentação interna de trabalho — fica só local
+MEMORIA.md
+RELEASE.md
+ROADMAP.md
+
+# Configuração de IDE / editor
+/.idea
+.vscode
+.claude
+*.code-workspace
+
+# Ferramentas e SO
+.eslintcache
+*.log*
+.DS_Store
+Thumbs.db
+desktop.ini
