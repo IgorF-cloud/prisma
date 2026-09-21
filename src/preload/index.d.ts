@@ -236,6 +236,9 @@ interface Api {
     check: () => Promise<UpdateCheckResult>
     download: (info: UpdateInfo) => Promise<string>
     install: (installerPath: string) => Promise<void>
+    // Aborta o download em andamento. Resolve mesmo se não houver nada
+    // baixando.
+    cancel: () => Promise<void>
     onDownloadProgress: (callback: (progress: number) => void) => () => void
     // Push do main: a disponibilidade mudou sem ninguém perguntar
     // (versão publicada no painel admin, anunciada pelo WebSocket —

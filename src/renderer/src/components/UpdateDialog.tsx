@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { AlertCircle, Download, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertCircle, Download, RefreshCw, Sparkles, X } from 'lucide-react'
 import { UpdateStage } from '../lib/useAppUpdate'
 import { formatAppVersion } from '../lib/appVersion'
 
@@ -13,6 +13,7 @@ interface UpdateDialogProps {
   // Há uma transmissão no ar agora. Ver o aviso no estágio `prompt`.
   transmitting: boolean
   onStart: () => void
+  onCancelDownload: () => void
   onDismiss: () => void
 }
 
@@ -21,9 +22,14 @@ interface UpdateDialogProps {
 // downloading (barra de progresso real) → installing (instalador Inno
 // Setup assume, o app fecha sozinho em seguida) → error (com "tentar de
 // novo"). Só pode ser dispensado nos estágios prompt/error (ver
-// canDismiss em useAppUpdate.ts) — durante download/instalação,
-// interromper no meio deixaria um .exe pela metade ou um UAC pendente
-// sem explicação na tela.
+// canDismiss em useAppUpdate.ts) — durante download/instalação, sumir
+// com o diálogo deixaria um download de ~100 MB correndo escondido ou um
+// UAC pendente sem explicação na tela.
+//
+// Sair do download tem um caminho PRÓPRIO desde 2026-09-21: o botão
+// "Cancelar", que derruba a conexão antes de fechar (onCancelDownload).
+// É diferente de dispensar justamente por isso — desistir precisa
+// cancelar de verdade, não só tirar a janela da frente.
 function UpdateDialog({
   currentVersion,
   newVersion,
@@ -33,6 +39,7 @@ function UpdateDialog({
   canDismiss,
   transmitting,
   onStart,
+  onCancelDownload,
   onDismiss
 }: UpdateDialogProps): React.JSX.Element {
   // A TITLEBAR PRECISA IR PRO PLANO DE BAIXO (2026-09-20, pedido do
@@ -114,6 +121,17 @@ function UpdateDialog({
             <p className="update-dialog-progress-label">
               {Math.min(100, Math.max(0, Math.round(progress * 100)))}%
             </p>
+            {/* O instalador tem ~100 MB e nem toda conexão baixa isso
+                rápido — sem uma saída aqui, quem clicou sem querer (ou
+                escolheu a hora errada) ficava preso olhando a barra, já
+                que o diálogo não aceita ser dispensado durante o
+                download. `update-dialog-actions` já centraliza. */}
+            <div className="update-dialog-actions">
+              <button type="button" className="pill-button" onClick={onCancelDownload}>
+                <X size={15} />
+                Cancelar
+              </button>
+            </div>
           </>
         )}
 

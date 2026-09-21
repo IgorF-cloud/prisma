@@ -98,6 +98,13 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 // polling roda sem NENHUMA mudança real.
 let lastReported: NowPlaying | null | undefined = undefined
 
+// A sala da transmissão em andamento, ou null quando não há nenhuma.
+// Existe pro reenvio depois de uma reconexão (ver
+// resendNowPlayingAfterReconnect) — todo o resto recebe o roomCode por
+// parâmetro, mas quem descobre que a conexão voltou é o rooms.ts, que
+// não tem como saber de qual sala se trata.
+let activeRoomCode: string | null = null
+
 // REATIVADA em 2026-09-06 (esteve desativada entre 2026-09-05 e essa
 // data). Continua sendo a mesma leitura de sempre, mas o USO mudou: o
 // appid agora resolve nome E arte na lista do Discord
@@ -410,6 +417,40 @@ function stopPollingOnly(): void {
     pollTimer = null
   }
   lastReported = undefined
+  activeRoomCode = null
+}
+
+// O SERVIDOR PODE TER ESQUECIDO O QUE EU REPORTEI (2026-09-21).
+//
+// Chamado quando o WebSocket de salas (re)conecta — ver rooms.ts. O caso
+// que motivou: o prisma_server reinicia no meio de uma live (um deploy,
+// por exemplo). A live não cai, porque quem carrega a mídia é o LiveKit,
+// mas o servidor reconstrói as salas do zero e, até 2026-09-21, sem o
+// jogo. Quem assistia via o "Jogando: X" sumir do tile.
+//
+// O servidor agora guarda isso no metadata da sala e recupera sozinho —
+// isto aqui é o segundo cinto, e vale pra qualquer outro jeito de o
+// report se perder (um POST que falhou, uma sala recriada).
+//
+// Não dá pra só esperar o polling: ele deduplica por VALOR (`lastReported`
+// abaixo), e depois de um restart o valor não mudou — o host ficaria
+// calado pra sempre. Por isso o dedupe é zerado antes de reenviar. E no
+// modo JANELA não existe polling nenhum, então sem isto não havia
+// segunda chance.
+export function resendNowPlayingAfterReconnect(mainWindow: BrowserWindow): void {
+  // `undefined` = nada reportado ainda; `null` = reportado como "sem
+  // jogo", que é o padrão do servidor — em nenhum dos dois há o que
+  // recuperar.
+  if (!activeRoomCode || !lastReported) return
+
+  const roomCode = activeRoomCode
+  const info = lastReported
+  lastReported = undefined
+
+  // Com retry: o socket voltar não garante que a sala já existe de novo
+  // no servidor (ele reconstrói as salas do LiveKit no boot, e o webhook
+  // pode chegar depois).
+  void reportNowPlayingWithRetry(mainWindow, roomCode, info)
 }
 
 // Chamado sempre que uma transmissão inicia ou troca de fonte (item 13,
@@ -431,6 +472,9 @@ export async function handleTransmissionSourceChanged(
   }
 ): Promise<void> {
   stopPollingOnly()
+  // Depois do stop, que zera isto junto com o resto do estado do ciclo
+  // anterior.
+  activeRoomCode = roomCode
 
   if (captureArg.name === 'window-handle') {
     await reportNowPlayingWithRetry(

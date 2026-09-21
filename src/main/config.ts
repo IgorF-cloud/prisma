@@ -86,3 +86,26 @@ export const API_BASE_URL =
 
 export const LIVEKIT_WS_URL =
   process.env.LIVEKIT_WS_URL ?? fileConfig.livekitWsUrl ?? PRODUCTION_LIVEKIT_WS_URL
+
+// ---------------------------------------------------------------------
+// Quem está falando (2026-09-21)
+//
+// Vai em TODA chamada à API, no header `X-Prisma-Client`. O servidor
+// grava plataforma e versão a cada entrada no app (`/login` e `/me`) e
+// mostra no painel de administração — é o que responde "esse bug é da
+// versão velha?" sem precisar perguntar pra pessoa.
+//
+// `windows` é escrito à mão, e não derivado de `process.platform`: o
+// nome identifica o APP (o cliente Electron), não o sistema onde ele
+// roda. O dia em que isto rodar num Mac, continua sendo o mesmo cliente
+// — e é ele que o painel precisa distinguir do app Android.
+//
+// No header, e não no corpo do `/login`: os DOIS caminhos de entrada
+// precisam mandar isso, e um deles é o `GET /me` do "manter conectado",
+// que não tem corpo.
+//
+// `app.getVersion()` no escopo do módulo funciona antes do `ready` (é
+// leitura do package.json / metadado do exe) — o `getAppPath()` do
+// `loadEnv` lá em cima é da mesma família.
+export const CLIENT_HEADER = 'X-Prisma-Client'
+export const CLIENT_HEADER_VALUE = `windows/${app.getVersion()}`

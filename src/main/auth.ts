@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { API_BASE_URL } from './config'
+import { API_BASE_URL, CLIENT_HEADER, CLIENT_HEADER_VALUE } from './config'
 import { authHeader, notifySessionExpired, setApiToken } from './apiToken'
 import { persistSessionToken, updateSessionUser } from './session'
 
@@ -100,7 +100,13 @@ async function apiRequest<T>(method: string, path: string, body: unknown): Promi
       method,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: authHeader()
+        Authorization: authHeader(),
+        // Plataforma + versão deste app (2026-09-21). O servidor usa no
+        // `/login` pra registrar com o que a pessoa entrou; nas outras
+        // rotas ele ignora, e o header vai junto porque está AQUI e não
+        // em cada chamada — um header que cada rota decide mandar é um
+        // header que a próxima rota esquece.
+        [CLIENT_HEADER]: CLIENT_HEADER_VALUE
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)

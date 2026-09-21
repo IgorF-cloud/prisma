@@ -4,6 +4,7 @@ import { API_BASE_URL } from './config'
 import { authHeader } from './apiToken'
 import { logEvent } from './debugLog'
 import { notifyUpdateAvailability } from './update'
+import { resendNowPlayingAfterReconnect } from './gameDetection'
 
 // Roadmap item 43 — mesma union de src/main/auth.ts, duplicada aqui
 // seguindo o padrão já existente no projeto (ver RoomInfo, já duplicado
@@ -143,6 +144,13 @@ function connect(mainWindow: BrowserWindow): void {
     // Libera quem chamou `rooms:connect` e está segurando a navegação
     // pra Home.
     resolveOpenWaiters()
+    // E, se eu estiver transmitindo, reenvia o jogo/janela pra sala
+    // (2026-09-21). Esta conexão cair e voltar é o sinal mais próximo que
+    // o app tem de "o servidor reiniciou" — e um servidor que reiniciou
+    // pode não saber mais o que eu estou transmitindo. Não faz nada
+    // quando não há transmissão, que é o caso deste `open` no login. Ver
+    // gameDetection.ts.
+    resendNowPlayingAfterReconnect(mainWindow)
   })
 
   socket.on('ping', () => markActivity())

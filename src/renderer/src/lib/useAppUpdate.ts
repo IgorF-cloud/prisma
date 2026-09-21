@@ -23,6 +23,9 @@ interface UseAppUpdateResult {
   error: string | null
   canDismiss: boolean
   startUpdate: () => Promise<void>
+  // Desiste do download em andamento e volta o diálogo pro começo
+  // (2026-09-21).
+  cancelDownload: () => void
   dismiss: () => void
   // Reabre o diálogo depois de um "agora não" — o botão da titlebar.
   openDialog: () => void
@@ -87,8 +90,16 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
 
   useEffect(() => window.api.update.onDownloadProgress(setProgress), [])
 
+  // Cancelar aborta o fetch no main, e abortar faz o `download()` acima
+  // REJEITAR — do ponto de vista do `catch`, um cancelamento é
+  // indistinguível de um erro de rede. Sem esta marca, desistir do
+  // download cairia na tela vermelha de "não foi possível atualizar",
+  // acusando o app de uma falha que foi um clique do usuário.
+  const cancelledRef = useRef(false)
+
   const startUpdate = useCallback(async () => {
     if (!updateInfo) return
+    cancelledRef.current = false
     setStage('downloading')
     setProgress(0)
     setError(null)
@@ -104,10 +115,31 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
       // src/main/update.ts).
       await window.api.update.install(installerPath)
     } catch (err) {
+      // A tela já foi devolvida pelo cancelDownload — nada a relatar.
+      if (cancelledRef.current) return
       setStage('error')
       setError(getErrorMessage(err, 'Erro inesperado ao atualizar'))
     }
   }, [updateInfo])
+
+  // Desistir do download (2026-09-21, pedido do usuário): a conexão cai
+  // no main, o .exe pela metade é apagado lá, e aqui a tela volta pro
+  // estado de antes de clicar em "atualizar agora" — diálogo fechado,
+  // botão verde da titlebar aceso, exatamente como o "agora não".
+  //
+  // Só vale enquanto está BAIXANDO. Depois disso o instalador já está no
+  // disco e o app está prestes a fechar: "cancelar" ali não teria o que
+  // desfazer, e o clique que chegasse atrasado (o download terminou
+  // entre ver o botão e apertá-lo) apagaria a tela de "instalando" sem
+  // impedir nada.
+  const cancelDownload = useCallback(() => {
+    if (stageRef.current !== 'downloading') return
+    cancelledRef.current = true
+    void window.api.update.cancel()
+    setStage('prompt')
+    setProgress(0)
+    setDialogOpen(false)
+  }, [])
 
   // "Agora não" fecha o DIÁLOGO e só isso (2026-09-20). Antes ele
   // zerava o `updateInfo`, e com isso a informação de que existe
@@ -138,6 +170,7 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
     error,
     canDismiss: stage === 'prompt' || stage === 'error',
     startUpdate,
+    cancelDownload,
     dismiss,
     openDialog
   }

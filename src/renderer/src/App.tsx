@@ -461,6 +461,7 @@ function App(): React.JSX.Element {
           // (pelo botão da titlebar), ele precisa dizer isso antes.
           transmitting={transmission.transmitting}
           onStart={appUpdate.startUpdate}
+          onCancelDownload={appUpdate.cancelDownload}
           onDismiss={appUpdate.dismiss}
         />
       )}

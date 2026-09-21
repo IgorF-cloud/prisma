@@ -1,5 +1,5 @@
 import { app, ipcMain, safeStorage } from 'electron'
-import { API_BASE_URL } from './config'
+import { API_BASE_URL, CLIENT_HEADER, CLIENT_HEADER_VALUE } from './config'
 import { authHeader, getApiToken, setApiToken } from './apiToken'
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -189,7 +189,14 @@ async function revalidate(): Promise<RevalidateResult> {
   let response: Response
   try {
     response = await fetch(`${API_BASE_URL}/me`, {
-      headers: { Authorization: authHeader() },
+      headers: {
+        Authorization: authHeader(),
+        // Este é o caminho que a maioria dos acessos percorre: quem marca
+        // "manter conectado" pode nunca mais passar pelo /login. Sem o
+        // header AQUI, o painel registraria a versão só de quem digita a
+        // senha — ou seja, quase ninguém.
+        [CLIENT_HEADER]: CLIENT_HEADER_VALUE
+      },
       signal: AbortSignal.timeout(10000)
     })
   } catch {

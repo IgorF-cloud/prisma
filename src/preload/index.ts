@@ -225,6 +225,9 @@ const api = {
     download: (info: { version: string; url: string; sha256: string }) =>
       ipcRenderer.invoke('update:download', info),
     install: (installerPath: string) => ipcRenderer.invoke('update:install', installerPath),
+    // Cancelar o download em andamento (2026-09-21) — ver
+    // src/main/update.ts.
+    cancel: () => ipcRenderer.invoke('update:cancel'),
     onDownloadProgress: (callback: (progress: number) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: number): void =>
         callback(progress)
