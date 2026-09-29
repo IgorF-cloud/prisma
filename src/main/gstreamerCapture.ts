@@ -194,14 +194,19 @@ async function resolveCaptureArg(
   // em outra área de trabalho/cloaked que o Chromium não lista) — o título
   // já vem embutido no próprio sourceId, resolve direto sem procurar no
   // desktopCapturer.
-  // Troca automática de janela (2026-09-10, ver gameWindowFollow.ts): o
-  // app já sabe exatamente qual HWND quer, não há título pra procurar.
+  // Janela identificada pelo HWND exato. Nasceu pra troca automática de
+  // janela (2026-09-10, ver gameWindowFollow.ts), onde o app já sabe qual
+  // HWND quer; desde 2026-09-24 é também a forma normal dos cards da
+  // grade (ver handleFromDesktopCapturerId em screenCapture.ts), o que
+  // faz duas janelas de mesmo título deixarem de ser a mesma escolha.
   // Primeiro do encadeamento porque é o caso mais específico.
   if (sourceId?.startsWith(WINDOW_HANDLE_PREFIX)) {
     const handle = sourceId.slice(WINDOW_HANDLE_PREFIX.length)
     const target = await resolveWindowByHandle(handle, windowListMaxAgeMs)
     if (!target) {
-      return { error: 'A janela que estava sendo transmitida não existe mais.' }
+      // Serve pros dois caminhos: a janela seguida sumiu no meio da live,
+      // ou a escolhida na grade fechou entre a listagem e o "iniciar".
+      return { error: 'A janela escolhida não está mais aberta.' }
     }
     logGstreamer(
       `window-handle resolvido por HWND: handle=${target.handle} pid=${target.pid} título="${target.title}"`

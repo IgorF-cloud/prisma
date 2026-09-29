@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, LayoutGrid, RefreshCw, X } from 'lucide-react'
+import { RefreshCw, X } from 'lucide-react'
 import {
   Fps,
   FPS_OPTIONS,
@@ -7,13 +7,7 @@ import {
   RESOLUTIONS,
   TransmissionSettings
 } from '../lib/transmissionSettings'
-
-interface CaptureSource {
-  id: string
-  name: string
-  type: 'screen' | 'window'
-  thumbnailDataUrl: string
-}
+import CaptureSourceCard, { CaptureSource } from './CaptureSourceCard'
 
 interface UpdateTransmissionModalProps {
   currentSettings: TransmissionSettings
@@ -138,29 +132,12 @@ function UpdateTransmissionModal({
           ) : (
             <div className="source-grid">
               {filteredSources.map((source) => (
-                <button
-                  type="button"
+                <CaptureSourceCard
                   key={source.id}
-                  className={
-                    source.id === sourceId ? 'source-item source-item-active' : 'source-item'
-                  }
-                  onClick={() => setSourceId(source.id)}
-                  title={source.name}
-                >
-                  {source.thumbnailDataUrl ? (
-                    <img src={source.thumbnailDataUrl} alt="" className="source-thumbnail" />
-                  ) : (
-                    <div className="source-thumbnail-placeholder">
-                      <LayoutGrid size={28} />
-                    </div>
-                  )}
-                  {source.id === sourceId && (
-                    <span className="source-check-badge">
-                      <Check size={14} />
-                    </span>
-                  )}
-                  <span className="source-name">{source.name}</span>
-                </button>
+                  source={source}
+                  selected={source.id === sourceId}
+                  onSelect={() => setSourceId(source.id)}
+                />
               ))}
               {filteredSources.length === 0 && (
                 <p className="source-hint">Nenhuma fonte encontrada.</p>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Cast, Check, LayoutGrid, Lock } from 'lucide-react'
+import { ArrowLeft, Cast, Lock } from 'lucide-react'
 import {
   Fps,
   FPS_OPTIONS,
@@ -7,13 +7,8 @@ import {
   RESOLUTIONS,
   TransmissionSettings
 } from '../lib/transmissionSettings'
-
-interface CaptureSource {
-  id: string
-  name: string
-  type: 'screen' | 'window'
-  thumbnailDataUrl: string
-}
+import { loadLastQuality, saveLastQuality } from '../lib/lastTransmissionQuality'
+import CaptureSourceCard, { CaptureSource } from '../components/CaptureSourceCard'
 
 interface TransmissionScreenProps {
   onBack: () => void
@@ -21,8 +16,15 @@ interface TransmissionScreenProps {
 }
 
 function TransmissionScreen({ onBack, onStart }: TransmissionScreenProps): React.JSX.Element {
-  const [resolution, setResolution] = useState<Resolution>('1080p')
-  const [fps, setFps] = useState<Fps>(30)
+  // Pedido do usuário (2026-09-25): a tela abre já marcada na última
+  // combinação Resolução + FPS com que a pessoa REALMENTE transmitiu
+  // (ver lastTransmissionQuality.ts). Lido uma vez só, na montagem — o
+  // `useState(fn)` passa a FUNÇÃO, então ela não roda a cada render; e
+  // um `useState` separado guardando o resultado evita ler o disco duas
+  // vezes pra alimentar os dois pills.
+  const [savedQuality] = useState(loadLastQuality)
+  const [resolution, setResolution] = useState<Resolution>(savedQuality.resolution)
+  const [fps, setFps] = useState<Fps>(savedQuality.fps)
   const [starting, setStarting] = useState(false)
 
   const [sourceType, setSourceType] = useState<'screen' | 'window'>('screen')
@@ -71,6 +73,9 @@ function TransmissionScreen({ onBack, onStart }: TransmissionScreenProps): React
   async function handleStart(): Promise<void> {
     setStarting(true)
     const started = await onStart({ resolution, fps, sourceId, private: isPrivate })
+    // Só grava quando a live entrou no ar de verdade: se `onStart`
+    // falhou, a pessoa continua nesta tela e nada foi "usado" ainda.
+    if (started) saveLastQuality({ resolution, fps })
     if (!started) setStarting(false)
     // se deu certo, a tela troca pra Home (ver App.tsx) — não precisa
     // desarmar "starting" nesse caso, o componente vai desmontar.
@@ -213,34 +218,12 @@ function TransmissionScreen({ onBack, onStart }: TransmissionScreenProps): React
           ) : (
             <div className="source-grid">
               {filteredSources.map((source) => (
-                <button
-                  type="button"
+                <CaptureSourceCard
                   key={source.id}
-                  className={
-                    source.id === sourceId ? 'source-item source-item-active' : 'source-item'
-                  }
-                  onClick={() => setSourceId(source.id)}
-                  title={source.name}
-                >
-                  {source.thumbnailDataUrl ? (
-                    <img src={source.thumbnailDataUrl} alt="" className="source-thumbnail" />
-                  ) : (
-                    // Item pedido pelo usuário (2026-08-31): fontes que só
-                    // vieram da complementação via PowerShell (janelas
-                    // minimizadas/em outra área de trabalho, que o
-                    // desktopCapturer não lista — ver screenCapture.ts) não
-                    // têm thumbnail nenhum pra mostrar.
-                    <div className="source-thumbnail-placeholder">
-                      <LayoutGrid size={28} />
-                    </div>
-                  )}
-                  {source.id === sourceId && (
-                    <span className="source-check-badge">
-                      <Check size={14} />
-                    </span>
-                  )}
-                  <span className="source-name">{source.name}</span>
-                </button>
+                  source={source}
+                  selected={source.id === sourceId}
+                  onSelect={() => setSourceId(source.id)}
+                />
               ))}
               {filteredSources.length === 0 && (
                 <p className="source-hint">Nenhuma fonte encontrada.</p>

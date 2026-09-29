@@ -75,7 +75,9 @@ import { findSteamGameByAppId, findSteamGameByExePath } from './steamLibrary'
 //     Essa amarração continua valendo, e é o que impede uma janela do
 //     Chrome de virar "Jogando: <jogo aberto atrás>". Passando por ela,
 //     a Steam vem primeiro; senão, cruza o processo dono da janela. Sem
-//     nada, o título da janela mesmo ("Transmitindo: <título>").
+//     nada, o título da janela mesmo ("Transmitindo: <título>"). Também
+//     no polling de 8s desde 2026-09-24 — mas SEM a varredura de todos
+//     os processos da máquina, que é exclusiva do monitor.
 // `kind` decide o rótulo ("Jogando:" pra game, "Transmitindo:" pros
 // outros dois) E o ícone do placeholder quando não há arte (controle /
 // monitor / janela, ver HomeScreen.tsx). 'screen' virou um kind próprio
@@ -91,12 +93,86 @@ export interface NowPlaying {
 
 const POLL_INTERVAL_MS = 8000
 
-let pollTimer: ReturnType<typeof setInterval> | null = null
+// Intervalo curto, usado só enquanto o report NÃO cola (ver `runCycle`).
+// O caso normal é a corrida com o webhook room_started: o app reporta
+// logo depois de spawnar o GStreamer, mas a sala só existe pro LiveKit
+// quando o WHIP começa a publicar de verdade, e até lá o POST devolve
+// 404. Esperar os 8s cheios a cada tentativa deixaria o tile de quem
+// assiste mudo por tempo demais.
+const RETRY_DELAY_MS = 1500
+
+// ...mas só nas primeiras tentativas. Passado isso o ciclo volta ao
+// ritmo normal de 8s, e é aí que ele pode insistir pra sempre sem pesar.
+//
+// O que isto evita é um martelo: uma transmissão que morre sem passar
+// pelo `stopGameDetection` (o processo do GStreamer some de um jeito que
+// ninguém trata) deixaria o ciclo batendo de 1,5s em 1,5s no servidor
+// pelo resto da sessão do app. Seis é o mesmo teto que o retry antigo
+// tinha — o suficiente pra ganhar a corrida com o room_started, que é a
+// única coisa pra que a pressa serve.
+const FAST_RETRY_ATTEMPTS = 6
+
+// DE QUANTO EM QUANTO TEMPO REAFIRMAR O QUE JÁ FOI REPORTADO (2026-09-24)
+//
+// O report é deduplicado por VALOR (`lastReported`), e é isso que impede
+// um POST + broadcast pra sala inteira a cada 8s sem mudança nenhuma. O
+// preço é que, se o SERVIDOR esquecer, o host fica calado pra sempre — o
+// valor dele não mudou.
+//
+// Esquecer acontece de mais de um jeito, e só um deles estava coberto:
+//
+//   - o prisma_server reinicia: coberto desde 2026-09-21, dos dois lados
+//     (metadata da sala no LiveKit + `resendNowPlayingAfterReconnect`);
+//   - a SALA é recriada no meio da live — a folga de "sala sem host"
+//     estoura numa troca de fonte e o LiveKit recria a sala no publisher
+//     seguinte. Aí o `room_started` grava `game: null` e NADA avisa o
+//     app: o WebSocket nem chega a cair, e a recuperação via metadata só
+//     roda no boot do servidor.
+//
+// Daí este heartbeat: de tempos em tempos o valor atual é reenviado
+// mesmo sem ter mudado. Um POST por minuto por host transmitindo é
+// barato perto de uma live inteira sem mostrar o que está passando.
+const REASSERT_INTERVAL_MS = 60_000
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+// QUEM AINDA MANDA (2026-09-24)
+//
+// Todo ciclo de transmissão (start, troca de fonte, troca automática de
+// janela) começa com um `stopPollingOnly()`, que incrementa isto. Cada
+// passada carrega o número que viu ao nascer e desiste sozinha quando
+// ele muda — é o que impede uma passada VELHA, ainda no meio de um
+// await, de reportar por cima da nova.
+//
+// Sem isso o bug era real e fácil de disparar: o seguidor de janela
+// troca de fonte 4s depois do início (TICK_MS em gameWindowFollow.ts),
+// o retry do início ainda tem tentativas sobrando e, como o
+// `stopPollingOnly` zera o `lastReported` junto, esse retry velho passa
+// livre pelo dedupe e ressuscita a janela anterior no tile de quem
+// assiste.
+let generation = 0
+
+// A passada do ciclo atual, pra `resendNowPlayingAfterReconnect` poder
+// ANTECIPAR a próxima em vez de abrir um caminho de report paralelo —
+// que era exatamente a fonte de corrida que o `generation` acima existe
+// pra matar. null quando não há transmissão.
+let currentCycle: (() => void) | null = null
+
+// O `generation` sozinho garante que uma passada velha não GRAVA nada
+// depois de ser substituída, mas não desfaz um POST que já saiu. Sobrava
+// uma janela de um RTT em que o valor velho chegava ao servidor depois
+// do novo — e aí o dedupe do app (que já acha que reportou o novo)
+// calaria até o heartbeat, deixando o tile de quem assiste com a fonte
+// anterior por até um minuto. Abortar de verdade fecha isso.
+let reportAbort = new AbortController()
+
 // undefined = nada reportado ainda nesse ciclo de transmissão (força o
 // primeiro report mesmo que o resultado seja null); depois disso, guarda o
 // último valor reportado pra não mandar POST/broadcastRooms toda vez que o
 // polling roda sem NENHUMA mudança real.
 let lastReported: NowPlaying | null | undefined = undefined
+// Quando o servidor aceitou o `lastReported` — base do heartbeat acima.
+let lastReportedAt = 0
 
 // A sala da transmissão em andamento, ou null quando não há nenhuma.
 // Existe pro reenvio depois de uma reconexão (ver
@@ -257,7 +333,11 @@ function sameNowPlaying(a: NowPlaying | null, b: NowPlaying | null): boolean {
   return a.kind === b.kind && a.name === b.name && (a.iconUrl ?? null) === (b.iconUrl ?? null)
 }
 
-async function postGameReport(roomCode: string, info: NowPlaying | null): Promise<boolean> {
+async function postGameReport(
+  roomCode: string,
+  info: NowPlaying | null,
+  signal: AbortSignal
+): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomCode}/game`, {
       method: 'POST',
@@ -269,10 +349,15 @@ async function postGameReport(roomCode: string, info: NowPlaying | null): Promis
         info
           ? { kind: info.kind, name: info.name, iconUrl: info.iconUrl ?? null }
           : { kind: null, name: null, iconUrl: null }
-      )
+      ),
+      signal
     })
     return response.ok
   } catch (err) {
+    // Abortado = a fonte trocou no meio deste POST. Não é erro: quem
+    // abortou já está reportando a fonte nova, e a passada que chamou
+    // isto vai desistir sozinha no guard de geração.
+    if (signal.aborted) return false
     console.error(`Erro ao reportar jogo/janela pra sala ${roomCode}:`, err)
     return false
   }
@@ -288,23 +373,48 @@ async function postGameReport(roomCode: string, info: NowPlaying | null): Promis
 //
 // `lastReported` só avança em caso de sucesso — se o POST falhar (ex: a
 // sala ainda não existe em roomsState, corrida com o webhook
-// room_started, ver server.js), o próximo tick do polling (8s depois,
-// modo monitor) tenta reportar esse MESMO valor de novo, em vez de achar
-// que já reportou. Devolve se deu certo, pro caso de janela (sem polling
-// nenhum) poder insistir também — ver reportNowPlayingWithRetry.
+// room_started, ver server.js), quem chamou reagenda a passada seguinte
+// com o intervalo curto e tenta reportar esse MESMO valor de novo, em vez
+// de achar que já reportou. Devolve se deu certo justamente pra isso.
 async function reportNowPlaying(
   mainWindow: BrowserWindow,
   roomCode: string,
-  info: NowPlaying | null
+  info: NowPlaying | null,
+  gen: number
 ): Promise<boolean> {
-  if (lastReported !== undefined && sameNowPlaying(info, lastReported)) return true
+  // Passada de um ciclo que já foi substituído: não reporta nada. Devolve
+  // `true` porque isto NÃO é falha — só não é mais a vez dela. Um `false`
+  // faria quem chamou reagendar uma tentativa rápida pra um ciclo que já
+  // não existe.
+  if (gen !== generation) return true
 
-  if (!mainWindow.isDestroyed()) {
+  const duplicate = lastReported !== undefined && sameNowPlaying(info, lastReported)
+  // Reafirmação periódica (ver REASSERT_INTERVAL_MS): o valor não mudou,
+  // mas já faz tempo demais desde o último "ok" do servidor pra confiar
+  // que ele ainda lembra. Só pra valor de verdade — reafirmar "nada
+  // sendo transmitido", que já é o padrão do servidor, seria uma chamada
+  // de rede pra dizer nada.
+  const reassert = info !== null && Date.now() - lastReportedAt >= REASSERT_INTERVAL_MS
+  if (duplicate && !reassert) return true
+
+  // O renderer só é avisado quando MUDA de verdade: o heartbeat manda o
+  // mesmo valor de novo pro servidor, e o footer do host não tem por que
+  // redesenhar por causa disso.
+  if (!duplicate && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('games:nowPlayingUpdate', info)
   }
 
-  const ok = await postGameReport(roomCode, info)
-  if (ok) lastReported = info
+  // O signal é capturado ANTES do await: o `stopPollingOnly` troca o
+  // controller por um novo, e o que interessa é o que estava valendo
+  // quando este POST saiu.
+  const ok = await postGameReport(roomCode, info, reportAbort.signal)
+  // Confere a geração DE NOVO: o POST leva tempo, e uma troca de fonte
+  // pode ter acontecido no meio dele. Gravar aqui sujaria o dedupe do
+  // ciclo novo com o valor do ciclo velho.
+  if (ok && gen === generation) {
+    lastReported = info
+    lastReportedAt = Date.now()
+  }
   return ok
 }
 
@@ -318,13 +428,36 @@ async function reportNowPlaying(
 // A normalização do nome do processo (vem sem `.exe`, a lista indexa com)
 // mora em `findGameByProcessName`, ver gameDetectableCache.ts.
 //
-// Sem polling de propósito, igual já era: a janela transmitida é fixa
-// durante a live (trocar de fonte passa por aqui de novo, ver
-// handleTransmissionSourceChanged), então não tem o que re-detectar. Isso
-// vale mesmo com a troca automática de janela (2026-09-10,
-// gameWindowFollow.ts): ela também passa por
-// handleTransmissionSourceChanged, e como cliente e jogo caem na MESMA
-// entrada da lista, o nome reportado nem muda — o `sameNowPlaying`
+// COM POLLING DE 8s DESDE 2026-09-24 (era uma chamada só, no início da
+// transmissão). O argumento de antes era que a janela transmitida é fixa
+// durante a live, então não teria o que re-detectar. Duas coisas
+// derrubaram isso:
+//
+//   - a RESPOSTA pode mudar sem a janela mudar. O jogo da Steam ainda
+//     está subindo quando a transmissão começa, a biblioteca local ainda
+//     não foi lida, a lista do Discord ainda não terminou de baixar — em
+//     qualquer um desses a primeira passada devolve o título da janela e
+//     a segunda já devolve o jogo;
+//   - e, principalmente, sem polling não havia SEGUNDA CHANCE DE
+//     ENTREGA. Um report que não colasse dentro da janela curta de retry
+//     se perdia pra sempre, e o tile de quem assiste ficava vazio pelo
+//     resto da live. Era o buraco mais fácil de cair de todos.
+//
+// O que NÃO entrou junto foi varrer todos os processos da máquina como o
+// monitor faz (decisão do usuário, 2026-09-24): a pergunta aqui é sobre
+// a JANELA escolhida, e é justamente essa amarração que impede uma
+// janela do Chrome de virar "Jogando: <jogo aberto atrás>".
+//
+// A passada é barata de propósito, porque roda a cada 8s: o ícone
+// (windowIcon.ts) e a biblioteca da Steam (steamLibrary.ts) têm cache
+// por caminho de executável, e o resto é lookup em mapa. O `reg.exe` só
+// é tocado no caso raro de a janela ser comprovadamente de um jogo da
+// Steam E a biblioteca local estar ilegível.
+//
+// A troca automática de janela (2026-09-10, gameWindowFollow.ts) não
+// muda nada disso: ela passa por handleTransmissionSourceChanged, que
+// reinicia o ciclo com a janela nova — e como cliente e jogo caem na
+// MESMA entrada da lista, o nome reportado nem muda. O `sameNowPlaying`
 // deduplica e o viewer vê "Jogando: X" contínuo através da troca.
 async function detectWindowNowPlaying(
   windowTitle: string,
@@ -389,34 +522,23 @@ function isSteamGamePath(processPath?: string | null): boolean {
   return processPath.toLowerCase().replace(/\//g, '\\').includes('\\steamapps\\')
 }
 
-// Captura de JANELA não tem polling (o título não muda sozinho) — só uma
-// chamada, no início da transmissão. Sem retry, essa chamada corria risco
-// real de se perder pra sempre numa corrida com o webhook room_started
-// (o Electron chama isso logo após spawnar o processo GStreamer, mas a
-// sala só existe pro LiveKit quando o WHIP começa a publicar de verdade —
-// pode demorar mais que essa primeira tentativa). Insiste algumas vezes
-// com um intervalo curto antes de desistir.
-async function reportNowPlayingWithRetry(
-  mainWindow: BrowserWindow,
-  roomCode: string,
-  info: NowPlaying
-): Promise<void> {
-  const MAX_ATTEMPTS = 6
-  const RETRY_DELAY_MS = 1500
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const ok = await reportNowPlaying(mainWindow, roomCode, info)
-    if (ok) return
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
-  }
-}
-
 function stopPollingOnly(): void {
+  // Antes de qualquer outra coisa: invalida as passadas em voo do ciclo
+  // anterior, que podem estar no meio de um await agora mesmo (uma
+  // detecção, um POST). Ver `generation` lá em cima.
+  generation++
+  // Derruba o POST que estiver em voo e arma um controller limpo pro
+  // ciclo seguinte (o `stopGameDetection` reporta o `null` logo depois
+  // deste stop, e precisa de um signal válido).
+  reportAbort.abort()
+  reportAbort = new AbortController()
   if (pollTimer) {
-    clearInterval(pollTimer)
+    clearTimeout(pollTimer)
     pollTimer = null
   }
+  currentCycle = null
   lastReported = undefined
+  lastReportedAt = 0
   activeRoomCode = null
 }
 
@@ -432,33 +554,42 @@ function stopPollingOnly(): void {
 // isto aqui é o segundo cinto, e vale pra qualquer outro jeito de o
 // report se perder (um POST que falhou, uma sala recriada).
 //
-// Não dá pra só esperar o polling: ele deduplica por VALOR (`lastReported`
-// abaixo), e depois de um restart o valor não mudou — o host ficaria
-// calado pra sempre. Por isso o dedupe é zerado antes de reenviar. E no
-// modo JANELA não existe polling nenhum, então sem isto não havia
-// segunda chance.
-export function resendNowPlayingAfterReconnect(mainWindow: BrowserWindow): void {
+// Não dá pra só esperar o polling chegar: ele deduplica por VALOR
+// (`lastReported`), e depois de um restart o valor não mudou. Por isso
+// aqui o dedupe é derrubado — mas SEM abrir um caminho de report
+// paralelo, que era o jeito antigo (um `reportNowPlayingWithRetry`
+// avulso correndo junto do polling) e uma fonte de corrida por si só.
+// Agora só antecipa a passada que já estava agendada.
+//
+// O heartbeat do `reportNowPlaying` (REASSERT_INTERVAL_MS) cobre o mesmo
+// buraco sozinho, com até um minuto de atraso; isto aqui é o atalho pro
+// caso em que o app SABE que algo aconteceu.
+export function resendNowPlayingAfterReconnect(): void {
   // `undefined` = nada reportado ainda; `null` = reportado como "sem
   // jogo", que é o padrão do servidor — em nenhum dos dois há o que
-  // recuperar.
-  if (!activeRoomCode || !lastReported) return
+  // recuperar. Sem ciclo em pé, não há transmissão nenhuma.
+  if (!activeRoomCode || !lastReported || !currentCycle) return
 
-  const roomCode = activeRoomCode
-  const info = lastReported
-  lastReported = undefined
+  lastReportedAt = 0
 
-  // Com retry: o socket voltar não garante que a sala já existe de novo
-  // no servidor (ele reconstrói as salas do LiveKit no boot, e o webhook
-  // pode chegar depois).
-  void reportNowPlayingWithRetry(mainWindow, roomCode, info)
+  // Sem timer armado = já tem uma passada em voo. Ela reagenda a próxima
+  // sozinha ao terminar, e com o `lastReportedAt` zerado essa próxima já
+  // reafirma. Nada a fazer aqui além de ter zerado.
+  if (!pollTimer) return
+
+  clearTimeout(pollTimer)
+  pollTimer = null
+  currentCycle()
 }
 
 // Chamado sempre que uma transmissão inicia ou troca de fonte (item 13,
-// UpdateTransmissionModal) — decide se é caso de detecção via polling
-// (monitor inteiro) ou só usar o título da janela direto (captura de
-// janela específica, sem detecção nenhuma), reiniciando do zero em
-// qualquer um dos dois casos (cobre trocar de monitor pra janela ou
-// vice-versa).
+// UpdateTransmissionModal), inclusive na troca automática de janela
+// (gameWindowFollow.ts) — monta o ciclo de detecção+report pra fonte
+// nova e o reinicia do zero, cobrindo trocar de monitor pra janela e
+// vice-versa.
+//
+// Os dois modos rodam o MESMO ciclo desde 2026-09-24; o que muda entre
+// eles é só a função de detecção e a existência de um fallback de nome.
 export async function handleTransmissionSourceChanged(
   mainWindow: BrowserWindow,
   roomCode: string,
@@ -472,22 +603,12 @@ export async function handleTransmissionSourceChanged(
   }
 ): Promise<void> {
   stopPollingOnly()
-  // Depois do stop, que zera isto junto com o resto do estado do ciclo
-  // anterior.
+  // Depois do stop, que zera o estado do ciclo anterior e incrementa o
+  // `generation` — o número que ESTA passada carrega daqui pra frente.
+  const myGeneration = generation
   activeRoomCode = roomCode
 
-  if (captureArg.name === 'window-handle') {
-    await reportNowPlayingWithRetry(
-      mainWindow,
-      roomCode,
-      await detectWindowNowPlaying(
-        captureArg.windowTitle ?? 'Janela',
-        captureArg.windowProcessName,
-        captureArg.windowProcessPath
-      )
-    )
-    return
-  }
+  const isWindow = captureArg.name === 'window-handle'
 
   // Pedido do usuário (2026-09-03): transmitindo um monitor inteiro sem
   // NENHUM jogo detectado, mostra o nome do próprio monitor escolhido
@@ -497,31 +618,77 @@ export async function handleTransmissionSourceChanged(
   // `kind: 'screen'` desde 2026-09-05 (era 'window'): o rótulo exibido
   // continua o mesmo, mas o footer precisa saber que é uma TELA pra
   // escolher o ícone do placeholder (monitor, não janela).
-  const monitorFallback: NowPlaying | null = captureArg.sourceName
-    ? { kind: 'screen', name: captureArg.sourceName, iconUrl: null }
-    : null
+  //
+  // Janela não tem equivalente disso porque não precisa:
+  // `detectWindowNowPlaying` nunca devolve null — no pior caso devolve o
+  // título da janela com o placeholder.
+  const monitorFallback: NowPlaying | null =
+    !isWindow && captureArg.sourceName
+      ? { kind: 'screen', name: captureArg.sourceName, iconUrl: null }
+      : null
 
-  // Pedido do usuário (2026-09-03): reporta esse fallback JÁ, sem
+  const detect = isWindow
+    ? (): Promise<NowPlaying | null> =>
+        detectWindowNowPlaying(
+          captureArg.windowTitle ?? 'Janela',
+          captureArg.windowProcessName,
+          captureArg.windowProcessPath
+        )
+    : detectNowPlaying
+
+  // UMA PASSADA POR VEZ, encadeada por setTimeout em vez de setInterval
+  // (2026-09-24). Duas coisas saem de graça dessa forma:
+  //
+  //   - nunca existem dois POSTs em voo pra mesma sala, então não há
+  //     ordem de chegada pra dar errado. Antes o fallback de monitor
+  //     saía sem await junto da primeira detecção, e o fallback chegando
+  //     DEPOIS do jogo deixava o tile preso em "Screen 1" pelo resto da
+  //     live — localmente o app achava que já tinha reportado o jogo, e
+  //     o dedupe calava todos os ticks seguintes;
+  //   - o retry deixa de ter teto. Antes eram 6 tentativas de 1,5s:
+  //     passou disso, o modo JANELA (que não tinha polling nenhum)
+  //     perdia a informação pra sempre. Agora um report que não cola só
+  //     adianta a passada seguinte.
+  // Falhas seguidas de report neste ciclo — só pra decidir entre o
+  // intervalo curto e o normal, ver FAST_RETRY_ATTEMPTS.
+  let consecutiveFailures = 0
+
+  const runCycle = (): void => {
+    void (async () => {
+      if (generation !== myGeneration) return
+      let nextDelay = POLL_INTERVAL_MS
+      try {
+        const info = (await detect()) ?? monitorFallback
+        // Uma troca de fonte pode ter acontecido durante a detecção.
+        if (generation !== myGeneration) return
+        const ok = await reportNowPlaying(mainWindow, roomCode, info, myGeneration)
+        consecutiveFailures = ok ? 0 : consecutiveFailures + 1
+        if (!ok && consecutiveFailures <= FAST_RETRY_ATTEMPTS) nextDelay = RETRY_DELAY_MS
+      } catch (err) {
+        console.error(`Erro ao detectar/reportar jogo/janela da sala ${roomCode}:`, err)
+      }
+      // O ciclo não pode parar por causa de uma passada que deu errado:
+      // reagenda sempre, e é isso que garante a segunda chance de
+      // entrega até a transmissão acabar.
+      if (generation !== myGeneration) return
+      pollTimer = setTimeout(runCycle, nextDelay)
+    })()
+  }
+  currentCycle = runCycle
+
+  // Pedido do usuário (2026-09-03): reporta o fallback do monitor JÁ, sem
   // esperar a detecção terminar (Steam/tasklist, ~1s) — o título (AO
-  // VIVO/código) já aparece assim que a sala é criada, então o
-  // subtítulo ficava vazio por um instante até a primeira detecção
-  // resolver. Reportar o nome do monitor de cara faz os dois aparecerem
-  // juntos; `tick()` abaixo roda em seguida e substitui isso quase na
-  // hora se achar um jogo de verdade (o dedupe do reportNowPlaying evita
-  // reenviar à toa quando o resultado bate com esse mesmo fallback).
+  // VIVO/código) já aparece assim que a sala é criada, então o subtítulo
+  // ficava vazio por um instante até a primeira detecção resolver.
+  //
+  // COM await desde 2026-09-24 (era fire-and-forget): o custo de esperar
+  // é uma ida e volta de HTTP, o da corrida era o tile travar no nome do
+  // monitor pelo resto da live. Ver o comentário do `runCycle`.
   if (monitorFallback) {
-    reportNowPlaying(mainWindow, roomCode, monitorFallback).catch((err) =>
-      console.error(`Erro ao reportar fallback de monitor pra sala ${roomCode}:`, err)
-    )
+    await reportNowPlaying(mainWindow, roomCode, monitorFallback, myGeneration)
   }
 
-  const tick = async (): Promise<void> => {
-    const info = (await detectNowPlaying()) ?? monitorFallback
-    await reportNowPlaying(mainWindow, roomCode, info)
-  }
-
-  await tick()
-  pollTimer = setInterval(tick, POLL_INTERVAL_MS)
+  runCycle()
 }
 
 // Chamado ao parar a transmissão (gstreamer:stop) — limpa o polling E
@@ -531,7 +698,10 @@ export async function stopGameDetection(
   roomCode: string | null
 ): Promise<void> {
   stopPollingOnly()
-  if (roomCode) await reportNowPlaying(mainWindow, roomCode, null)
+  // `generation` já foi incrementado pelo stop acima, então esta chamada
+  // passa pelo guard — e qualquer passada do ciclo anterior que ainda
+  // esteja em voo não passa, que é exatamente o que se quer aqui.
+  if (roomCode) await reportNowPlaying(mainWindow, roomCode, null, generation)
 }
 
 // Usado no fechamento abrupto do app (stopForAppQuit, ver

@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { setupAuthHandlers } from './auth'
 import { setupSessionHandlers } from './session'
 import { setupUsersHandlers } from './users'
+import { setupChatHandlers } from './chat'
 import { destroyOverlay, setupOverlayHandlers } from './overlay'
 import { destroyPopin, popinOpenHandler, setupPopinHandlers } from './popin'
 import { setupScreenCapture } from './screenCapture'
@@ -139,6 +140,7 @@ app.whenReady().then(() => {
   setupAuthHandlers()
   setupSessionHandlers()
   setupUsersHandlers()
+  setupChatHandlers()
   setupOverlayHandlers()
   setupScreenCapture()
   setupLivekitHandlers()

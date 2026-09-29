@@ -1,30 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ChevronDown,
+  ChevronRight,
   Eye,
   EyeOff,
   Lock,
+  MessageSquare,
+  MessageSquareOff,
   SlidersHorizontal,
   Square,
   Tv,
-  UserMinus,
-  Users
+  UserMinus
 } from 'lucide-react'
 import { TransmissionSettings } from '../lib/transmissionSettings'
 import { PresenceMap, RoomInfo } from '../lib/useRooms'
 import { NowPlayingInfo } from '../lib/nowPlaying'
 import { AuthUser } from '../lib/authUser'
 import { ViewerAudioState } from '../lib/useViewer'
+import { ChatRoomState } from '../lib/useLiveChat'
 import { RawTrackStats } from '../lib/useTrackStats'
 import UpdateTransmissionModal from '../components/UpdateTransmissionModal'
 import SettingsModal from '../components/SettingsModal'
 import HostPreviewTile from '../components/HostPreviewTile'
 import ViewerTile from '../components/ViewerTile'
 import LiveTimer from '../components/LiveTimer'
-import UserAvatar from '../components/UserAvatar'
 import AppLeftSidebar from '../components/AppLeftSidebar'
 import RoomDetailsSidebar from '../components/RoomDetailsSidebar'
+import LiveChat from '../components/LiveChat'
 import UsersSidebar from '../components/UsersSidebar'
+import ViewerAvatarRow from '../components/ViewerAvatarRow'
+import Tooltip from '../components/Tooltip'
 import JoinByCodeModal from '../components/JoinByCodeModal'
 import NowPlayingArt from '../components/NowPlayingArt'
 import { AvatarRef } from '../lib/avatar'
@@ -112,6 +116,19 @@ interface HomeScreenProps {
   // como o upload avisa que está em andamento sem sumir no meio (ver
   // useSnackbar.ts).
   onNotify: (message: string, isError?: boolean, options?: { durationMs?: number }) => void
+  // Item 21 do roadmap: chat temporário da live (2026-09-23).
+  //
+  // `chatRooms` vem inteiro, e não só o da minha sala, porque a ficha
+  // de uma sala ASSISTIDA (RoomDetailsSidebar) também tem chat — são
+  // duas telas lendo do mesmo mapa. Sala sem chat aberto simplesmente
+  // não está no mapa.
+  chatRooms: Record<string, ChatRoomState>
+  onSendChat: (roomCode: string, text: string) => Promise<boolean>
+  onChatRead: (roomCode: string) => void
+  // Silenciar no chat: só vale na MINHA live, e o servidor recusa com
+  // 403 quem não for o host — o botão sumir da UI é conveniência, não a
+  // trava.
+  onSetChatMuted: (roomCode: string, username: string, muted: boolean) => void
   onStopTransmission: () => Promise<void>
   // Item 13 do roadmap: troca resolução/FPS/fonte sem derrubar a sala —
   // mata e sobe de novo o processo GStreamer com os parâmetros novos
@@ -173,6 +190,10 @@ function HomeScreen({
   transmissionSettings,
   transmissionError,
   onNotify,
+  chatRooms,
+  onSendChat,
+  onChatRead,
+  onSetChatMuted,
   onStopTransmission,
   onUpdateTransmission,
   hostPreviewEnabled,
@@ -253,6 +274,7 @@ function HomeScreen({
       onNotify(getErrorMessage(err, 'Não foi possível expulsar este usuário'), true)
     }
   }
+
 
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   // O PIN de sala saiu em 2026-09-10, e com ele o modal que pedia a
@@ -433,6 +455,66 @@ function HomeScreen({
 
   const myViewers = myRoom?.participants.filter((p) => p !== user.name) ?? []
 
+  // --- Chat da live (item 21, 2026-09-23) -------------------------------
+  //
+  // DOIS estados, não três: ou o chat é a LINHA acima do rodapé
+  // (`.host-chat-bar` — o tile de espectadores + o botão que abre), ou é
+  // a BARRA LATERAL DIREITA inteira (`.host-chat-dock`), que vai do topo
+  // da área de conteúdo até a borda de cima do rodapé.
+  //
+  // O que importa aqui é que os dois ocupam espaço RESERVADO: o chat
+  // ESTREITA (aberto) ou ENCURTA (fechado) a área de exibição das lives
+  // em vez de flutuar por cima dela. Só o EIXO muda, e com ele o lugar de
+  // cada casca na árvore — a barra é irmã da grade dentro da
+  // `.watch-row`, a linha é irmã do rodapé dentro da `.watch-column`.
+  //
+  // A linha deitada (2026-09-25, desenho do usuário) substituiu a
+  // lingueta vertical encostada na borda direita, que por sua vez já
+  // tinha substituído (2026-09-23) um painelzinho intermediário em cima
+  // do rodapé. O caminho todo foi na mesma direção: menos peças, e o
+  // aviso de mensagem nova cada vez mais perto dos outros controles da
+  // transmissão.
+  //
+  // Começa FECHADO e nunca abre sozinho, ao contrário da lista de
+  // espectadores logo acima: o host está transmitindo, e uma coluna
+  // abrindo por conta própria em cima da tela dele no meio de uma partida
+  // seria um estorvo. Quem decide é o clique — o badge de não lidas é o
+  // aviso de que tem coisa nova esperando.
+  const [chatOpen, setChatOpen] = useState(false)
+
+  // Live nova, chat fechado de novo (mesmo espírito do `viewersExpanded`).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setChatOpen(false)
+  }, [roomCode])
+
+  const myChat = myRoomCode ? (chatRooms[myRoomCode] ?? null) : null
+
+  // Zera o badge enquanto o chat está aberto. Depende de `unread` de
+  // propósito: com o painel aberto, mensagem nova já está sendo lida na
+  // hora, então o contador não pode ficar subindo por trás.
+  useEffect(() => {
+    if (chatOpen && myRoomCode) onChatRead(myRoomCode)
+  }, [chatOpen, myRoomCode, onChatRead, myChat?.unread])
+
+  // O servidor manda a lista de silenciados por NOME e pra todo mundo da
+  // sala (2026-09-23), então não é mais preciso cruzar com o diretório de
+  // contas pra descobrir o id de cada um.
+  //
+  // Função simples, sem `useCallback`: é o padrão do arquivo (ver
+  // `handleKick` acima), e envolver em `useCallback` fazia o React
+  // Compiler desistir de otimizar a tela inteira.
+  function isViewerMuted(name: string): boolean {
+    return myChat?.mutedNames.has(name) ?? false
+  }
+
+  function onToggleChatMute(name: string, muted: boolean): void {
+    if (!myRoomCode) return
+    onSetChatMuted(myRoomCode, name, muted)
+    onNotify(muted ? `${name} foi silenciado no chat` : `${name} voltou a falar no chat`)
+  }
+
+
   // Alimenta a sobreposição de viewers (2026-09-10). Quem decide é AQUI
   // e não o main, porque as três coisas necessárias já estão juntas
   // nesta tela: a preferência do usuário, se há live no ar e quem está
@@ -473,28 +555,14 @@ function HomeScreen({
       : null
 
 
-  // Pedido do usuário (2026-09-04): a lista de quem está assistindo a
-  // MINHA live expande sozinha automaticamente só na PRIMEIRA vez que
-  // alguém entra na live atual — depois disso (mesmo que a lista seja
-  // recolhida de novo), entradas/saídas seguintes nunca mais forçam a
-  // expansão, só o botão de seta no header controla. `viewersAutoExpandedRef`
-  // guarda se isso já aconteceu para a live atual; reseta a cada NOVA
-  // live (roomCode muda) — ver os dois efeitos abaixo.
-  const [viewersExpanded, setViewersExpanded] = useState(false)
-  const viewersAutoExpandedRef = useRef(false)
-
-  useEffect(() => {
-    viewersAutoExpandedRef.current = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setViewersExpanded(false)
-  }, [roomCode])
-
-  useEffect(() => {
-    if (myViewers.length === 0 || viewersAutoExpandedRef.current) return
-    viewersAutoExpandedRef.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setViewersExpanded(true)
-  }, [myViewers.length])
+  // A EXPANSÃO AUTOMÁTICA DA LISTA DE ESPECTADORES SAIU (2026-09-23).
+  //
+  // Aqui viviam `viewersExpanded`, o `viewersAutoExpandedRef` e os dois
+  // efeitos que abriam a aba sozinha na primeira pessoa a entrar e a
+  // fechavam quando a live voltava a ficar vazia. Nada disso tem mais
+  // sujeito, porque a aba não existe: quem está assistindo a minha live é
+  // a linha de avatares no topo da barra do chat, que não abre nem fecha
+  // por conta própria — ela está lá sempre que a barra está.
 
   // Item 35 do roadmap: som de entrada/saída — minha própria transmissão
   // (roomCode, se eu for o host) + toda sala que eu esteja assistindo
@@ -602,6 +670,8 @@ function HomeScreen({
             liveAvatars={userAvatars}
             presence={presence}
             currentUserId={user.id}
+            pinned={usersDirectory.pinned}
+            onTogglePin={usersDirectory.setPinned}
             myRoomCode={myRoomCode}
             liveReadyForInvites={liveReadyForInvites}
             pendingInvites={inviteTracking.pending}
@@ -625,6 +695,13 @@ function HomeScreen({
             // nao derruba nada — quem segura a live e `viewerRoomCodes`.
             onWatch={() => handleRoomTileClick(detailsRoom)}
             onLeave={() => onLeaveRoom(detailsRoom.name)}
+            // Chat só existe pra quem está assistindo (decisão do
+            // usuário): sem estar na live, `chatRooms` nem tem a sala —
+            // o useLiveChat só abre as que estão sendo assistidas.
+            chat={chatRooms[detailsRoom.name] ?? null}
+            selfName={user.name}
+            onSendChat={(text) => onSendChat(detailsRoom.name, text)}
+            onChatOpened={() => onChatRead(detailsRoom.name)}
           />
         )}
 
@@ -641,64 +718,251 @@ function HomeScreen({
             embaixo) é o que garante isso — os dois viram irmãos dentro
             dele em vez de o footer ser irmão de `.home-body` inteiro. */}
         <div className="watch-column">
-          <main className="watch-area">
-            {/* Item 23 do roadmap: uma sala assistida por vez virou N —
-              cada código em viewerRoomCodes é um tile próprio, todos
-              simultâneos, dividindo o mesmo .watch-grid junto do preview
-              do host (item 15), se ligado. */}
-            <div className={`watch-grid${focusedTile ? ' watch-grid-has-focus' : ''}`}>
-              {hostPreviewEnabled && transmitting && (
-                <HostPreviewTile
-                  attachVideo={attachHostPreviewVideo}
-                  fetchStats={getHostPreviewStats}
-                  getBitrate={getHostPreviewBitrate}
-                  focused={focusedTile === 'host-preview'}
-                  onToggleFocus={() => toggleFocus('host-preview')}
-                />
-              )}
+          {/* A LINHA de conteúdo: a grade de lives e, quando o host fixa
+              o chat no pin (2026-09-23), a barra lateral direita dele.
 
-              {tilesVisiveis.map((code) => {
-                const room = rooms.find((r) => r.name === code)
-                const audio = viewerAudioSettings[code] ?? { volume: 1, muted: false }
-                // Item 28 do roadmap: quem mais está assistindo ESSA live —
-                // mesmo filtro do item 21 (exclui só o host, que publica,
-                // não assiste; inclui o próprio usuário logado, que também
-                // conta como alguém assistindo).
-                const roomViewers = room?.participants.filter((p) => p !== room.hostName) ?? []
-                return (
-                  <ViewerTile
-                    key={code}
-                    hostName={room?.hostName ?? '???'}
-                    participants={roomViewers}
-                    volume={audio.volume}
-                    muted={audio.muted}
-                    onSetVolume={(volume) => onSetViewerVolume(code, volume)}
-                    onSetMuted={(muted) => onSetViewerMuted(code, muted)}
-                    onLeave={() => onLeaveRoom(code)}
-                    attachVideo={getAttachViewerVideo(code)}
-                    attachAudioContainer={getAttachViewerAudioContainer(code)}
-                    fetchStats={getViewerStatsFetcher(code)}
-                    getBitrate={getViewerBitrateFetcher(code)}
-                    focused={focusedTile === code}
-                    onToggleFocus={() => toggleFocus(code)}
-                    onPopin={() => onPopinRoom(code)}
+              Este wrapper existe só por causa dessa barra, e o lugar dele
+              importa: ele fica DENTRO da `.watch-column`, acima do
+              rodapé, porque a barra vai "do topo até o começo do footer"
+              — o rodapé continua atravessando a largura inteira da área
+              de lives, como sempre.
+
+              Sendo irmãos numa linha flex, a grade cede largura de
+              verdade pra barra em vez de ficar por baixo dela — a mesma
+              relação que a barra de detalhes da sala tem com a grade, do
+              outro lado. */}
+          <div className="watch-row">
+            <main className="watch-area">
+              {/* Item 23 do roadmap: uma sala assistida por vez virou N —
+                cada código em viewerRoomCodes é um tile próprio, todos
+                simultâneos, dividindo o mesmo .watch-grid junto do preview
+                do host (item 15), se ligado. */}
+              <div className={`watch-grid${focusedTile ? ' watch-grid-has-focus' : ''}`}>
+                {hostPreviewEnabled && transmitting && (
+                  <HostPreviewTile
+                    attachVideo={attachHostPreviewVideo}
+                    fetchStats={getHostPreviewStats}
+                    getBitrate={getHostPreviewBitrate}
+                    focused={focusedTile === 'host-preview'}
+                    onToggleFocus={() => toggleFocus('host-preview')}
                   />
-                )
-              })}
+                )}
 
-              {tilesVisiveis.length === 0 && !(hostPreviewEnabled && transmitting) && (
-                <div className="watch-empty">
-                  <div className="watch-empty-icon">
-                    <Tv size={32} />
+                {tilesVisiveis.map((code) => {
+                  const room = rooms.find((r) => r.name === code)
+                  const audio = viewerAudioSettings[code] ?? { volume: 1, muted: false }
+                  // Item 28 do roadmap: quem mais está assistindo ESSA live —
+                  // mesmo filtro do item 21 (exclui só o host, que publica,
+                  // não assiste; inclui o próprio usuário logado, que também
+                  // conta como alguém assistindo).
+                  const roomViewers = room?.participants.filter((p) => p !== room.hostName) ?? []
+                  return (
+                    <ViewerTile
+                      key={code}
+                      hostName={room?.hostName ?? '???'}
+                      participants={roomViewers}
+                      volume={audio.volume}
+                      muted={audio.muted}
+                      onSetVolume={(volume) => onSetViewerVolume(code, volume)}
+                      onSetMuted={(muted) => onSetViewerMuted(code, muted)}
+                      onLeave={() => onLeaveRoom(code)}
+                      attachVideo={getAttachViewerVideo(code)}
+                      attachAudioContainer={getAttachViewerAudioContainer(code)}
+                      fetchStats={getViewerStatsFetcher(code)}
+                      getBitrate={getViewerBitrateFetcher(code)}
+                      focused={focusedTile === code}
+                      onToggleFocus={() => toggleFocus(code)}
+                      onPopin={() => onPopinRoom(code)}
+                    />
+                  )
+                })}
+
+                {tilesVisiveis.length === 0 && !(hostPreviewEnabled && transmitting) && (
+                  <div className="watch-empty">
+                    <div className="watch-empty-icon">
+                      <Tv size={32} />
+                    </div>
+                    <p className="watch-empty-title">Nenhuma live sendo assistida</p>
+                    <p className="watch-empty-subtitle">
+                      Clique em uma sala na lista ao lado pra assistir.
+                    </p>
                   </div>
-                  <p className="watch-empty-title">Nenhuma live sendo assistida</p>
-                  <p className="watch-empty-subtitle">
-                    Clique em uma sala na lista ao lado pra assistir.
-                  </p>
+                )}
+              </div>
+            </main>
+
+            {/* CHAT DO HOST — o mesmo `myChat` e o mesmo `LiveChat` da
+                ficha da sala, só com outra casca. Aberto, o chat é SEMPRE
+                isto aqui: a aba do rodapé abre direto na barra lateral
+                (não há mais um painel intermediário). Fechado, nada disto
+                existe e a grade recupera a largura.
+
+                `myChat` já é null fora de uma transmissão minha (ver
+                `myRoomCode`), então não precisa checar `transmitting` de
+                novo aqui. */}
+            {myChat && chatOpen && (
+              <aside className="host-chat-dock">
+                {/* QUEM ESTÁ ASSISTINDO, no topo (2026-09-23, pedido do
+                    usuário) — o mesmo arranjo do estado colapsado da ficha
+                    de uma sala assistida: "Assistindo" + contador numa
+                    linha, fila de avatares na de baixo.
+
+                    Isto substitui a aba de espectadores que vivia no
+                    rodapé. A lista que o host precisa é a da live dele, e
+                    ela pertence ao mesmo lugar que o chat dela. */}
+                <div className="host-chat-dock-header">
+                  <span className="room-details-label">
+                    Assistindo
+                    {myViewers.length > 0 && (
+                      <span className="room-details-count">{myViewers.length}</span>
+                    )}
+                  </span>
+                  {/* ">" e não uma seta pra baixo: aqui o movimento é
+                      horizontal — a barra sai pela direita e vira a
+                      lingueta de onde veio. */}
+                  <button
+                    type="button"
+                    className="participants-collapse-button"
+                    onClick={() => setChatOpen(false)}
+                    aria-label="Recolher chat ao vivo"
+                    title="Recolher"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+
+                {myViewers.length === 0 ? (
+                  <p className="host-chat-dock-empty">Ninguém assistindo ainda.</p>
+                ) : (
+                  <ViewerAvatarRow
+                    names={myViewers}
+                    userAvatars={userAvatars}
+                    apiBaseUrl={apiBaseUrl}
+                    mutedNames={myChat.mutedNames}
+                    activeName={userCard?.name ?? null}
+                    onViewerClick={openUserCard}
+                    // Botão direito abre "Expulsar"/"Silenciar" — só aqui,
+                    // que é a única lista em que eu sou o host.
+                    onViewerContextMenu={(event, name) => {
+                      // Sem isto o Electron abre o menu de contexto padrão
+                      // do Chromium por cima.
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setUserCard(null)
+                      setKickMenu({ name, position: { x: event.clientX, y: event.clientY } })
+                    }}
+                  />
+                )}
+
+                <span className="host-chat-dock-title">
+                  <MessageSquare size={14} />
+                  Chat ao vivo
+                </span>
+                <LiveChat
+                  messages={myChat.messages}
+                  loading={myChat.loading}
+                  mutedNames={myChat.mutedNames}
+                  userAvatars={userAvatars}
+                  apiBaseUrl={apiBaseUrl}
+                  onSend={(text) => onSendChat(myRoomCode as string, text)}
+                  selfName={user.name}
+                  onToggleMute={onToggleChatMute}
+                />
+              </aside>
+            )}
+          </div>
+
+          {/* A BARRA FECHADA (2026-09-25, desenho do usuário): uma LINHA
+              deitada logo acima do rodapé, alinhada à direita — o tile de
+              espectadores e, à direita dele, o botão que abre o chat.
+
+              Ela substituiu a lingueta vertical encostada na borda que
+              vivia dentro da `.watch-row`. A mudança de eixo é o motivo
+              de ela ter mudado de lugar na árvore: como linha, o espaço
+              que ela reserva é ALTURA, então ela é irmã do rodapé dentro
+              da `.watch-column`, e não irmã da grade dentro da
+              `.watch-row`. O princípio é o mesmo de antes — a área de
+              exibição das lives respeita esse espaço em vez de ficar por
+              baixo dele.
+
+              Fechado, o chat é isto; aberto, é a `.host-chat-dock` lá em
+              cima e esta linha inteira some (a grade recupera a altura, e
+              a barra entra com a animação de sempre). `myChat` já é null
+              fora de uma transmissão minha. */}
+          {myChat && !chatOpen && (
+            <div className="host-chat-bar">
+              {/* Sem ninguém assistindo o tile nem aparece (pedido do
+                  usuário) — uma caixa vazia não diria nada que a ausência
+                  dela já não diga, e o botão do chat fica sozinho na
+                  linha, que é o estado natural de uma live que acabou de
+                  começar. */}
+              {myViewers.length > 0 && (
+                <div className="host-chat-bar-viewers">
+                  <ViewerAvatarRow
+                    names={myViewers}
+                    userAvatars={userAvatars}
+                    apiBaseUrl={apiBaseUrl}
+                    // 10 e não os 11 do padrão: aqui a largura é livre
+                    // (o tile cresce com a fila), então o corte é uma
+                    // escolha de desenho do usuário e não uma medida.
+                    max={10}
+                    mutedNames={myChat.mutedNames}
+                    activeName={userCard?.name ?? null}
+                    onViewerClick={openUserCard}
+                    onViewerContextMenu={(event, name) => {
+                      // Sem isto o Electron abre o menu de contexto
+                      // padrão do Chromium por cima.
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setUserCard(null)
+                      setKickMenu({ name, position: { x: event.clientX, y: event.clientY } })
+                    }}
+                  />
+                  {/* QUANTOS estão assistindo, na quina de cima do tile.
+                      O mesmo número que o cabeçalho da barra aberta
+                      mostra ao lado de "Assistindo": com a fila cortada
+                      em 10, ele é a única coisa que diz o total. */}
+                  <span className="host-chat-bar-count">
+                    {myViewers.length > 99 ? '99+' : myViewers.length}
+                  </span>
                 </div>
               )}
+
+              {/* O rótulo "Chat ao vivo" era TEXTO na lingueta vertical;
+                  aqui ele não cabe, então virou balão — e encolheu pra
+                  "Chat" (2026-09-25, pedido do usuário), que é o que cabe
+                  num balão num canto apertado da tela.
+
+                  No NOSSO tooltip e não no `title` do sistema, pelo mesmo
+                  motivo da fila de avatares (ver ViewerAvatarRow.tsx): o
+                  nativo demora ~1s, aparece no canto do cursor e não se
+                  parece com o resto do app.
+
+                  O número de não lidas NÃO entra aqui: ele já está no
+                  `aria-label`, e o balão é o rótulo do botão, não o aviso
+                  — quem avisa é o próprio botão pulsando. */}
+              <Tooltip label="Chat" placement="top">
+                <button
+                  type="button"
+                  className={
+                    myChat.unread > 0
+                      ? 'host-chat-bar-button host-chat-bar-button-unread'
+                      : 'host-chat-bar-button'
+                  }
+                  onClick={() => setChatOpen(true)}
+                  // O aviso de não lidas é só COR e movimento, sem texto
+                  // nenhum — quem usa leitor de tela depende deste rótulo.
+                  aria-label={
+                    myChat.unread > 0
+                      ? `Abrir chat ao vivo (${myChat.unread} não lidas)`
+                      : 'Abrir chat ao vivo'
+                  }
+                >
+                  <MessageSquare size={17} />
+                </button>
+              </Tooltip>
             </div>
-          </main>
+          )}
 
           {/* O RODAPÉ SÓ EXISTE COM LIVE NO AR (2026-09-18, pedido do
               usuário).
@@ -807,93 +1071,13 @@ function HomeScreen({
                 </span>
               ) : transmitting ? (
                 <div className="home-live-controls">
-                  {/* Item 18 do roadmap: tab que expande pra cima com os
-                    nomes de quem está assistindo a própria live — painel
-                    posicionado de forma absoluta (`bottom: 100%`) pra não
-                    empurrar os outros controles do lugar quando abre/
-                    fecha. Pedido do usuário (2026-09-04): trocou de HOVER
-                    pra estado de verdade (`viewersExpanded`) — expande
-                    sozinha só na primeira vez que alguém entra na live
-                    atual (ver efeitos acima), depois disso só o botão de
-                    seta no header abre/fecha. */}
-                  <div className="participants-tab-wrapper">
-                    {viewersExpanded ? (
-                      <div className="participants-panel">
-                        <div className="participants-panel-header">
-                          <span className="participants-count">
-                            <Users size={14} />
-                            {myViewers.length}
-                          </span>
-                          <button
-                            type="button"
-                            className="participants-collapse-button"
-                            onClick={() => setViewersExpanded(false)}
-                            aria-label="Recolher lista de espectadores"
-                          >
-                            <ChevronDown size={14} />
-                          </button>
-                        </div>
-                        {myViewers.length === 0 ? (
-                          <p className="participants-empty">Ninguém assistindo ainda.</p>
-                        ) : (
-                          <ul className="participants-list">
-                            {myViewers.map((viewerName) => (
-                              <li
-                                key={viewerName}
-                                className={
-                                  userCard?.name === viewerName
-                                    ? 'user-tile-active'
-                                    : undefined
-                                }
-                              >
-                                {/* Clique esquerdo abre a ficha; clique
-                                    DIREITO abre o menu com "Expulsar"
-                                    (2026-09-13). O menu só existe nesta
-                                    lista: é a única em que eu sou o host,
-                                    e só o host pode expulsar. */}
-                                <button
-                                  type="button"
-                                  className="user-tile-button"
-                                  onClick={(event) => openUserCard(event, viewerName)}
-                                  onContextMenu={(event) => {
-                                    // Sem isto o Electron abre o menu de
-                                    // contexto padrão do Chromium por cima.
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    setUserCard(null)
-                                    setKickMenu({
-                                      name: viewerName,
-                                      position: { x: event.clientX, y: event.clientY }
-                                    })
-                                  }}
-                                  aria-label={`Ver perfil de ${viewerName}`}
-                                >
-                                  <span className="mini-avatar">
-                                    <UserAvatar
-                                      avatar={userAvatars[viewerName]}
-                                      apiBaseUrl={apiBaseUrl}
-                                      size={13}
-                                    />
-                                  </span>
-                                  <span className="viewer-name">{viewerName}</span>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="participants-tab"
-                        onClick={() => setViewersExpanded(true)}
-                        aria-label="Ver quem está assistindo"
-                      >
-                        <Users size={14} />
-                        {myViewers.length}
-                      </button>
-                    )}
-                  </div>
+                  {/* A LISTA DE ESPECTADORES SAIU DAQUI (2026-09-23, pedido
+                      do usuário). Ela era uma aba deste rodapé, ao lado da
+                      do chat; agora as duas moram na mesma peça — os
+                      espectadores da minha live são o TOPO da barra do
+                      chat (ver `.host-chat-dock` lá em cima). Uma lista só,
+                      num lugar só, em vez de duas abas disputando o canto
+                      da tela do host. */}
                   <button
                     type="button"
                     className="icon-button"
@@ -994,6 +1178,19 @@ function HomeScreen({
         <ContextMenu
           position={kickMenu.position}
           items={[
+            // Silenciar vem ANTES de expulsar, e sem `danger`: é a
+            // ação mais branda das duas (a pessoa continua assistindo,
+            // só para de escrever), então é ela que deve estar no
+            // caminho de menor resistência.
+            {
+              label: isViewerMuted(kickMenu.name) ? 'Liberar no chat' : 'Silenciar no chat',
+              icon: isViewerMuted(kickMenu.name) ? (
+                <MessageSquare size={14} />
+              ) : (
+                <MessageSquareOff size={14} />
+              ),
+              onSelect: () => onToggleChatMute(kickMenu.name, !isViewerMuted(kickMenu.name))
+            },
             {
               label: 'Expulsar',
               icon: <UserMinus size={14} />,

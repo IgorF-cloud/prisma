@@ -6,7 +6,10 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  // `scripts/` é ferramental de build (JS simples, roda no Node antes do
+  // electron-vite), não código do app — as regras de TypeScript daqui
+  // pedem anotação de tipo que um .mjs não tem como ter.
+  { ignores: ['**/node_modules', '**/dist', '**/out', 'scripts/**'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

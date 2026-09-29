@@ -12,13 +12,28 @@ type UpdateCheckResult =
     }
   | { available: false; currentVersion: string }
 
+// Uma mensagem do chat da live (2026-09-23). Declarada aqui em vez de
+// importada de src/main/chat.ts seguindo o padrão já existente no
+// projeto (ver RoomInfo logo abaixo, duplicado em rooms.ts / preload /
+// index.d.ts): o preload não importa do main.
+interface ChatMessage {
+  id: string
+  from: string
+  text: string
+  at: number
+}
+
 interface RoomInfo {
   name: string
   hostName: string | null
   participants: string[]
   // Item 29 do roadmap: jogo (Steam ou lista do Discord) ou título da
   // janela sendo transmitida — null quando nada foi detectado/reportado.
-  game: { kind: 'game' | 'window'; name: string } | null
+  // O preload mantém a própria cópia de propósito (descreve a fronteira
+  // de IPC, não pode importar de dentro do main nem do renderer) — mas
+  // ela tinha ficado pra trás em 'screen' e `iconUrl`, os dois de
+  // 2026-09-05. Ver NowPlayingInfo em renderer/src/lib/nowPlaying.ts.
+  game: { kind: 'game' | 'window' | 'screen'; name: string; iconUrl?: string | null } | null
   // Item 42 do roadmap: quando a sala começou de verdade (epoch ms, vem
   // do LiveKit via server.js) — timer de duração da live.
   startedAt: number
@@ -90,6 +105,11 @@ const api = {
     list: () => ipcRenderer.invoke('users:list'),
     setPresence: (id: number, preference: 'available' | 'busy') =>
       ipcRenderer.invoke('users:setPresence', id, preference),
+    // Fixar/desfixar no topo da minha lista (2026-09-25). Só o id do
+    // OUTRO: quem fixa é sempre quem está logado, e o servidor sabe
+    // disso pelo token.
+    pin: (id: number) => ipcRenderer.invoke('users:pin', id),
+    unpin: (id: number) => ipcRenderer.invoke('users:unpin', id),
     invite: (roomName: string, userId: number) =>
       ipcRenderer.invoke('users:invite', roomName, userId),
     acceptInvite: (roomName: string) => ipcRenderer.invoke('users:acceptInvite', roomName),
@@ -130,6 +150,39 @@ const api = {
       ): void => callback(payload)
       ipcRenderer.on('rooms:inviteResult', listener)
       return () => ipcRenderer.removeListener('rooms:inviteResult', listener)
+    }
+  },
+  // Chat temporário da live (2026-09-23). MANDAR é HTTP (ver
+  // src/main/chat.ts); RECEBER desce pelo WebSocket de salas (ver
+  // src/main/rooms.ts) — mesmo desenho do convite.
+  chat: {
+    // Rejeita com a mensagem do servidor: 403 quando a pessoa foi
+    // silenciada ou já não está na sala, 429 quando mandou rápido demais.
+    send: (roomName: string, text: string) => ipcRenderer.invoke('chat:send', roomName, text),
+    // Pedido uma vez, ao entrar na sala — as últimas mensagens, pra quem
+    // chega no meio não ver um chat vazio.
+    history: (roomName: string) => ipcRenderer.invoke('chat:history', roomName),
+    // Silenciar/liberar alguém na MINHA live. Por nome, mesmo motivo do
+    // `users.kick`.
+    mute: (roomName: string, username: string, muted: boolean) =>
+      ipcRenderer.invoke('chat:mute', roomName, username, muted),
+    // Mensagem chegando. O próprio autor também recebe a dele.
+    onMessage: (callback: (payload: { roomName: string; message: ChatMessage }) => void) => {
+      const listener = (_e: unknown, payload: { roomName: string; message: ChatMessage }): void =>
+        callback(payload)
+      ipcRenderer.on('rooms:chat', listener)
+      return () => ipcRenderer.removeListener('rooms:chat', listener)
+    },
+    // O host me silenciou (ou me liberou) numa live.
+    onMuted: (
+      callback: (payload: { roomName: string; username: string; muted: boolean }) => void
+    ) => {
+      const listener = (
+        _e: unknown,
+        payload: { roomName: string; username: string; muted: boolean }
+      ): void => callback(payload)
+      ipcRenderer.on('rooms:chatMuted', listener)
+      return () => ipcRenderer.removeListener('rooms:chatMuted', listener)
     }
   },
   session: {

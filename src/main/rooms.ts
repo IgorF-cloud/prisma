@@ -4,7 +4,8 @@ import { API_BASE_URL } from './config'
 import { authHeader } from './apiToken'
 import { logEvent } from './debugLog'
 import { notifyUpdateAvailability } from './update'
-import { resendNowPlayingAfterReconnect } from './gameDetection'
+import { NowPlaying, resendNowPlayingAfterReconnect } from './gameDetection'
+import { ChatMessage } from './chat'
 
 // Roadmap item 43 — mesma union de src/main/auth.ts, duplicada aqui
 // seguindo o padrão já existente no projeto (ver RoomInfo, já duplicado
@@ -42,7 +43,13 @@ export interface RoomInfo {
   participants: string[]
   // Item 29 do roadmap: jogo (Steam/lista do Discord) ou título da janela
   // sendo transmitida — null quando nada foi detectado/reportado ainda.
-  game: { kind: 'game' | 'window'; name: string } | null
+  //
+  // IMPORTADO de gameDetection.ts desde 2026-09-24, em vez de redeclarado
+  // aqui: a cópia local tinha ficado pra trás em 'screen' e `iconUrl` (os
+  // dois de 2026-09-05), então este tipo mentia sobre o que passa pelo
+  // IPC. É o mesmo processo, não há fronteira nenhuma pra justificar a
+  // duplicata — ao contrário do preload, ver nowPlaying.ts no renderer.
+  game: NowPlaying | null
   // Item 42 do roadmap: quando a sala começou de verdade (epoch ms) — vem
   // do `creationTimeMs` do próprio LiveKit (ver server.js), não do
   // relógio de nenhuma máquina cliente. Usado pro timer de duração da
@@ -150,7 +157,7 @@ function connect(mainWindow: BrowserWindow): void {
     // pode não saber mais o que eu estou transmitindo. Não faz nada
     // quando não há transmissão, que é o caso deste `open` no login. Ver
     // gameDetection.ts.
-    resendNowPlayingAfterReconnect(mainWindow)
+    resendNowPlayingAfterReconnect()
   })
 
   socket.on('ping', () => markActivity())
@@ -172,6 +179,12 @@ function connect(mainWindow: BrowserWindow): void {
         result?: 'accepted' | 'declined' | 'expired'
         // Só na mensagem type: "version" (ver abaixo).
         version?: string
+        // Só na mensagem type: "chat" / "chatMuted" (ver abaixo).
+        message?: ChatMessage
+        // Quem foi silenciado/liberado. Note o "n" minúsculo: é um campo
+        // diferente do "userName" do inviteResult logo acima.
+        username?: string
+        muted?: boolean
       }
 
       // Uma versão nova do app foi publicada no painel admin
@@ -188,6 +201,38 @@ function connect(mainWindow: BrowserWindow): void {
       if (parsed.type === 'version') {
         logEvent('rooms', `servidor anunciou a versão ${parsed.version ?? '?'}`)
         void notifyUpdateAvailability(mainWindow)
+        return
+      }
+
+      // Chat temporário da live (2026-09-23). Desce por este mesmo
+      // socket, e não por data channel do LiveKit, porque o HOST não tem
+      // conexão nenhuma com a sala — quem publica por ele é o Ingress
+      // (GStreamer/WHIP), que só carrega mídia. Ver src/main/chat.ts.
+      //
+      // Repassado inteiro pro renderer; não mexe em estado de sala
+      // nenhum. O próprio autor também recebe a dele (o servidor ecoa de
+      // propósito), então o app nunca precisa de update otimista.
+      if (parsed.type === 'chat') {
+        if (!mainWindow.isDestroyed() && parsed.message) {
+          mainWindow.webContents.send('rooms:chat', {
+            roomName: parsed.roomName ?? '',
+            message: parsed.message
+          })
+        }
+        return
+      }
+
+      // O host me silenciou (ou me liberou) numa live. Serve pro app
+      // desabilitar o campo de texto em vez de deixar escrever e tomar
+      // 403 no envio.
+      if (parsed.type === 'chatMuted') {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('rooms:chatMuted', {
+            roomName: parsed.roomName ?? '',
+            username: parsed.username ?? '',
+            muted: parsed.muted === true
+          })
+        }
         return
       }
 

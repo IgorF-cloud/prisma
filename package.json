@@ -1,6 +1,6 @@
 {
   "name": "prisma-desktop",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Prisma — screen sharing app (Electron)",
   "main": "./out/main/index.js",
   "author": "Igor",
@@ -13,10 +13,11 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run typecheck && npm run build:native && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win"
+    "build:win": "npm run build && electron-builder --win",
+    "build:native": "node scripts/build-native-helper.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

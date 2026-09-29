@@ -1,8 +1,20 @@
-import { useCallback, useState } from 'react'
-import { ChevronLeft, Eye, Lock, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Eye,
+  Lock,
+  MessageSquare,
+  MessageSquareOff,
+  X
+} from 'lucide-react'
 import { RoomInfo } from '../lib/useRooms'
+import { ChatRoomState } from '../lib/useLiveChat'
 import { AvatarRef } from '../lib/avatar'
+import LiveChat from './LiveChat'
 import UserAvatar from './UserAvatar'
+import ViewerAvatarRow from './ViewerAvatarRow'
 import NowPlayingArt from './NowPlayingArt'
 import MarqueeText from './MarqueeText'
 import LiveTimer from './LiveTimer'
@@ -27,6 +39,13 @@ interface RoomDetailsSidebarProps {
   // Sair da live sem precisar achar o tile dela na grade (2026-09-20)
   // — ver o bloco "Assistindo" no corpo.
   onLeave: () => void
+  // Item 21 (chat da live, 2026-09-23). `null` quando não estou
+  // assistindo esta sala: decisão do usuário — a aba de chat só existe
+  // pra quem está na live, então sem isso ela nem é renderizada.
+  chat: ChatRoomState | null
+  selfName: string
+  onSendChat: (text: string) => Promise<boolean>
+  onChatOpened: () => void
 }
 
 // Item 5 do roadmap, 2ª parte (2026-09-09) — a sub-barra de DETALHES da
@@ -50,9 +69,39 @@ function RoomDetailsSidebar({
   statusByName,
   onClose,
   onWatch,
-  onLeave
+  onLeave,
+  chat,
+  selfName,
+  onSendChat,
+  onChatOpened
 }: RoomDetailsSidebarProps): React.JSX.Element {
   const viewers = room.participants.filter((p) => p !== room.hostName)
+
+  // Chat da live (item 21, 2026-09-23). Começa FECHADO: a ficha da sala
+  // é sobre a sala, e o chat é uma escolha de quem quer conversar.
+  //
+  // Aberto, ele SOBE até a linha do "Assistindo" e a lista de
+  // espectadores colapsa numa fila de avatares acima dele (2026-09-23) —
+  // os dois disputam o mesmo `flex: 1` da barra, e mostrar os dois
+  // inteiros espremidos não serviria bem a nenhum dos dois. A lista não
+  // some: vira o resumo mínimo que ainda responde "quem está aqui?".
+  const [chatEscolhido, setChatOpen] = useState(false)
+
+  // DERIVADO, e não sincronizado por efeito — mesmo padrão do
+  // `popinRoomCode` em App.tsx, e a regra do projeto proíbe `setState`
+  // dentro de efeito.
+  //
+  // Parar de assistir tira o chat (`chat` vira null) e a aba some no
+  // MESMO render. Um efeito que zerasse o estado faria isso um render
+  // depois, e nesse meio tempo a aba ficaria pendurada numa live da
+  // qual já saí. Voltando a assistir, o chat reabre como estava — que é
+  // o que se espera de quem estava conversando ali.
+  const chatOpen = chatEscolhido && Boolean(chat)
+
+  // Zera o badge de não lidas assim que o chat fica visível.
+  useEffect(() => {
+    if (chatOpen) onChatOpened()
+  }, [chatOpen, onChatOpened, chat?.unread])
 
   // Ficha de quem está assistindo (2026-09-13) — mesmo componente e
   // mesmo comportamento da lista de usuários; ver UsersSidebar.tsx
@@ -60,10 +109,7 @@ function RoomDetailsSidebar({
   const [card, setCard] = useState<UserCardTarget | null>(null)
   const closeCard = useCallback(() => setCard(null), [])
 
-  function handleViewerClick(
-    event: React.MouseEvent<HTMLButtonElement>,
-    name: string
-  ): void {
+  function handleViewerClick(event: React.MouseEvent<HTMLButtonElement>, name: string): void {
     event.stopPropagation()
     // Ancora no <li> e não no botão — ver UsersSidebar.tsx.
     const tile = event.currentTarget.closest('li') ?? event.currentTarget
@@ -164,56 +210,131 @@ function RoomDetailsSidebar({
         </button>
       )}
 
-      <div className="room-details-viewers">
+      {/* Só a LISTA colapsa quando o chat abre (2026-09-23, 2ª rodada de
+          desenho). A linha de cima — "Assistindo" + contador — fica
+          exatamente como sempre foi; quem vira a FILA DE AVATARES
+          sobrepostos, animada, é a lista vertical embaixo dela.
+
+          É animado dos dois lados e sem `hidden`: o bloco continua no
+          fluxo, só muda de tamanho (`flex-grow` + `min-height`), então o
+          navegador interpola os dois estados em vez de trocar um pelo
+          outro num quadro. Ver `.room-details-viewers-collapsed` no CSS.
+
+          Por que `flex-grow` e não `height`: a altura aqui é a sobra do
+          painel, um número que nem o React nem o CSS conhecem de
+          antemão — animar o quanto o bloco PUXA dessa sobra funciona
+          sem precisar medir nada. */}
+      <div
+        className={
+          chatOpen ? 'room-details-viewers room-details-viewers-collapsed' : 'room-details-viewers'
+        }
+      >
         <span className="room-details-label">
           Assistindo
-          {viewers.length > 0 && (
-            <span className="room-details-count">{viewers.length}</span>
-          )}
+          {viewers.length > 0 && <span className="room-details-count">{viewers.length}</span>}
         </span>
 
-        {viewers.length === 0 ? (
-          <p className="room-details-empty">Ninguém assistindo ainda.</p>
-        ) : (
-          <ul
-            className="room-details-viewers-list viewers-list"
-            // Mesma barra sob demanda da lista de usuários — ver o
-            // comentário lá e o bloco em main.css.
-            onMouseEnter={(e) => e.currentTarget.classList.add('scroll-visible')}
-            onMouseLeave={(e) => e.currentTarget.classList.remove('scroll-visible')}
-          >
-            {viewers.map((name) => (
-              <li key={name} className={card?.name === name ? 'user-tile-active' : undefined}>
-                <button
-                  type="button"
-                  className="user-tile-button"
-                  onClick={(event) => handleViewerClick(event, name)}
-                  aria-label={`Ver perfil de ${name}`}
-                >
-                  <span className="mini-avatar">
-                    <UserAvatar
-                      avatar={userAvatars[name]}
-                      apiBaseUrl={apiBaseUrl}
-                      size={13}
-                    />
-                  </span>
-                  <span className="viewer-name">{name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* A lista e a fila ocupam O MESMO retângulo, sobrepostas (as duas
+            são absolutas dentro daqui) — é isso que deixa uma virar a
+            outra por opacidade enquanto a altura do bloco anima. Empilhar
+            as duas no fluxo faria a fila "cair" quando a lista saísse. */}
+        <div className="room-details-viewers-body">
+          <div className="room-details-viewers-layer">
+            {viewers.length === 0 ? (
+              <p className="room-details-empty">Ninguém assistindo ainda.</p>
+            ) : (
+              <ul
+                className="room-details-viewers-list viewers-list"
+                // Mesma barra sob demanda da lista de usuários — ver o
+                // comentário lá e o bloco em main.css.
+                onMouseEnter={(e) => e.currentTarget.classList.add('scroll-visible')}
+                onMouseLeave={(e) => e.currentTarget.classList.remove('scroll-visible')}
+              >
+                {viewers.map((name) => (
+                  <li key={name} className={card?.name === name ? 'user-tile-active' : undefined}>
+                    <button
+                      type="button"
+                      className="user-tile-button"
+                      onClick={(event) => handleViewerClick(event, name)}
+                      tabIndex={chatOpen ? -1 : 0}
+                      aria-label={`Ver perfil de ${name}`}
+                    >
+                      <span className="mini-avatar">
+                        <UserAvatar avatar={userAvatars[name]} apiBaseUrl={apiBaseUrl} size={13} />
+                      </span>
+                      <span className="viewer-name">{name}</span>
+                      {/* Silenciado no chat (2026-09-23): balão cortado, em
+                        vermelho. O host precisa ver quem ele calou, e os
+                        outros precisam entender por que aquela pessoa
+                        parou de falar. */}
+                      {chat?.mutedNames.has(name) && (
+                        <MessageSquareOff
+                          size={12}
+                          className="viewer-muted-badge"
+                          aria-label="Silenciado no chat"
+                        />
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* A fila do estado colapsado. Existe SEMPRE no DOM (invisível
+              enquanto o chat está fechado) — montá-la só na hora tiraria
+              o que animar, daí o `interactive` em vez de um `&&`. */}
+          <ViewerAvatarRow
+            names={viewers}
+            userAvatars={userAvatars}
+            apiBaseUrl={apiBaseUrl}
+            interactive={chatOpen}
+            mutedNames={chat?.mutedNames}
+            activeName={card?.name ?? null}
+            onViewerClick={handleViewerClick}
+          />
+        </div>
       </div>
 
-      {/* Rodapé de COMENTÁRIOS entra aqui depois (pedido do usuário:
-          "isso não precisa fazer agora"). O layout já reserva o lugar — a
-          lista de viewers acima é quem tem o `flex: 1`, então a seção de
-          comentários vai encostar no rodapé sem precisar remexer no
-          resto. */}
+      {/* CHAT DA LIVE (item 21, 2026-09-23) — o lugar que o comentário
+          antigo daqui já reservava.
 
-      {card && (
-        <UserCardPopover target={card} apiBaseUrl={apiBaseUrl} onClose={closeCard} />
+          Só existe pra quem está assistindo (decisão do usuário): sem
+          `chat`, a barra termina na lista de espectadores como sempre
+          terminou. */}
+      {chat && (
+        <div className={chatOpen ? 'room-chat room-chat-open' : 'room-chat'}>
+          <button
+            type="button"
+            className="room-chat-tab"
+            onClick={() => setChatOpen((open) => !open)}
+            aria-expanded={chatOpen}
+          >
+            <MessageSquare size={13} />
+            <span className="room-chat-tab-label">Chat ao vivo</span>
+            {/* O badge só faz sentido fechado — aberto, a pessoa está
+                lendo as mensagens que ele contaria. */}
+            {!chatOpen && chat.unread > 0 && (
+              <span className="live-chat-badge">{chat.unread > 99 ? '99+' : chat.unread}</span>
+            )}
+            {chatOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
+
+          {chatOpen && (
+            <LiveChat
+              messages={chat.messages}
+              loading={chat.loading}
+              mutedNames={chat.mutedNames}
+              userAvatars={userAvatars}
+              apiBaseUrl={apiBaseUrl}
+              onSend={onSendChat}
+              selfName={selfName}
+            />
+          )}
+        </div>
       )}
+
+      {card && <UserCardPopover target={card} apiBaseUrl={apiBaseUrl} onClose={closeCard} />}
     </aside>
   )
 }

@@ -70,10 +70,14 @@ export function setupUsersHandlers(): void {
   // `presence` em rooms.ts. Aqui vem um retrato do momento só pra tela
   // não abrir vazia enquanto o primeiro broadcast não chega.
   ipcMain.handle('users:list', () =>
-    request<{ users: DirectoryUser[]; presence: Partial<Record<number, 'online' | 'busy'>> }>(
-      'GET',
-      '/users'
-    )
+    request<{
+      users: DirectoryUser[]
+      presence: Partial<Record<number, 'online' | 'busy'>>
+      // Os ids que EU fixei (2026-09-25). Vem junto da lista, e não numa
+      // rota própria, porque quem abre a lista precisa sempre dos dois —
+      // duas chamadas dariam um instante com a ordem errada na tela.
+      pinned: number[]
+    }>('GET', '/users')
   )
 
   // Só "available" ou "busy": offline não é escolha, é consequência de
@@ -81,6 +85,20 @@ export function setupUsersHandlers(): void {
   ipcMain.handle('users:setPresence', (_event, id: number, preference: 'available' | 'busy') =>
     request<DirectoryUser>('PUT', `/users/${id}/presence`, { preference })
   )
+
+  // Fixar / desfixar alguém no topo da MINHA lista (2026-09-25).
+  //
+  // Sem `id` de quem fixa: o dono é sempre quem está autenticado, e o
+  // servidor tira isso do token. Mandar daqui só criaria um campo que
+  // ele teria que ignorar — ou, pior, confiar.
+  //
+  // As duas rotas são idempotentes do lado de lá: fixar duas vezes não
+  // é erro, e desfixar quem não estava fixado responde 204 igual. É o
+  // que deixa a tela atualizar no clique (otimista) sem precisar
+  // sincronizar nada depois.
+  ipcMain.handle('users:pin', (_event, id: number) => request<void>('POST', `/users/${id}/pin`))
+
+  ipcMain.handle('users:unpin', (_event, id: number) => request<void>('DELETE', `/users/${id}/pin`))
 
   // Convidar alguém pra uma live privada. Falha com 409 se a pessoa
   // saiu do ar entre a tela listar e o clique acontecer.

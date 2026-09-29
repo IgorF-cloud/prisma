@@ -139,6 +139,110 @@ function setActiveGames(games: DetectableGame[]): void {
 // comportando como hoje (não detecta), em vez de chutar. Cobertura vai de
 // ~15% pra ~96% sem nenhum falso positivo novo.
 //
+// ---------------------------------------------------------------------
+// EXECUTÁVEIS QUE NÃO IDENTIFICAM NADA (2026-09-24)
+//
+// O filtro de ambiguidade acima ("o basename pertence a um jogo só?")
+// resolve o caso do `hl2.exe`, mas tem um ponto cego: um nome pode ser
+// genérico E único. Aí ele passa, e passa com confiança total.
+//
+// Foi o que o usuário encontrou transmitindo o MONITOR inteiro sem jogo
+// nenhum aberto: apareceu "Jogando: Illarion". O Illarion é um MMORPG em
+// Java, e o único executável que ele registra na lista do Discord é
+// `illarion/jre/bin/java.exe`. Basename `java.exe`, dono único — entrava
+// no mapa. A partir daí QUALQUER coisa em Java rodando na máquina (uma
+// IDE, um servidor local, o Minecraft) virava Illarion.
+//
+// Os oito que a lista de hoje tem nessa situação — achados cruzando a
+// lista contra nomes de runtime/genéricos:
+//
+//     java.exe   -> Illarion          sh.exe     -> SUPERHOT
+//     dotnet.exe -> tModLoader        run.exe    -> Bro Falls
+//     love.exe   -> Move or Die       start.exe  -> DB Xenoverse 2
+//     main.exe   -> Blockade 3D       update.exe -> Live2DViewerEX
+//
+// O que se perde bloqueando isto é quase nada: sete dos oito têm appid
+// da Steam, e o appid já vem ANTES do nome de processo na escada (ver
+// gameDetection.ts) — continuam detectados igual. Só o Illarion deixa de
+// ser detectável, e é justamente o que estava mentindo.
+//
+// A lista vai além desses oito de propósito: ela descreve uma CATEGORIA
+// (runtime, emulador, palavra genérica), não os casos de hoje. A lista
+// do Discord é refrescada a cada 3 dias e cresce sozinha — um
+// `python.exe` novo não pode reabrir o mesmo buraco. Nomes que HOJE já
+// são ambíguos (`game.exe` com 195 donos, `nw.exe` com 35,
+// `dosbox.exe` com 22) estão aqui pelo mesmo motivo: eles só são
+// barrados pelo filtro de ambiguidade ENQUANTO tiverem mais de um dono.
+//
+// Só vale pra 2ª passada. A entrada EXATA da lista
+// ("illarion/jre/bin/java.exe") continua no mapa e não faz mal nenhum:
+// `tasklist` e `Get-Process` entregam nome puro, nunca com caminho.
+// ---------------------------------------------------------------------
+const GENERIC_BASENAMES = new Set([
+  // Runtimes e interpretadores: o processo é do runtime, não do jogo.
+  'java.exe',
+  'javaw.exe',
+  'javaws.exe',
+  'python.exe',
+  'pythonw.exe',
+  'node.exe',
+  'electron.exe',
+  'dotnet.exe',
+  'mono.exe',
+  'love.exe',
+  'nw.exe',
+  'perl.exe',
+  'ruby.exe',
+  'php.exe',
+  'lua.exe',
+  'wine.exe',
+  // Emuladores e camadas de compatibilidade: rodam muitos jogos, e o
+  // nome do processo não diz qual.
+  'dosbox.exe',
+  'scummvm.exe',
+  'retroarch.exe',
+  'ppsspp.exe',
+  // Shells e utilitários do sistema.
+  'sh.exe',
+  'bash.exe',
+  'cmd.exe',
+  'powershell.exe',
+  'pwsh.exe',
+  'conhost.exe',
+  'explorer.exe',
+  'rundll32.exe',
+  // Palavras genéricas: nomeiam o papel do binário, não o produto.
+  'game.exe',
+  'main.exe',
+  'app.exe',
+  'run.exe',
+  'start.exe',
+  'launch.exe',
+  'launcher.exe',
+  'client.exe',
+  'server.exe',
+  'host.exe',
+  'engine.exe',
+  'player.exe',
+  'loader.exe',
+  'bin.exe',
+  'core.exe',
+  'setup.exe',
+  'install.exe',
+  'installer.exe',
+  'update.exe',
+  'updater.exe',
+  'patcher.exe',
+  'crashhandler.exe',
+  'crashreporter.exe',
+  'helper.exe',
+  'service.exe',
+  'console.exe',
+  'test.exe',
+  'default.exe',
+  'program.exe'
+])
+
 // A entrada EXATA sempre ganha do basename (primeira passada preenche
 // primeiro, e a segunda só escreve onde ainda não tem nada).
 export function getExeToGameMap(): Map<string, DetectedGame> {
@@ -179,6 +283,9 @@ export function getExeToGameMap(): Map<string, DetectedGame> {
 
   for (const [base, owners] of basenameOwners) {
     if (owners.size !== 1 || map.has(base)) continue
+    // Genérico demais pra valer como evidência, mesmo com dono único —
+    // ver GENERIC_BASENAMES.
+    if (GENERIC_BASENAMES.has(base)) continue
     const game = basenameGame.get(base)
     if (game) map.set(base, detected(game))
   }

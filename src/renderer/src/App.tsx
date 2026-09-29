@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import LoginScreen from './screens/LoginScreen'
 import RegisterScreen from './screens/RegisterScreen'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
@@ -7,13 +7,16 @@ import TransmissionScreen from './screens/TransmissionScreen'
 import { useGstreamerTransmission } from './lib/useGstreamerTransmission'
 import { useHostPreview } from './lib/useHostPreview'
 import { useViewer } from './lib/useViewer'
+import { useLiveChat } from './lib/useLiveChat'
 import { useSnackbar } from './lib/useSnackbar'
 import { useRooms } from './lib/useRooms'
 import { useAppUpdate } from './lib/useAppUpdate'
+import { useReleaseNotes } from './lib/useReleaseNotes'
 import { useDetectableGamesSync } from './lib/useDetectableGamesSync'
 import { useHiddenOwnRoomCode } from './lib/useHiddenOwnRoomCode'
 import Snackbar from './components/Snackbar'
 import UpdateDialog from './components/UpdateDialog'
+import ReleaseNotesModal from './components/ReleaseNotesModal'
 import PopinPlayer from './components/PopinPlayer'
 import TitleBar from './components/TitleBar'
 import InviteToast from './components/InviteToast'
@@ -48,6 +51,25 @@ function App(): React.JSX.Element {
       ),
     (message) => snackbar.show(message, { error: true })
   )
+  // Chat temporário da live (2026-09-23). Um chat por sala ABERTA — as
+  // que estou assistindo (item 23: dá pra assistir várias ao mesmo
+  // tempo) mais a minha própria, quando estou transmitindo.
+  //
+  // A lista sai do `viewer.roomCodes`, e não dos lugares que chamam
+  // `joinRoom`/`leaveRoom`, de propósito: ela é a única fonte que cobre
+  // TODOS os caminhos de saída de uma sala, inclusive os que acontecem
+  // sem ninguém clicar em nada — o host encerrar a live e ser expulso
+  // caem no `leaveRoom` interno do useViewer.ts, que nenhum callback
+  // daqui veria.
+  const chat = useLiveChat(user?.name ?? null, (message) => snackbar.show(message, { error: true }))
+  const chatRoomCodes = useMemo(
+    () => (transmission.roomCode ? [...viewer.roomCodes, transmission.roomCode] : viewer.roomCodes),
+    [viewer.roomCodes, transmission.roomCode]
+  )
+  useEffect(() => {
+    chat.syncRooms(chatRoomCodes)
+  }, [chatRoomCodes, chat])
+
   const {
     rooms,
     userAvatars,
@@ -68,6 +90,11 @@ function App(): React.JSX.Element {
   // Checagem/instalação de atualização — só ativa depois do login, mesmo
   // timing do app Flutter (ver useAppUpdate.ts).
   const appUpdate = useAppUpdate(Boolean(user))
+
+  // Janela de notas da versão (2026-09-25). Mesmo `Boolean(user)` do
+  // hook acima, e pelo mesmo motivo: nada disso pode acontecer por cima
+  // da tela de login.
+  const releaseNotes = useReleaseNotes(Boolean(user))
 
   // MINI PLAYER (2026-09-20, pedido do usuário) — qual live está na
   // janelinha sempre-no-topo, se alguma. Uma por vez (decisão do
@@ -269,70 +296,98 @@ function App(): React.JSX.Element {
       </div>
     )
   } else if (user) {
-    if (homeView === 'transmission') {
-      screen = (
-        <TransmissionScreen
-          onBack={() => setHomeView('home')}
-          onStart={async (settings) => {
-            const started = await transmission.start(settings, user.name)
-            if (started) setHomeView('home')
-            return started
-          }}
-        />
-      )
-    } else {
-      screen = (
-        <HomeScreen
-          user={user}
-          appVersion={appUpdate.currentVersion}
-          onLogout={handleLogout}
-          onUserUpdate={setUser}
-          rooms={rooms}
-          userAvatars={userAvatars}
-          presence={presence}
-          apiBaseUrl={apiBaseUrl}
-          hiddenOwnRoomCode={hiddenOwnRoomCode}
-          refreshingRooms={refreshingRooms}
-          onRefreshRooms={refreshRooms}
-          viewerRoomCodes={viewer.roomCodes}
-          popinRoomCode={popinRoomCode}
-          onPopinRoom={(code) => setPopinRoomCode(code)}
-          onJoinRoom={(code, password) => {
-            esquecerPopin(code)
-            return viewer.joinRoom(code, user.name, password)
-          }}
-          onLeaveRoom={(code) => {
-            esquecerPopin(code)
-            viewer.leaveRoom(code)
-          }}
-          getAttachViewerVideo={viewer.getAttachVideo}
-          getAttachViewerAudioContainer={viewer.getAttachAudioContainer}
-          viewerAudioSettings={viewer.audioSettings}
-          onSetViewerVolume={viewer.setVolume}
-          onSetViewerMuted={viewer.setMuted}
-          getViewerStatsFetcher={viewer.getStatsFetcher}
-          getViewerBitrateFetcher={viewer.getBitrateFetcher}
-          onNavigateTransmission={() => setHomeView('transmission')}
-          transmitting={transmission.transmitting}
-          stoppingTransmission={transmission.stopping}
-          roomCode={transmission.roomCode}
-          nowPlaying={transmission.nowPlaying}
-          transmissionSettings={transmission.settings}
-          transmissionError={transmission.error}
-          onNotify={(message, isError, options) =>
-            snackbar.show(message, { error: isError, ...options })
-          }
-          onStopTransmission={stopTransmission}
-          onUpdateTransmission={transmission.update}
-          hostPreviewEnabled={hostPreview.enabled}
-          onToggleHostPreview={hostPreview.toggle}
-          attachHostPreviewVideo={hostPreview.attachVideo}
-          getHostPreviewStats={hostPreview.getStats}
-          getHostPreviewBitrate={hostPreview.getBitrate}
+    // A Home fica SEMPRE montada aqui, e a tela de iniciar live entra
+    // POR CIMA dela (2026-09-24, pedido do usuário). Antes as duas se
+    // alternavam, e desmontar a Home jogava fora o DOM inteiro dela —
+    // ao voltar, cada <img> de avatar era um elemento novo, que pisca
+    // enquanto o Chromium resolve a imagem de novo (foi o que apareceu
+    // como "avatares recarregando": o do próprio perfil no rodapé e o
+    // da sala que estava ao vivo).
+    //
+    // O estado de sala/WebSocket nunca esteve nesse risco, porque mora
+    // aqui no App e não na Home — o que se perdia era o estado LOCAL
+    // dela (painel aberto, tile focado, rolagem) e o DOM.
+    //
+    // `.transmission-page` já era `position: fixed; inset: 0` com fundo
+    // opaco, então ela cobre a Home sozinha; só precisou de um z-index
+    // (ver main.css) pra ficar acima do conteúdo da Home.
+    screen = (
+      <>
+        {/* `inert` enquanto o modal está aberto: sem isso o Tab passearia
+            pela Home escondida atrás dele, e o leitor de tela leria as
+            duas telas como se as duas estivessem visíveis. O <div> é
+            permanente de propósito — envolver a Home só às vezes mudaria
+            o tipo do nó e a desmontaria, que é justamente o que esta
+            mudança evita. Ele não mexe no layout: `.home-page` é
+            `position: fixed`, então não depende do pai pra se posicionar. */}
+        <div inert={homeView === 'transmission'}>
+          <HomeScreen
+            user={user}
+            appVersion={appUpdate.currentVersion}
+            onLogout={handleLogout}
+            onUserUpdate={setUser}
+            rooms={rooms}
+            userAvatars={userAvatars}
+            presence={presence}
+            apiBaseUrl={apiBaseUrl}
+            hiddenOwnRoomCode={hiddenOwnRoomCode}
+            refreshingRooms={refreshingRooms}
+            onRefreshRooms={refreshRooms}
+            chatRooms={chat.rooms}
+            onSendChat={chat.send}
+            onChatRead={chat.markRead}
+            onSetChatMuted={chat.setMuted}
+            viewerRoomCodes={viewer.roomCodes}
+            popinRoomCode={popinRoomCode}
+            onPopinRoom={(code) => setPopinRoomCode(code)}
+            onJoinRoom={(code, password) => {
+              esquecerPopin(code)
+              return viewer.joinRoom(code, user.name, password)
+            }}
+            onLeaveRoom={(code) => {
+              esquecerPopin(code)
+              viewer.leaveRoom(code)
+            }}
+            getAttachViewerVideo={viewer.getAttachVideo}
+            getAttachViewerAudioContainer={viewer.getAttachAudioContainer}
+            viewerAudioSettings={viewer.audioSettings}
+            onSetViewerVolume={viewer.setVolume}
+            onSetViewerMuted={viewer.setMuted}
+            getViewerStatsFetcher={viewer.getStatsFetcher}
+            getViewerBitrateFetcher={viewer.getBitrateFetcher}
+            onNavigateTransmission={() => setHomeView('transmission')}
+            transmitting={transmission.transmitting}
+            stoppingTransmission={transmission.stopping}
+            roomCode={transmission.roomCode}
+            nowPlaying={transmission.nowPlaying}
+            transmissionSettings={transmission.settings}
+            transmissionError={transmission.error}
+            onNotify={(message, isError, options) =>
+              snackbar.show(message, { error: isError, ...options })
+            }
+            onStopTransmission={stopTransmission}
+            onUpdateTransmission={transmission.update}
+            hostPreviewEnabled={hostPreview.enabled}
+            onToggleHostPreview={hostPreview.toggle}
+            attachHostPreviewVideo={hostPreview.attachVideo}
+            getHostPreviewStats={hostPreview.getStats}
+            getHostPreviewBitrate={hostPreview.getBitrate}
 
-        />
-      )
-    }
+          />
+        </div>
+
+        {homeView === 'transmission' && (
+          <TransmissionScreen
+            onBack={() => setHomeView('home')}
+            onStart={async (settings) => {
+              const started = await transmission.start(settings, user.name)
+              if (started) setHomeView('home')
+              return started
+            }}
+          />
+        )}
+      </>
+    )
   } else if (authScreen === 'register') {
     screen = (
       <RegisterScreen onAuthenticated={setUser} onNavigateLogin={() => setAuthScreen('login')} />
@@ -365,6 +420,7 @@ function App(): React.JSX.Element {
         showContent={Boolean(user)}
         updateVersion={appUpdate.updateInfo?.version ?? null}
         onUpdateClick={appUpdate.openDialog}
+        onNotesClick={releaseNotes.open}
       />
       {screen}
       {/* Aceitar entra na sala na hora (o servidor libera o acesso e o
@@ -448,6 +504,15 @@ function App(): React.JSX.Element {
           `updateInfo` é "existe atualização" (o que acende o botão da
           titlebar) e `dialogOpen` é "o diálogo está na tela". Recusar
           fecha só o segundo. Ver useAppUpdate.ts. */}
+      {/* Notas da atualização (2026-09-25). Abre sozinha uma vez por
+          versão nova e pelo link da titlebar — ver useReleaseNotes.ts. */}
+      {releaseNotes.isOpen && (
+        <ReleaseNotesModal
+          initialVersion={releaseNotes.initialVersion}
+          installedVersion={releaseNotes.installedVersion}
+          onClose={releaseNotes.close}
+        />
+      )}
       {appUpdate.updateInfo && appUpdate.dialogOpen && (
         <UpdateDialog
           currentVersion={appUpdate.currentVersion}

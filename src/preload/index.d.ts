@@ -6,6 +6,17 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 type AvatarRef = { type: 'preset'; key: string } | { type: 'custom'; id: number; version: number }
 type UserAvatars = Record<string, AvatarRef>
 
+// Uma mensagem do chat da live (2026-09-23). `id` é `${epochMs}-${seq}`
+// gerado pelo servidor (o contador desempata mensagens no mesmo
+// milissegundo) e serve de key de lista. `from` é o nome de quem falou
+// no momento em que falou.
+interface ChatMessage {
+  id: string
+  from: string
+  text: string
+  at: number
+}
+
 interface UserSettings {
   alertForNewLives: boolean
   // Sobreposição de viewers na tela durante a live (2026-09-10).
@@ -31,6 +42,10 @@ interface CaptureSource {
   type: 'screen' | 'window'
   thumbnailDataUrl: string
   displayId: number | null
+  // Só pra fontes de janela (2026-09-24) — nome do PROGRAMA dono dela e
+  // ícone dele em data URL, ver screenCapture.ts.
+  appName: string | null
+  iconDataUrl: string | null
 }
 
 interface NowPlayingInfo {
@@ -158,12 +173,16 @@ interface Api {
     ) => () => void
   }
   users: {
-    list: () => Promise<{ users: DirectoryUser[]; presence: PresenceMap }>
+    // `pinned`: os ids que EU fixei (2026-09-25) — vem junto porque a
+    // lista e a ordem dela são a mesma tela.
+    list: () => Promise<{ users: DirectoryUser[]; presence: PresenceMap; pinned: number[] }>
     // Devolve `AuthUser` e não `DirectoryUser`: a rota é `requireSelf`,
     // então o destinatário é o próprio dono e a resposta vem com e-mail
     // (privateUser, ver db/users.js no servidor). Quem NÃO é self — o
     // `list` acima — continua sem e-mail.
     setPresence: (id: number, preference: 'available' | 'busy') => Promise<AuthUser>
+    pin: (id: number) => Promise<void>
+    unpin: (id: number) => Promise<void>
     invite: (roomName: string, userId: number) => Promise<void>
     acceptInvite: (roomName: string) => Promise<void>
     declineInvite: (roomName: string, reason: 'declined' | 'expired') => Promise<void>
@@ -178,6 +197,24 @@ interface Api {
         userName: string
         result: 'accepted' | 'declined' | 'expired'
       }) => void
+    ) => () => void
+  }
+  // Chat temporário da live (2026-09-23) — vive só enquanto a live
+  // existe; o servidor guarda as últimas mensagens em memória e joga
+  // tudo fora quando a sala acaba.
+  chat: {
+    send: (roomName: string, text: string) => Promise<void>
+    // `mutedNames` é quem o host silenciou, por nome, e vem pra TODO
+    // MUNDO na sala (2026-09-23) — é o que desenha o selo de silenciado
+    // na lista de espectadores das duas telas. "Eu estou silenciado?" sai
+    // daí também, comparando com o próprio nome.
+    history: (roomName: string) => Promise<{ messages: ChatMessage[]; mutedNames: string[] }>
+    mute: (roomName: string, username: string, muted: boolean) => Promise<void>
+    onMessage: (
+      callback: (payload: { roomName: string; message: ChatMessage }) => void
+    ) => () => void
+    onMuted: (
+      callback: (payload: { roomName: string; username: string; muted: boolean }) => void
     ) => () => void
   }
   session: {

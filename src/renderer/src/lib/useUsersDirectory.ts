@@ -12,6 +12,14 @@ export interface UsersDirectory {
   loading: boolean
   error: string | null
   refresh: () => void
+  // Os ids que EU fixei (2026-09-25). Um Set e não um array: a lista
+  // pergunta "este está fixado?" uma vez por tile a cada render, e num
+  // array isso seria uma varredura por pessoa.
+  pinned: ReadonlySet<number>
+  // Fixa ou desfixa, já atualizando a tela antes da resposta do
+  // servidor. LANÇA se a chamada falhar — e nesse caso a tela já voltou
+  // sozinha ao que era; quem chama só precisa avisar o usuário.
+  setPinned: (id: number, next: boolean) => Promise<void>
 }
 
 // Diretório de contas do app (2026-09-11).
@@ -57,6 +65,48 @@ export function useUsersDirectory(presence: PresenceMap): UsersDirectory {
 
   const refresh = useCallback(() => setReloadToken((n) => n + 1), [])
 
+  // Quem eu fixei. Vem na mesma resposta do `GET /users` (ver o
+  // `pinned` do preload) — é por isso que não há um segundo estado de
+  // carregamento aqui: quando a lista aparece, a ordem dela já está
+  // certa. Buscar em separado faria os fixados "pularem" pro topo um
+  // instante depois de a lista desenhar.
+  const [pinned, setPinnedState] = useState<ReadonlySet<number>>(() => new Set())
+
+  // Otimista: a tela muda no clique e o servidor confirma depois.
+  //
+  // Vale a pena porque o efeito visível é uma REORDENAÇÃO — esperar a
+  // ida e volta deixaria o tile parado sob o cursor por um instante
+  // depois de o usuário mandar ele subir, que é exatamente o tipo de
+  // atraso que faz um botão parecer quebrado.
+  //
+  // E o risco é baixo: as duas rotas são idempotentes, então nada se
+  // perde se a chamada for repetida. Dando errado, o `catch` devolve o
+  // estado anterior e relança pra quem chamou mostrar o erro.
+  const setPinned = useCallback(async (id: number, next: boolean): Promise<void> => {
+    setPinnedState((current) => {
+      const updated = new Set(current)
+      if (next) updated.add(id)
+      else updated.delete(id)
+      return updated
+    })
+
+    try {
+      if (next) await window.api.users.pin(id)
+      else await window.api.users.unpin(id)
+    } catch (err) {
+      setPinnedState((current) => {
+        const reverted = new Set(current)
+        // Desfaz o que ESTE clique fez, e só isso: reaproveitar um
+        // retrato do estado anterior sobrescreveria um segundo clique,
+        // em outra pessoa, que tenha acontecido durante a espera.
+        if (next) reverted.delete(id)
+        else reverted.add(id)
+        return reverted
+      })
+      throw err
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
 
@@ -65,6 +115,7 @@ export function useUsersDirectory(presence: PresenceMap): UsersDirectory {
       .then((result) => {
         if (cancelled) return
         setUsers(result.users)
+        setPinnedState(new Set(result.pinned))
         setError(null)
       })
       .catch((err) => {
@@ -101,5 +152,5 @@ export function useUsersDirectory(presence: PresenceMap): UsersDirectory {
     refresh()
   }, [presence, users, loading, refresh])
 
-  return { users, loading, error, refresh }
+  return { users, loading, error, refresh, pinned, setPinned }
 }

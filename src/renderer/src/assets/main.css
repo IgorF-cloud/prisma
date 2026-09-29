@@ -25,6 +25,17 @@
      estão, não precisam de variável nova. */
   --accent: #a78bfa;
   --color-live: #4ade80;
+  /* Ambar dos usuarios FIXADOS (2026-09-25) — o alfinete no canto do
+     tile e o hover do botao de fixar.
+
+     E o mesmo hex do ponto de "ocupado" (.user-status-busy), e mesmo
+     assim e uma variavel SEPARADA: os dois significam coisas
+     diferentes (um e o estado da outra pessoa, o outro e uma escolha
+     minha) e um dia um dos dois pode mudar de tom sem arrastar o
+     outro junto. Nao se confundem na tela porque nunca dividem o mesmo
+     canto: o ponto fica embaixo e a direita da foto, o alfinete em
+     cima e a esquerda. */
+  --color-pinned: #fbbf24;
   /* Largura da barra de SALAS AO VIVO (AppLeftSidebar.tsx). E
      variavel porque DOIS lugares dependem dela: a propria barra e o
      `.home-body::before`, que desenha a borda comecando exatamente
@@ -47,7 +58,17 @@
      por ser alfa, acompanha sozinha qualquer fundo que a area receba
      depois, sem precisar recalcular a cor. */
   --app-chrome-border: rgba(255, 255, 255, 0.14);
+  /* Largura da barra do chat do host ABERTA. A casca FECHADA virou uma
+     linha deitada acima do rodapé em 2026-09-25 (`.host-chat-bar`), e
+     linha não tem largura pra reservar — o que ela reserva é altura, e
+     essa vem do conteúdo. Por isso sobrou um número só aqui. */
+  --host-chat-dock-width: 280px;
   --color-danger: #f87171;
+  /* O laranja do "tem mensagem nova" (2026-09-25, pedido do usuário).
+     Cor PRÓPRIA e não `--color-danger`: mensagem no chat não é erro nem
+     perigo, e o vermelho daquele já carrega esse significado em todo o
+     resto do app. Ver `.host-chat-bar-button-unread`. */
+  --color-unread: #fb923c;
   /* Pedido do usuário (2026-09-03): timers (tile da sala + footer do
      host) numa fonte mono-espaçada — `font-variant-numeric:
      tabular-nums` sozinho não bastava porque a fonte do app (Poppins)
@@ -125,25 +146,28 @@ body.app-dialog-open .app-titlebar {
   z-index: 850;
 }
 
-/* Pedido do usuário (2026-09-08): o ícone do canto + o texto "Prisma"
-   (Poppins 600) saíram da titlebar e no lugar entrou a arte da marca
-   inteira — o lettering "PRISMA" com o símbolo à esquerda (iconName.png, ver
-   TitleBar.tsx). Só a altura é fixa; a largura sai da proporção da arte,
-   pra não distorcer se a imagem um dia for trocada. */
+/* O SÍMBOLO da marca na titlebar.
+
+   Histórico, porque o mesmo seletor já foi três coisas: um ícone pequeno
+   ao lado do texto "Prisma" (Poppins 600); a ARTE INTEIRA desde
+   2026-09-08 (iconName.png — o lettering com o símbolo embutido, ~4x mais
+   larga que alta); e, desde 2026-09-25 a pedido do usuário, só o SÍMBOLO
+   (logo_render.png, quadrado), com o nome escrito ao lado em texto — ver
+   .app-titlebar-brand.
+
+   A largura deixou de "sair da proporção": a imagem é 460x460, então ela
+   é o mesmo número da altura. Continua `width: auto` mesmo assim, pra uma
+   arte de proporção diferente não sair esticada. */
 .app-titlebar-logo {
   display: block;
-  /* Único número a mexer se a marca ficar grande/pequena demais: a
-     largura acompanha sozinha (a arte é 257x64, ~4x mais larga que alta),
-     então 18px dão ~72px de largura.
-
-     Passou por 16px (conta de manter a ALTURA DA TINTA aprovada na arte
-     anterior — a folga transparente em cima/embaixo muda a cada versão da
-     marca, então o número não se repete) e por 19px, até o usuário fechar
-     em 18 na mão, olhando a tela. É escolha visual, não conta. */
+  /* 20 e não os 18 da arte anterior: lá o número era a altura da TINTA
+     dentro de uma imagem larga; aqui é um quadrado, e 18 deixava o
+     símbolo visivelmente menor que o lettering ao lado. Escolha visual,
+     igual à anterior (que passou por 16 e 19 antes de fechar em 18) —
+     mexer aqui é seguro. */
   height: 18px;
   width: auto;
   flex-shrink: 0;
-  
 }
 
 /* Pedido do usuário (2026-09-03): versão do app, depois do nome — mesmo
@@ -154,6 +178,66 @@ body.app-dialog-open .app-titlebar {
   color: var(--ev-c-text-2);
 }
 
+/* O NOME em texto, ao lado do simbolo (2026-09-25, pedido do usuario).
+
+   Era parte da arte (iconName.png) e voltou a ser tipografia: assim
+   acompanha a fonte do app, fica nitido em qualquer DPI e nao depende de
+   uma imagem ser regerada quando o tom do branco mudar.
+
+   Poppins 700 com espacamento largo — e um lettering de marca, nao um
+   texto de interface. O espacamento e o que impede o nome de parecer
+   apenas uma palavra escrita ali. */
+.app-titlebar-brand {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ev-c-text-1);
+  /* O `letter-spacing` sobra depois da ULTIMA letra, entao sem isto o
+     "PRISMA" fica visivelmente mais longe do vizinho da direita do que
+     do simbolo da esquerda. */
+  margin-right: -0.16em;
+  user-select: none;
+}
+
+/* O tracinho entre a versao e o link das notas. Elemento proprio, e nao
+   parte do texto do botao: assim ele NAO acende junto no hover — um
+   separador que muda de cor com o cursor parece parte do link. */
+.app-titlebar-separator {
+  font-size: 11px;
+  color: var(--ev-c-text-3);
+}
+
+/* LINK "Notas da atualizacao" (2026-09-25, pedido do usuario).
+
+   Sem fundo, sem borda e sem icone: o pedido foi explicito — no hover,
+   so o cursor e a cor da fonte mudam. Por isso ele herda o corpo do
+   numero da versao ao lado e se comporta como uma continuacao dele.
+
+   `no-drag` pelo mesmo motivo do botao de atualizar: a faixa inteira e
+   area de arrastar a janela, e sem isto o clique viraria um arrasto. */
+.app-titlebar-notes {
+  -webkit-app-region: no-drag;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.app-titlebar-notes:hover {
+  color: var(--accent);
+}
+
+.app-titlebar-notes:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Rótulo de canal ("BETA") no lugar do número da versão — ver
    VERSION_LABEL em TitleBar.tsx. Vira um chip discreto em vez de texto
    solto: "BETA" sem moldura, do lado do lettering, parece parte da
@@ -162,10 +246,10 @@ body.app-dialog-open .app-titlebar {
 .app-titlebar-channel {
   padding: 1px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  background-color: rgba(139, 92, 246, 0.14);
+  --border: 1px solid rgba(167, 139, 250, 0.3);
+  --background-color: rgba(139, 92, 246, 0.14);
   color: var(--accent);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   /* A titlebar é área de arrastar (-webkit-app-region: drag); o chip
@@ -879,9 +963,20 @@ code {
   text-decoration: underline;
 }
 
+/* Modal de tela cheia desde 2026-09-24 (pedido do usuário): a Home
+   continua montada ATRÁS desta tela, em vez de as duas se alternarem
+   (ver App.tsx pro motivo). `inset: 0` + fundo opaco já cobriam a
+   janela toda; o que faltava era o `z-index`.
+
+   980 é escolhido, não arbitrário: acima de tudo que a Home desenha —
+   inclusive os flutuantes dela, que vão até o `.context-menu` (970) —
+   e abaixo do que precisa continuar por cima de um modal: a titlebar e
+   o snackbar (1000), o convite (1200) e o tooltip (2000), que esta
+   própria tela usa nos cards da grade. */
 .transmission-page {
   position: fixed;
   inset: 0;
+  z-index: 980;
   display: flex;
   flex-direction: column;
   background-color: var(--color-background);
@@ -1229,9 +1324,21 @@ code {
   gap: 12px;
 }
 
+/* O item da grade e o `<span class="tooltip-anchor">` que o Tooltip poe
+   em volta de cada card (ver Tooltip.tsx, mesma historia do
+   `.viewer-avatar-row`), nao o botao. O `min-width: 0` e o que permite a
+   coluna encolher abaixo do conteudo — sem ele o nome longo de uma
+   janela empurraria a largura da celula e a grade estouraria pro lado. */
+.source-grid > .tooltip-anchor {
+  min-width: 0;
+}
+
 .source-item {
   position: relative;
   display: flex;
+  /* Dentro do `.tooltip-anchor` o botao nao e mais o item da grade, entao
+     precisa dizer explicitamente que ocupa a celula inteira. */
+  width: 100%;
   border-radius: 8px;
   border: 2px solid var(--ev-c-gray-2);
   background-color: var(--ev-c-black-mute);
@@ -1264,6 +1371,19 @@ code {
   color: var(--ev-c-text-2);
 }
 
+/* O icone do programa no lugar do thumbnail que nao existe. 48px e o
+   tamanho em que o Windows entrega o icone ('large', ver windowIcon.ts)
+   — desenhar maior que isso so borra.
+
+   Fica um pouco acima do centro (`margin-bottom`) porque a faixa do nome
+   cobre o pe do card: centralizado de verdade, o icone encostaria nela. */
+.source-placeholder-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  margin-bottom: 12px;
+}
+
 .source-check-badge {
   position: absolute;
   top: 6px;
@@ -1278,20 +1398,67 @@ code {
   color: #fff;
 }
 
+/* Faixa do nome no pe do card. Virou flex em 2026-09-24 pra caber o
+   icone do programa antes do titulo (pedido do usuario) — o `overflow:
+   hidden`/`text-ellipsis` saiu daqui e foi pro `.source-name-text`, que
+   e quem tem texto pra cortar; se ficasse no container, o icone entraria
+   na conta do corte e sumiria junto com o fim do nome. */
 .source-name {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 8px;
   font-size: 12px;
   font-weight: 600;
   color: #fff;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  text-align: left;
+}
+
+/* 14px e nao 16: a faixa tem 12px de texto, e um icone maior que a
+   altura da linha empurraria a faixa inteira pra cima do thumbnail.
+   `flex-shrink: 0` porque o icone nunca encolhe — quem cede espaco e o
+   texto ao lado. */
+.source-name-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.source-name-text {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Conteudo do tooltip de um card da grade de fontes (2026-09-24) — duas
+   linhas quando da pra saber o programa: o nome dele em cima, o titulo
+   da janela embaixo. Sao coisas diferentes, e o card so mostra o
+   segundo. */
+.source-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   text-align: left;
+}
+
+.source-tooltip-app {
+  font-weight: 700;
+}
+
+/* Mais apagado que o nome do programa acima, e nao menor: o titulo da
+   janela e a informacao longa das duas, e encolher a fonte dele e o que
+   deixaria o balao dificil de ler. Sem o `:only-child` a regra pintaria
+   de cinza tambem o caso em que o titulo e a UNICA linha do balao (fonte
+   de tela, ou janela sem programa identificado). */
+.source-tooltip-title:not(:only-child) {
+  color: var(--ev-c-text-2);
 }
 
 .transmission-footer {
@@ -1849,10 +2016,9 @@ code {
      foi junto, porque não sincronizava mais nada. */
   height: 66px;
   flex-shrink: 0;
-  margin: 16px;
+
   padding: 12px 16px 12px 16px;
-  --border-top: 1px solid var(--ev-c-gray-3);
-  border-radius: 8px;
+  border-top: 1px solid var(--ev-c-gray-3);
 }
 
 /* Pedido do usuário (2026-09-05): o fundo (mesmo tom do "profile tile"
@@ -1905,55 +2071,20 @@ code {
   flex-shrink: 0;
 }
 
-/* Pedido do usuário (2026-09-04): "aba" que fica colada na borda de
-   cima do footer (precisa de `position: relative` aqui pra servir de
-   referência pro `.participants-tab-wrapper` abaixo, que sai do fluxo
-   normal do `.home-live-controls` pra ficar ancorado bem na linha da
-   borda, e não mais dentro do padding do footer). */
-.home-footer {
-  position: relative;
-}
+/* A ABA E O PAINEL DE ESPECTADORES DO RODAPÉ SAÍRAM (2026-09-23, pedido
+   do usuário).
 
-/* `bottom: 100%` relativo ao PRÓPRIO `.home-footer` (não mais a um
-   wrapper que vivia dentro do padding dele) — a aba/lista fica com a
-   base exatamente na borda de cima do footer, sem vão. Sem `top`
-   definido, a altura fica livre (auto): conforme a lista cresce, ela
-   empurra pra CIMA (a base fica sempre colada na borda), nunca empurra
-   os outros botões do footer (fora do fluxo, `position: absolute`). */
-.participants-tab-wrapper {
-  position: absolute;
-  bottom: 100%;
-  right: 24px;
-  display: flex;
-}
+   Aqui viviam `.participants-tab-wrapper`, `.participants-tab`,
+   `.participants-panel*`, `.participants-list`, `.participants-count` e
+   `.participants-empty`: uma aba ancorada no rodapé que subia por cima da
+   área de lives com a lista de quem estava assistindo.
 
-/* Pedido do usuário (2026-09-04): o botão fechado vira uma ABA que
-   nasce da própria borda do footer — arredondado só no topo, sem borda
-   embaixo (funde com o footer ali), fundo igual ao fundo da HOME (não
-   mais o tom de botão) pra parecer uma continuação do conteúdo, não um
-   botão flutuante solto. */
-.participants-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 14px;
-  border-radius: 12px 12px 0 0;
-  border: 1px solid var(--ev-c-gray-3);
-  border-bottom: none;
-  /* Pedido do usuário (2026-09-05): mesma cor do footer com a live ON
-     (era `--color-background`) — a aba só existe durante a transmissão,
-     então acompanha o footer sempre e os dois leem como uma peça só. */
-  background-color: var(--ev-c-black-mute);
-  color: var(--ev-c-text-1);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
+   Quem está assistindo a minha live agora é a LINHA DE AVATARES no topo
+   da barra do chat (ver `.viewer-avatar-row` e `.host-chat-dock`) — uma
+   lista só, num lugar só, e que ocupa espaço reservado em vez de flutuar
+   sobre a transmissão. Sobrou daqui só o botãozinho redondo abaixo, que a
+   barra do chat continua usando. */
 
-/* Botão de recolher (seta) dentro do header da lista aberta — não é
-   mais o mesmo `.participants-tab` (esse agora é só a aba fechada, com
-   um visual específico de "nascer da borda"); esse aqui é um botão
-   normal, redondo, igual aos outros `.icon-button` do footer. */
 .participants-collapse-button {
   display: inline-flex;
   align-items: center;
@@ -1969,69 +2100,6 @@ code {
 
 .participants-collapse-button:hover {
   background-color: var(--ev-button-alt-hover-bg);
-}
-
-/* Pedido do usuário (2026-09-04): não é mais revelado por HOVER — vira a
-   LISTA de espectadores de verdade (controlada por estado em
-   HomeScreen.tsx, `viewersExpanded`), expandindo sozinha automaticamente
-   só na primeira vez que alguém entra na live atual; depois disso (ou
-   se o host recolher manualmente antes disso acontecer), só o botão de
-   seta no header abre/fecha. Mesmo visual de "aba" do `.participants-tab`
-   acima: arredondado só no topo, sem borda embaixo, fundo igual ao da
-   HOME — a lista é só a versão "aberta" da mesma aba. */
-.participants-panel {
-  /* Largura fixa de 350px (pedido do usuário, 2026-09-04) — antes
-     variava entre 140-200px conforme o conteúdo. */
-  width: 220px;
-  padding: 10px;
-  border-radius: 10px 10px 0 0;
-  border: 1px solid var(--ev-c-gray-3);
-  border-bottom: none;
-  /* Mesma cor do footer com a live ON, pelo mesmo motivo do
-     `.participants-tab` acima — a lista é só a versão "aberta" da
-     mesma aba. */
-  background-color: var(--ev-c-black-mute);
-  color: var(--ev-c-text-1);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.participants-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.participants-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.participants-list {
-  display: flex;
-  flex-direction: column;
-  /* 2px desde 2026-09-14: o tile ganhou padding próprio, e 5px de gap
-     somados a ele deixavam a lista esparsa. Mesmo valor da lista de
-     usuários. */
-  gap: 2px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: 12px;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-
-.participants-empty {
-  font-size: 12px;
-  margin: 0;
-  opacity: 0.8;
 }
 
 /* Pedido do usuário (2026-09-02): "USER INFO" — avatar (placeholder
@@ -2433,7 +2501,7 @@ code {
    32px da titlebar (ver `padding-top` da `.home-page`) — nao o topo
    absoluto da janela, que cruzaria os botoes de minimizar/fechar. */
 .home-body::before {
-  content: "";
+  content: '';
   position: absolute;
   top: 0;
   bottom: 0;
@@ -2471,8 +2539,7 @@ code {
   /* Fundo em duas camadas: um brilho roxo no canto superior esquerdo
      (mesma linguagem do popover de perfil) por cima da cor base. */
   background:
-    radial-gradient(120% 90% at 0% 0%, rgba(167, 139, 250, 0.18), transparent 70%),
-    #26262c;
+    radial-gradient(120% 90% at 0% 0%, rgba(167, 139, 250, 0.18), transparent 70%), #26262c;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
     0 18px 50px -10px rgba(0, 0, 0, 0.6),
@@ -2628,10 +2695,37 @@ code {
   overflow-y: auto;
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* A folga da esquerda existe pro alfinete de "fixado" (2026-09-25):
+     ele fica no canto do tile e VAZA pra fora dele de proposito, e o
+     `overflow-y: auto` acima recortava a parte de fora.
+
+     Recortava porque overflow nao se resolve por eixo: pelo CSS, um
+     valor diferente de `visible` num eixo transforma `visible` no outro
+     em `auto` — nao existe "rola na vertical e transborda na
+     horizontal". Sem a folga, o unico jeito seria o alfinete nao sair do
+     tile.
+
+     A margem negativa DEVOLVE os 6px: ela puxa a caixa pra esquerda
+     exatamente o quanto o padding empurrou o conteudo, entao os tiles
+     continuam alinhados com o resto do painel e a barra de rolagem nao
+     sai do lugar. O que muda e so onde a caixa RECORTA. */
+  margin-left: -6px;
+  /* Os 12px do pe (2026-09-25, pedido do usuario) separam o ultimo tile
+     da borda de baixo da janela.
+
+     Dentro da lista, e nao no `.side-panel` — la eles foram TIRADOS de
+     proposito em 2026-09-18 (ver o comentario de la): folga na casca
+     encurta a area que rola, e sobrava uma faixa morta embaixo, como se
+     a lista tivesse acabado antes do fim. Aqui a folga rola junto com o
+     conteudo: a lista vai ate a borda, e o respiro so aparece quando se
+     chega no fim dela. */
+  padding: 0 0 12px 6px;
 }
 
 .users-list-item {
+  /* Ancora do alfinete de "fixado", que e absoluto no canto superior
+     esquerdo (2026-09-25) — ver .users-list-pin-badge. */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2719,11 +2813,19 @@ code {
   color: var(--ev-c-text-2);
 }
 
-/* So aparece no hover da linha: com uma dezena de usuarios, um botao
-   fixo em cada um viraria uma coluna de icones competindo com os nomes.
-   Continua visivel no foco por teclado, senao some pra quem navega por
-   Tab. */
-.users-list-invite {
+/* SEMPRE visivel (2026-09-23, pedido do usuario) — antes so aparecia no
+   hover da linha, e quem estava ao vivo nao percebia que dava pra
+   convidar. Quem ganha o botao continua sendo so quem esta online ou
+   ocupado (a regra vive no canInvite da UsersSidebar), entao a coluna de
+   icones nao toma conta da lista. Roxo pra ler como acao, e nao como
+   status: os pontinhos de presenca ao lado ja usam as cores de estado. */
+/* A CAIXA dos dois botões de ação do tile (2026-09-25): mesma medida,
+   mesma borda, mesma transição. Numa regra só porque eles ficam lado a
+   lado — mantidos separados, qualquer ajuste em um deixaria o outro
+   visivelmente diferente do vizinho. O que muda entre eles é só a COR,
+   logo abaixo. */
+.users-list-invite,
+.users-list-pin {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2733,31 +2835,28 @@ code {
   border-radius: 8px;
   border: none;
   background: none;
-  color: var(--ev-c-text-2);
   cursor: pointer;
-  opacity: 0;
   transition:
     opacity 0.15s ease,
     background-color 0.15s ease,
     color 0.15s ease;
 }
 
-.users-list-item:hover .users-list-invite,
-.users-list-invite:focus-visible {
-  opacity: 1;
-}
-
-.users-list-invite:hover:not(:disabled) {
-  background-color: rgba(167, 139, 250, 0.16);
+.users-list-invite {
   color: var(--accent);
 }
 
-/* Desabilitado = CONVITE JA ENVIADO: verde, e visivel mesmo sem hover,
-   pra o host lembrar que ja mandou. */
+/* No hover so o FUNDO muda — a cor do icone ja e a de acao, e troca-la
+   aqui faria o botao mudar de tom a cada passada do mouse. */
+.users-list-invite:hover:not(:disabled) {
+  background-color: rgba(167, 139, 250, 0.16);
+}
+
+/* Desabilitado = a pessoa JA ESTA na live: verde, a cor de "ao vivo" do
+   app, pra o host ler de relance quem ja entrou. */
 .users-list-invite:disabled {
   cursor: default;
   color: var(--color-live);
-  opacity: 1;
 }
 
 /* Desabilitado por OUTRO motivo (2026-09-13): a live ainda nao entrou no
@@ -2771,6 +2870,486 @@ code {
 .users-list-invite-waiting:disabled {
   color: var(--ev-c-text-3);
   opacity: 0.45;
+}
+
+/* ---------------------------------------------------------------------
+   Grupos Online/Offline e usuarios FIXADOS (2026-09-25, pedido do
+   usuario) — UsersSidebar.tsx
+   --------------------------------------------------------------------- */
+
+/* Titulo de grupo ("Online - 5").
+
+   E um <li> da MESMA lista dos tiles, e nao um cabecalho de uma lista
+   propria: o `position: sticky` so funciona dentro do elemento que rola,
+   entao um <ul> por grupo faria cada titulo grudar no topo da sua
+   propria caixa em vez de no topo do painel.
+
+   Maiusculas pequenas com espacamento: e um rotulo de secao, nao um item
+   — precisa ler como uma camada acima dos nomes sem competir com eles em
+   tamanho nem em brilho. */
+.users-group-header {
+  position: sticky;
+  top: 0;
+  /* Acima dos tiles, que passam por baixo enquanto a lista rola.
+
+     2 e nao 1 de proposito: o alfinete de "fixado" tambem e posicionado
+     e vem DEPOIS na ordem do documento, entao com o mesmo z-index ele
+     ganharia o desempate e apareceria por cima do titulo — justamente
+     no caso mais comum, porque os fixados ficam no topo do grupo e sao
+     os primeiros a passar por baixo do cabecalho. */
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  /* A margem negativa e os 6px a mais de padding fazem o titulo cobrir
+     TAMBEM a folga da esquerda da lista (ver .users-list). O texto nao
+     sai do lugar — os dois numeros se anulam —, mas o fundo passa a
+     alcancar a faixa por onde o alfinete de "fixado" vaza; sem isso, a
+     ponta dele apareceria do lado do titulo enquanto o tile rola por
+     baixo. */
+  margin-left: -6px;
+  padding: 10px 8px 5px 14px;
+  /* Opaco de proposito, na cor do painel: sem isto os nomes apareceriam
+     atraves do titulo durante a rolagem. */
+  background-color: var(--color-background);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-2);
+  /* Arrastar sobre a lista nao pode selecionar os rotulos. */
+  user-select: none;
+}
+
+/* O primeiro titulo encosta no topo: a folga de cima existe pra separar
+   do grupo ANTERIOR, e antes do primeiro nao ha grupo nenhum. */
+.users-group-header:first-child {
+  padding-top: 2px;
+}
+
+/* O numero mais apagado que a palavra: a categoria e a informacao, a
+   contagem e o detalhe. Mesmo tamanho pros dois — mudar o corpo da fonte
+   no meio da linha quebraria o alinhamento da base. */
+.users-group-count {
+  font-weight: 600;
+  color: var(--ev-c-text-3);
+}
+
+/* Os botoes de acao do tile num conteiner so, SEM o `gap` de 10px da
+   linha. E ele que da o efeito pedido: o alfinete cresce de 0 ate a
+   largura cheia e empurra o convite pra esquerda, em vez de aparecer
+   num espaco que ja estava reservado esperando por ele.
+
+   (O `gap` da linha continua valendo entre o nome e este bloco, entao
+   todo tile reserva os mesmos 10px no fim — inclusive os de quem nao
+   pode ser convidado. E de proposito: os nomes passam a truncar no
+   mesmo ponto em toda a lista, online ou offline.) */
+.users-list-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Quem ANIMA e o slot, nao o botao: ele abre de 0 a 26px no hover, e o
+   botao la dentro mantem o tamanho o tempo todo — assim o icone nao
+   estica nem treme durante a transicao.
+
+   As tres propriedades juntas sao o que faz o movimento parecer um
+   deslize e nao um "pop": a largura empurra o vizinho, o translate faz o
+   botao entrar vindo da direita, e a opacidade evita que ele apareca
+   pela metade no primeiro quadro. */
+.users-list-pin-slot {
+  display: flex;
+  /* O botao encostado na DIREITA da fatia: a folga de 8px que separa do
+     convite (2026-09-25, pedido do usuario) mora dentro da largura que
+     anima, e nao num `gap` do conteiner.
+
+     Num `gap` ela existiria sempre — inclusive com o slot fechado —, e
+     o convite ficaria 8px pra esquerda do lugar dele o tempo todo,
+     guardando espaco pra um botao que nem esta na tela. Aqui os 8px
+     nascem junto com o botao. */
+  justify-content: flex-end;
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateX(6px);
+  transition:
+    width 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+/* `:has(:focus-visible)` pra quem navega pelo teclado: sem isso o botao
+   existiria na ordem do Tab mas seguiria invisivel, e o foco sumiria
+   dentro de uma caixa de largura zero.
+
+   ⚠️ `:focus-visible` e NAO `:focus-within` — foi o defeito relatado
+   pelo usuario em 2026-09-25: clicar em fixar deixa o foco no botao, e
+   com `:focus-within` o slot daquele tile ficava aberto para sempre,
+   ate clicar em outro lugar ou fechar o painel. O `:focus-visible` so
+   casa quando o navegador decide MOSTRAR o foco (teclado), entao o
+   clique de mouse nao prende mais nada, e o Tab continua revelando.
+
+   `user-tile-active` = a ficha do usuario esta aberta: o tile ja fica
+   realcado nesse estado, e o alfinete sumindo seria a unica parte dele
+   que nao acompanharia. */
+.users-list-item:hover .users-list-pin-slot,
+.users-list-item:has(:focus-visible) .users-list-pin-slot,
+.users-list-item.user-tile-active .users-list-pin-slot {
+  /* 26 do botao + 8 de folga ate o convite. */
+  width: 34px;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* NEUTRO, ao contrario do convite ao lado: ali o roxo diz "faca isto";
+   aqui a acao e secundaria. Dois botoes coloridos lado a lado em cada
+   linha virariam uma coluna de cor no meio da lista. */
+.users-list-pin {
+  color: var(--ev-c-text-2);
+}
+
+/* O hover PADRAO do app (2026-09-25, pedido do usuario) — o mesmo do
+   .icon-button. Chegou a ser ambar, pra antecipar o resultado da acao, e
+   saiu no mesmo dia: o ambar e a cor de ESTAR fixado, e usa-la tambem no
+   botao fazia o hover parecer que o estado ja tinha mudado. Agora quem
+   fala em ambar e so o alfinete do canto, que e o estado de verdade. */
+.users-list-pin:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+  color: var(--ev-c-text-1);
+}
+
+.users-list-pin:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* O alfinete de "esta fixado", no canto superior esquerdo do tile
+   (pedido do usuario) — por cima da foto, que e o que ocupa aquele canto.
+
+   Inclinado pra esquerda, preenchido, e com sombra: os tres servem pra
+   mesma coisa, que e ele se destacar de QUALQUER foto embaixo. O
+   contorno vazado do lucide sumiria sobre um avatar claro.
+
+   `pointer-events: none` porque ele fica sobre o botao do tile: sem
+   isso, clicar no proprio alfinete nao abriria a ficha. */
+.users-list-pin-badge {
+  position: absolute;
+  /* Vaza um pouco pra fora do tile (2026-09-25, pedido do usuario): o
+     alfinete cresceu e, encaixado dentro do padding, comecava a cobrir a
+     foto em vez de marcar o canto dela.
+
+     Os numeros tem um limite: o tile de cima termina 8px acima deste
+     (2px de `gap` mais 6px do padding dele), e o icone girado ocupa ~20px
+     de altura contra os 14px do quadrado — ou seja, ele sobe ~5px alem
+     do que estes -2px dizem. Sobra folga, mas nao muita: passar de -3px
+     encosta no conteudo do tile anterior. */
+  top: -2px;
+  left: -3px;
+  z-index: 1;
+  display: flex;
+  color: var(--color-pinned);
+  transform: rotate(-45deg);
+  /* Mais forte que a sombra de um icone pequeno pediria: metade do
+     alfinete agora fica FORA do tile, sobre o fundo do painel, e a
+     sombra e o que separa as duas partes do que estiver atras. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+  animation: users-pin-badge-in 0.18s ease-out;
+}
+
+/* Cresce ao aparecer. Curto de proposito: e a confirmacao de um clique
+   que ja reordenou a lista, entao qualquer coisa mais longa competiria
+   com o movimento do proprio tile subindo. O `rotate` se repete nos dois
+   quadros porque `transform` e uma propriedade so — omiti-lo no `from`
+   faria o alfinete girar durante a entrada. */
+@keyframes users-pin-badge-in {
+  from {
+    opacity: 0;
+    transform: rotate(-45deg) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-45deg) scale(1);
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Notas da atualizacao (2026-09-25, pedido do usuario) —
+   ReleaseNotesModal.tsx
+   --------------------------------------------------------------------- */
+
+/* Mais larga que o `.modal-panel` padrao (560px) porque sao DUAS colunas:
+   a lista de versoes nao pode espremer o texto ao lado. A altura tambem e
+   fixa em vh, e nao dependente do conteudo — uma versao com tres itens e
+   outra com quinze fariam a janela mudar de tamanho a cada clique na
+   lista, que e o tipo de movimento que faz perder o lugar da leitura. */
+.release-notes {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 92vw);
+  height: min(560px, 86vh);
+  border-radius: 16px;
+  border: 1px solid var(--ev-c-gray-3);
+  /* O mesmo brilho roxo do alto que os outros cartoes do app usam (ver
+     .join-code-modal): diz "isto e do Prisma" sem precisar de mais
+     nenhum enfeite. */
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(167, 139, 250, 0.12), transparent 70%),
+    var(--color-background);
+  overflow: hidden;
+}
+
+.release-notes-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--app-chrome-border);
+}
+
+/* Mesma pilula de icone do resto do app (.update-dialog-icon), em
+   tamanho de cabecalho. */
+.release-notes-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+}
+
+.release-notes-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.release-notes-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+.release-notes-subtitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ev-c-text-2);
+}
+
+.release-notes-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------- lista lateral */
+
+.release-notes-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 172px;
+  flex-shrink: 0;
+  padding: 12px 10px;
+  overflow-y: auto;
+  border-right: 1px solid var(--app-chrome-border);
+}
+
+.release-notes-version {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.release-notes-version:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+/* A selecionada: fundo mais claro que o hover e uma barra roxa na
+   esquerda. A barra e o que sobrevive a rolagem — com o fundo sozinho, a
+   diferenca entre "sob o cursor" e "aberta" fica sutil demais numa lista
+   de itens iguais. */
+.release-notes-version-active,
+.release-notes-version-active:hover {
+  position: relative;
+  background-color: rgba(255, 255, 255, 0.07);
+}
+
+.release-notes-version-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.release-notes-version-number {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-2);
+}
+
+.release-notes-version-active .release-notes-version-number {
+  color: var(--ev-c-text-1);
+}
+
+/* O chip "atual" — a versao que esta rodando. Mesma pilula do rotulo de
+   canal da titlebar (.app-titlebar-channel), em minusculas: la ele nomeia
+   a build, aqui so marca uma linha da lista. */
+.release-notes-version-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background-color: rgba(139, 92, 246, 0.14);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.release-notes-version-date {
+  font-size: 10px;
+  color: var(--ev-c-text-3);
+}
+
+/* ------------------------------------------------------------ conteudo */
+
+.release-notes-content {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+}
+
+.release-notes-content-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.release-notes-content-version {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+}
+
+.release-notes-content-date {
+  font-size: 11px;
+  color: var(--ev-c-text-3);
+}
+
+/* A frase de resumo. Um pouco maior que os itens e mais apagada que o
+   titulo: e o paragrafo de quem so vai ler uma linha. */
+.release-notes-summary {
+  margin: 8px 0 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ev-c-text-2);
+}
+
+.release-notes-section {
+  margin-bottom: 18px;
+}
+
+.release-notes-section:last-child {
+  margin-bottom: 0;
+}
+
+/* O rotulo da secao. Maiusculas pequenas, igual aos titulos de grupo da
+   lista de usuarios: sao a mesma coisa — uma camada acima do conteudo,
+   que precisa se distinguir sem competir.
+
+   A COR vem do modificador por tipo, logo abaixo, e pinta o icone junto
+   pelo `currentColor`. */
+.release-notes-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.release-notes-section-novidades .release-notes-section-title {
+  color: var(--accent);
+}
+
+.release-notes-section-melhorias .release-notes-section-title {
+  color: var(--color-live);
+}
+
+.release-notes-section-correcoes .release-notes-section-title {
+  color: var(--ev-c-text-2);
+}
+
+/* Os itens. Marcador desenhado a mao (`::before`) em vez do `list-style`
+   do navegador: assim ele fica alinhado com a PRIMEIRA LINHA do texto e
+   nao com o bloco inteiro, que e o que sai torto quando um item ocupa
+   duas linhas. */
+.release-notes-items {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release-notes-items li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ev-c-text-1);
+}
+
+.release-notes-items li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  /* Centro da primeira linha: metade da altura de linha (13 × 1.55 ≈ 20)
+     menos metade do ponto. */
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-1);
+}
+
+.release-notes-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
 }
 
 /* ---------------------------------------------------------------------
@@ -3015,6 +3594,22 @@ body.overlay-window #root {
 .tooltip {
   position: fixed;
   z-index: 2000;
+  /* `width: max-content` (2026-09-25, defeito relatado pelo usuário: o
+     balão do botão de chat "quebrando em cada letra").
+
+     O balão é `position: fixed`, então o bloco que o contém é a JANELA —
+     e a largura disponível pra ele é o que sobra do `left` até a borda
+     direita. Perto dessa borda isso vira quase zero, e uma caixa de
+     largura automática encolhe até caber: o texto passa a quebrar a cada
+     letra. O `translate(-50%)` do `data-placement` não salva, porque ele
+     só desloca o balão DEPOIS que a largura já foi calculada.
+
+     Pedir `max-content` tira a largura das mãos do espaço disponível: ela
+     passa a vir do texto, e o balão simplesmente transborda a janela pela
+     direita — de onde o `translate` o traz de volta. O `max-width`
+     continua valendo por cima disso, então rótulo comprido segue
+     quebrando em 260px como antes. */
+  width: max-content;
   max-width: 260px;
   padding: 7px 11px;
   border-radius: 8px;
@@ -3063,22 +3658,22 @@ body.overlay-window #root {
 
 /* Cada posicao puxa o balao pro lado certo do ponto ancorado, e a
    animacao entra deslizando 4px na direcao contraria. */
-.tooltip[data-placement="right"] {
+.tooltip[data-placement='right'] {
   transform: translateY(-50%);
   transform-origin: left center;
 }
 
-.tooltip[data-placement="left"] {
+.tooltip[data-placement='left'] {
   transform: translate(-100%, -50%);
   transform-origin: right center;
 }
 
-.tooltip[data-placement="top"] {
+.tooltip[data-placement='top'] {
   transform: translate(-50%, -100%);
   transform-origin: center bottom;
 }
 
-.tooltip[data-placement="bottom"] {
+.tooltip[data-placement='bottom'] {
   transform: translateX(-50%);
   transform-origin: center top;
 }
@@ -3097,7 +3692,7 @@ body.overlay-window #root {
    Girado, o par de bordas que fica pra fora e sempre o das duas faces
    opostas ao balao — por isso cada posicao apaga um par diferente. */
 .tooltip::after {
-  content: "";
+  content: '';
   position: absolute;
   width: 10px;
   height: 10px;
@@ -3108,7 +3703,7 @@ body.overlay-window #root {
 
 /* Balao a DIREITA do elemento: setinha na esquerda, apontando pra
    esquerda. Faces de fora = borda esquerda + inferior. */
-.tooltip[data-placement="right"]::after {
+.tooltip[data-placement='right']::after {
   top: 50%;
   left: -5px;
   margin-top: -5px;
@@ -3116,7 +3711,7 @@ body.overlay-window #root {
   border-right-color: transparent;
 }
 
-.tooltip[data-placement="left"]::after {
+.tooltip[data-placement='left']::after {
   top: 50%;
   right: -5px;
   margin-top: -5px;
@@ -3124,7 +3719,7 @@ body.overlay-window #root {
   border-left-color: transparent;
 }
 
-.tooltip[data-placement="top"]::after {
+.tooltip[data-placement='top']::after {
   left: 50%;
   bottom: -5px;
   margin-left: -5px;
@@ -3132,7 +3727,7 @@ body.overlay-window #root {
   border-left-color: transparent;
 }
 
-.tooltip[data-placement="bottom"]::after {
+.tooltip[data-placement='bottom']::after {
   left: 50%;
   top: -5px;
   margin-left: -5px;
@@ -3384,20 +3979,209 @@ body.overlay-window #root {
   background-color: rgba(248, 113, 113, 0.15);
 }
 
-/* `flex: 1` aqui e o que reserva o rodape pra futura secao de
-   COMENTARIOS: a lista de viewers e quem absorve a sobra de altura,
-   entao os comentarios encostam embaixo sem remexer no resto. */
+/* `flex: 1` aqui e o que reserva o rodape pro CHAT DA LIVE: a lista de
+   viewers e quem absorve a sobra de altura, entao o chat encosta
+   embaixo sem remexer no resto.
+
+   COLAPSO (2026-09-23): com o chat aberto este bloco nao some — encolhe
+   ate a LISTA virar uma linha de avatares sobrepostos, e o chat sobe pra
+   ocupar o que ela largou. A linha de cima ("Assistindo" + contador)
+   nao se mexe: e so a lista que se transforma.
+
+   Por que animar `flex-grow` (e nao `height`): a altura daqui e a sobra
+   do painel, um numero que so o layout conhece. `flex-grow` diz quanto
+   dessa sobra o bloco puxa, e 1 -> 0 interpola liso sem ninguem precisar
+   medir nada em JS. O `min-height` entra no fim, quando a sobra ja
+   acabou, pra fixar a altura do estado colapsado.
+
+   `flex-basis: 0` e obrigatorio pro `min-height` mandar sozinho no
+   estado colapsado: com `auto`, a base seria a altura da lista CHEIA e
+   o bloco nunca encolheria.
+
+   NENHUM `overflow: hidden` aqui, de proposito: e este o caminho que o
+   hover dos avatares da fila precisa pra escapar da caixa (ver
+   `.room-details-avatar-chip:hover`). Quem recorta a lista enquanto o
+   bloco encolhe e a propria lista, que ja rola. */
 .room-details-viewers {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  transition:
+    flex-grow 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+    min-height 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 52px = 18 do rotulo + 8 do `gap` + 26 da fila. Os 18 sao a altura real
+   da linha com o contador dentro: 10px de fonte x 1.6 de `line-height`
+   (base.css) = 16, mais 1px de padding em cima e embaixo da pilula. O
+   rotulo ganhou essa altura FIXA logo abaixo justamente pra essa conta
+   existir — sem ela o numero aqui dependeria da altura que o texto
+   calhasse de ter, e a fila seria cortada por um pixel. */
+.room-details-viewers-collapsed {
+  flex-grow: 0;
+  min-height: 52px;
+}
+
+/* Altura fixa so no rotulo DESTE bloco (a classe e compartilhada com o
+   "Jogando/Transmitindo" la de cima, que nao tem nada a ver com isto). */
+.room-details-viewers > .room-details-label {
+  flex-shrink: 0;
+  min-height: 18px;
+}
+
+/* O retangulo que a lista e a fila DIVIDEM. As duas sao absolutas dentro
+   dele e ocupam o mesmo espaco, entao uma vira a outra por opacidade
+   enquanto a altura daqui anima — empilhadas no fluxo, a fila "cairia"
+   no lugar da lista quando ela saisse. */
+.room-details-viewers-body {
+  position: relative;
+  flex: 1 1 0;
   min-height: 0;
 }
 
+/* A lista cheia. `overflow: hidden` aqui e seguro (a fila NAO esta
+   dentro): recorta o texto de "ninguem assistindo" enquanto o bloco
+   encolhe, e a `ul` de dentro ja se recorta sozinha por rolar. */
+.room-details-viewers-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: opacity 0.18s ease;
+}
+
+.room-details-viewers-collapsed .room-details-viewers-layer {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Aqui ficava a fila de avatares. Ela virou COMPARTILHADA em 2026-09-23
+   (a barra do chat do host mostra a mesma coisa no topo) e mudou de nome
+   junto: `.viewer-avatar-row`, mais abaixo neste arquivo, ao lado do
+   componente que a desenha nos dois lugares. O que sobra aqui embaixo e
+   so a parte que e DESTA barra — como ela entra e sai. */
+
+/* Na ficha da sala a fila e ABSOLUTA, ancorada no topo do retangulo que
+   ela divide com a lista: colapsado, o retangulo tem exatamente 26px e a
+   fila o preenche; aberto, ela fica invisivel sobre a primeira linha da
+   lista, sem ocupar nada de ninguem. */
+.room-details-viewers .viewer-avatar-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease 0.06s;
+}
+
+.room-details-viewers-collapsed .viewer-avatar-row {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .room-details-viewers-list {
+  flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* =====================================================================
+   A LINHA DE AVATARES de quem esta assistindo (2026-09-23)
+   =====================================================================
+
+   Um componente (ViewerAvatarRow.tsx) e um bloco de CSS pros DOIS
+   lugares: o estado colapsado da ficha de uma sala assistida e o topo da
+   barra do chat do host. Onde cada uma delas se POSICIONA e problema da
+   casca em volta — aqui e so a fila em si. */
+
+.viewer-avatar-row {
+  display: flex;
+  align-items: center;
+  height: 26px;
+}
+
+/* O item flex e o `<span class="tooltip-anchor">` que o Tooltip poe em
+   volta de cada chip (ver Tooltip.tsx), nao o botao — por isso a
+   sobreposicao e o `flex-shrink` moram no filho direto, e nao no chip. */
+.viewer-avatar-row > * {
+  flex-shrink: 0;
+}
+
+.viewer-avatar-row > * + * {
+  margin-left: -8px;
+}
+
+/* 26px, e nao 22: a borda entra na conta (`box-sizing: border-box`), e
+   o que tem que bater com a lista vertical e o AVATAR dentro dela — 22px
+   de foto, como em `.room-details-viewers-list .mini-avatar`.
+
+   A borda e da COR DE FUNDO, nao uma cor propria: e ela que abre o sulco
+   entre um chip e o vizinho quando eles se sobrepoem — sem isso a fila
+   vira uma mancha so. */
+.viewer-avatar-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid var(--color-background);
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-3);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease;
+}
+
+/* Sobe um fio, acende o sulco e vem pra frente de TUDO — o `z-index` alto
+   e o que impede o chip de aparecer por baixo do vizinho (que vem depois
+   dele no DOM) ou de um pedaco da caixa em volta.
+
+   Isto so funciona porque nenhum ancestral entre o chip e a barra tem
+   `overflow: hidden` (ver o comentario no topo de `.room-details-viewers`)
+   — com um deles recortando, o movimento pra cima sumiria pela metade. */
+.viewer-avatar-chip:hover,
+.viewer-avatar-chip-active {
+  transform: translateY(-2px);
+  border-color: var(--ev-c-text-2);
+  z-index: 10;
+}
+
+/* SILENCIADO no chat. Sem a lista vertical do rodape, este anel virou o
+   unico lugar em que o host ve de quem ele tirou a voz — a alternativa
+   (nada) apagaria a informacao junto com a lista. */
+.viewer-avatar-chip-muted {
+  border-color: var(--color-danger);
+}
+
+.viewer-avatar-chip-muted:hover {
+  border-color: var(--color-danger);
+}
+
+/* O "…" do fim da fila: as duas barras tem largura fixa, entao o corte e
+   um numero conhecido (`MAX` no componente) e nao uma medicao. */
+.viewer-avatar-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 26px;
+  /* Assimetrico: o lado esquerdo esta por baixo do chip anterior. */
+  padding: 0 4px 0 8px;
+  border: 2px solid var(--color-background);
+  border-radius: 999px;
+  background-color: var(--ev-c-gray-3);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ev-c-text-2);
 }
 
 /* O truncamento do nome existia so escopado na sidebar antiga
@@ -3406,15 +4190,11 @@ body.overlay-window #root {
    barra. O `min-width: 0` no <li> e o que permite o <span> encolher:
    por padrao um flex item nao encolhe abaixo do proprio conteudo, e o
    `text-overflow` nunca chega a valer. */
-/* Tambem na lista da minha live (2026-09-14): os dois tiles sao o mesmo
-   tile, entao o que permite o nome truncar vale nos dois. */
-.room-details-viewers-list li,
-.participants-list li {
+.room-details-viewers-list li {
   min-width: 0;
 }
 
-.room-details-viewers-list .viewer-name,
-.participants-list .viewer-name {
+.room-details-viewers-list .viewer-name {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3425,11 +4205,9 @@ body.overlay-window #root {
    seria efeito colateral. A sidebar antiga faz igual, com 24px — aqui
    22, pedido do usuario (2026-09-09).
 
-   A lista da MINHA live entrou aqui em 2026-09-14: ela usava o tamanho
-   base e ficava visivelmente maior que a da sala, que o usuario tomou
-   como referencia. */
-.room-details-viewers-list .mini-avatar,
-.participants-list .mini-avatar {
+   (A lista da MINHA live esteve aqui de 2026-09-14 ate 2026-09-23, quando
+   ela deixou de existir — ver o bloco do rodape mais acima.) */
+.room-details-viewers-list .mini-avatar {
   width: 22px;
   height: 22px;
 }
@@ -3684,7 +4462,7 @@ body.overlay-window #root {
    `pointer-events: none` porque o anel cresce PRA FORA do botão — sem
    isso ele roubaria o clique perto da borda. */
 .app-left-sidebar-cast::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   border-radius: 999px;
@@ -3739,12 +4517,10 @@ body.overlay-window #root {
    encolheria abaixo de zero e ficaria travado no 0 no meio da
    animacao. */
 .app-left-sidebar-live::before {
-  content: "";
+  content: '';
   position: absolute;
   top: 50%;
-  left: calc(
-    (var(--app-left-sidebar-width) - var(--app-left-sidebar-avatar)) / -2
-  );
+  left: calc((var(--app-left-sidebar-width) - var(--app-left-sidebar-avatar)) / -2);
   width: 4px;
   height: 0;
   transform: translateY(-50%);
@@ -3865,13 +4641,13 @@ body.overlay-window #root {
    desenhar uma linha de cor própria. */
 .app-left-sidebar-watching-badge {
   position: absolute;
-  bottom: -3px;
+  bottom: -8px;
   right: -3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+
+  padding: 2px 3px;
   border-radius: 999px;
   background: var(--accent-gradient);
   border: 2px solid var(--color-background);
@@ -3890,14 +4666,14 @@ body.overlay-window #root {
   position: absolute;
   top: -5px;
   left: -6px;
-  padding: 2px 4px;
+  padding: 6px 4px;
   border-radius: 999px;
   background-color: #ef4444;
   border: 2px solid var(--color-background);
   color: #fff;
   font-size: 7px;
+  line-height: 0.2;
   font-weight: 800;
-  line-height: 1;
   letter-spacing: 0.04em;
   pointer-events: none;
 }
@@ -3992,17 +4768,44 @@ body.overlay-window #root {
   overflow: hidden;
 }
 
-/* `min-height: 0` + `overflow: hidden` (2026-09-05): sem isso o footer
-   era EMPURRADO pra fora da janela conforme ela ficava mais larga. Como
-   item flex de uma coluna, `.watch-area` nasce com `min-height: auto`,
-   ou seja, nunca encolhe abaixo da altura MÍNIMA do conteúdo — e o
-   conteúdo aqui é 16:9 (`.watch-video-frame`), então quanto mais larga
-   a janela, mais ALTA essa altura mínima fica. Passava da altura
-   disponível, `flex: 1` não conseguia encolher, e a sobra saía embaixo,
-   levando o `.home-footer` (irmão de baixo no `.watch-column`) junto.
-   Com `min-height: 0` a área volta a respeitar só o espaço que sobrou
-   depois do footer, e `overflow: hidden` garante que nenhum tile
-   transborde por cima dele num caso extremo (ex.: tiles empilhados no
+/* A LINHA de conteúdo dentro da coluna: a grade de lives e, quando o
+   host fixa o chat no pin (2026-09-23), a barra lateral direita dele.
+   Sem a barra é uma linha de um item só, e o layout fica idêntico ao de
+   antes.
+
+   `min-height: 0` (2026-09-05, herdado da `.watch-area` quando ela era
+   o item flex direto da coluna): sem isso o footer era EMPURRADO pra
+   fora da janela conforme ela ficava mais larga. Como item flex de uma
+   coluna, esta linha nasceria com `min-height: auto`, ou seja, nunca
+   encolheria abaixo da altura MÍNIMA do conteúdo — e o conteúdo aqui é
+   16:9 (`.watch-video-frame`), então quanto mais larga a janela, mais
+   ALTA essa altura mínima fica. Passava da altura disponível, `flex: 1`
+   não conseguia encolher, e a sobra saía embaixo, levando o
+   `.home-footer` (irmão de baixo no `.watch-column`) junto. Com
+   `min-height: 0` a linha volta a respeitar só o espaço que sobrou
+   depois do footer. */
+.watch-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  /* `overflow: hidden` (2026-09-23, defeito relatado pelo usuário: "o
+     footer é empurrado e em seguida volta"). A barra do chat entra
+     deslizando, ou seja, por alguns quadros ela é desenhada à direita de
+     onde mora — fora desta linha. Sem o recorte aqui essa sobra propaga
+     pra cima, o navegador reajusta o que está ao redor, e quem se mexe na
+     tela é o rodapé.
+
+     Recortando na PRÓPRIA linha, cujo tamanho não depende de nada disso,
+     a única coisa que muda ao abrir o chat é a largura da grade — que é
+     exatamente o pedido. O modo foco não é afetado: `.watch-tile-focused`
+     é `position: fixed` e não há transform/filter em nenhum ancestral
+     dele, então ele não é recortado por overflow. */
+  overflow: hidden;
+}
+
+/* `overflow: hidden` garante que nenhum tile transborde por cima do
+   footer num caso extremo (ex.: tiles empilhados no
    `@media (max-aspect-ratio)` abaixo). O modo foco continua intacto —
    `.watch-tile-focused` é `position: fixed` e não existe transform/
    filter em nenhum ancestral, então ele não é recortado por esse
@@ -4010,6 +4813,11 @@ body.overlay-window #root {
 .watch-area {
   position: relative;
   flex: 1;
+  /* `min-width: 0` (2026-09-23): a grade é um item flex HORIZONTAL desde
+     que a barra do chat pode aparecer ao lado. Sem isto ela não encolhe
+     abaixo do tamanho mínimo do conteúdo (um tile 16:9 é largo), e a
+     barra seria empurrada pra fora da janela em vez de ganhar espaço. */
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -4215,7 +5023,7 @@ body.overlay-window #root {
    proporção da janela não bate com a da live agora são a cor de fundo do
    app, e não mais o cinza do `.watch-video-frame` — que, esticado pra
    janela inteira, era o que pintava aquelas faixas. Como o frame agora
-   encolhe até o tamanho do vídeo (abaixo), é este elemento que cobre a
+   tem exatamente o tamanho da live (abaixo), é este elemento que cobre a
    janela, então é dele a cor. */
 .watch-tile-focused {
   position: fixed;
@@ -4229,44 +5037,58 @@ body.overlay-window #root {
   background: var(--color-background);
 }
 
-/* CHIPS COLADOS NA LIVE (2026-09-20, pedido do usuário).
+/* CHIPS COLADOS NA LIVE (2026-09-20, pedido do usuário) + A LIVE
+   OCUPANDO A ÁREA TODA (2026-09-25, pedido do usuário).
    --------------------------------------------------------------------
    Os controles flutuantes (`.tile-overlay`, `inset: 0`) moram DENTRO do
-   frame, então eles cobrem exatamente o que o frame cobrir. Antes o
-   frame era a janela inteira (`100vw` x `100vh - 32px`) e o vídeo se
-   encaixava dentro dele por `object-fit: contain` — ou seja, os chips
-   se ancoravam na JANELA, não na live, e iam parar em cima das bordas
-   vazias conforme a janela mudava de proporção.
+   frame, então eles cobrem exatamente o que o frame cobrir. Antes de
+   2026-09-20 o frame era a janela inteira (`100vw` x `100vh - 32px`) e o
+   vídeo se encaixava dentro dele por `object-fit: contain` — ou seja, os
+   chips se ancoravam na JANELA, não na live, e iam parar em cima das
+   bordas vazias conforme a janela mudava de proporção.
 
-   Agora quem tem tamanho é o VÍDEO (limitado pela janela, mantendo a
-   proporção dele sozinho) e o frame, que é `inline-flex`, encolhe até
-   encostar nele. Os chips passam a acompanhar a área real de exibição.
-   Repare que o limite vai no vídeo em unidades de viewport, não em
-   `100%`: porcentagem aqui mediria o frame, que por sua vez está
-   medindo o vídeo — circular, e o navegador ignoraria. */
+   A correção de lá deu o tamanho ao VÍDEO (`width/height: auto` +
+   `max-*` em unidades de viewport) e deixou o frame `inline-flex`
+   encolher até encostar nele. Resolveu os chips, mas trouxe o bug de
+   2026-09-25: com `width: auto` um elemento substituído usa o tamanho
+   NATIVO dele, e `max-*` só corta pra baixo — nunca estica. Uma live
+   1080p numa janela maximizada em monitor 1440p/4K parava de crescer em
+   1920x1080 e ficava uma borda em volta, por mais espaço que sobrasse.
+
+   Agora quem tem tamanho é o FRAME, e ele é CALCULADO em vez de medido:
+   a maior caixa 16:9 que cabe na área do foco — limitada pela largura
+   quando a janela é mais "alta" que 16:9, e pela altura quando é mais
+   "larga". É a mesma conta que as células da grade (`.watch-grid`) e o
+   placeholder de "Aguardando transmissão" já usam. Como todas as
+   resoluções oferecidas são 16:9 (`RESOLUTION_DIMENSIONS` em
+   transmissionSettings.ts), na prática o vídeo preenche o frame inteiro;
+   o `object-fit: contain` fica de rede de segurança pra uma fonte fora
+   do padrão, e aí sobra uma faixa mínima DENTRO do frame em vez de a
+   live inteira encolher. Os chips continuam colados na live, que é o
+   que a mudança de 2026-09-20 queria.
+
+   O vídeo passa a ser `100%` do frame (e não mais viewport): agora
+   existe um frame com tamanho próprio pra medir, então a porcentagem
+   não é mais circular como era antes.
+
+   `.watch-video-frame-loading` não precisa mais de override aqui — a
+   largura dele cai nesta mesma regra, que é mais específica que o
+   `width: 100%` da regra base dele. */
 .watch-tile-focused .watch-video-frame {
-  width: auto;
+  width: min(100vw, (100vh - 32px) * 16 / 9);
   height: auto;
+  aspect-ratio: 16 / 9;
   max-width: 100vw;
   max-height: calc(100vh - 32px);
   border-radius: 0;
 }
 
 .watch-tile-focused .watch-video-frame .watch-video {
-  width: auto;
-  height: auto;
-  max-width: 100vw;
-  max-height: calc(100vh - 32px);
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-}
-
-/* Sem vídeo ainda ("Aguardando transmissão"): não há o que medir, então
-   o placeholder cai na mesma conta 16:9 do resto do app — a maior caixa
-   que cabe na área do foco. Sem isso ele encolheria até o tamanho do
-   spinner, porque o `width: 100%` de `.watch-video-frame-loading` perde
-   pro `width: auto` da regra acima (que é mais específica). */
-.watch-tile-focused .watch-video-frame-loading {
-  width: min(100vw, (100vh - 32px) * 16 / 9);
 }
 
 /* Controles de cada live assistida (tag do host, espectadores,
@@ -4394,8 +5216,7 @@ body.overlay-window #root {
    lista. É o preço de ter um retângulo de hover com folga em volta do
    texto — a alternativa (margem negativa pra compensar) seria recortada
    pelo `overflow-y` da lista de viewers da sala. */
-.viewers-list li,
-.participants-list li {
+.viewers-list li {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4404,8 +5225,7 @@ body.overlay-window #root {
   transition: background-color 0.15s ease;
 }
 
-.viewers-list li:hover,
-.participants-list li:hover {
+.viewers-list li:hover {
   background-color: rgba(255, 255, 255, 0.04);
 }
 
@@ -5045,7 +5865,10 @@ body.overlay-window #root {
 .settings-modal {
   display: flex;
   flex-direction: column;
-  width: min(440px, 90vw);
+  /* Alargado de 440px (2026-09-23, pedido do usuario): as descricoes das
+     preferencias quebravam em varias linhas e cada linha ficava alta
+     demais ao lado do switch. */
+  width: min(560px, 92vw);
   max-height: 80vh;
   border-radius: 16px;
   border: 1px solid var(--ev-c-gray-3);
@@ -5450,9 +6273,7 @@ body.overlay-window #root {
 .users-list-item.user-tile-active,
 .users-list-item.user-tile-active:hover,
 .viewers-list li.user-tile-active,
-.viewers-list li.user-tile-active:hover,
-.participants-list li.user-tile-active,
-.participants-list li.user-tile-active:hover {
+.viewers-list li.user-tile-active:hover {
   /* Mais claro que o hover (0.04): o hover diz "da pra clicar", este
      diz "esta aberto". Iguais, o tile da ficha aberta se perderia no
      meio da lista assim que o mouse passasse por outro. */
@@ -5658,7 +6479,7 @@ body.overlay-window #root {
 /* A titlebar agora mostra os dois, então o chip precisa de um respiro do
    número que passou a vir depois dele. */
 .app-titlebar-channel + .app-titlebar-version {
-  margin-left: 6px;
+  margin-left: 0px;
 }
 
 /* ----------------------------------------------------------------------
@@ -6072,4 +6893,789 @@ body.overlay-window #root {
   background: none;
   color: var(--ev-c-text-1);
   cursor: pointer;
+}
+
+/* =====================================================================
+   CHAT DA LIVE (item 21 do roadmap, 2026-09-23)
+   =====================================================================
+
+   Quatro blocos aqui:
+
+     1. `.live-chat*`      — o corpo do chat (lista + caixa de escrever).
+        É o mesmo nos três lugares, então mora num componente só
+        (LiveChat.tsx) e num bloco de CSS só.
+     2. `.room-chat*`      — a casca do VIEWER: aba no rodapé da ficha da
+        sala, que sobe até a linha do "Assistindo" colapsando a lista de
+        espectadores numa fila de avatares.
+     3. `.host-chat-bar*` — a casca do HOST FECHADA: uma linha deitada
+        logo acima do rodapé, alinhada à direita (o tile de espectadores
+        + o botão que abre o chat).
+     4. `.host-chat-dock*` — a casca do HOST ABERTA: barra lateral
+        direita, do topo da área de conteúdo até a borda do rodapé.
+
+   A casca fechada do VIEWER (2) ainda herda o visual de "aba que nasce
+   da borda" que o `.participants-tab` estabeleceu em 2026-09-04 —
+   arredondada só de um lado, sem borda no lado que encosta, fundo igual
+   ao da peça vizinha. A do host abandonou essa gramática em 2026-09-25
+   (desenho do usuário): ela não encosta mais em borda nenhuma, então não
+   há lado pra achatar — virou um par de peças soltas sobre a área de
+   lives.
+
+   ⚠️ As DUAS cascas do host (3 e 4) ocupam espaço RESERVADO: nenhuma
+   live fica por baixo delas. O EIXO é que difere, e com ele o lugar de
+   cada uma na árvore — a barra aberta é irmã da grade dentro da
+   `.watch-row` (reserva largura), a linha fechada é irmã do rodapé
+   dentro da `.watch-column` (reserva altura). É por isso que a aba de
+   espectadores do rodapé foi pro lado ESQUERDO — ela é `position:
+   absolute` e passaria por cima. */
+
+/* --- 1. O corpo do chat ---------------------------------------------- */
+
+.live-chat {
+  display: flex;
+  flex-direction: column;
+  /* `min-height: 0` é o que permite a lista rolar dentro de um pai flex
+     — sem isso ela cresce e empurra a caixa de escrever pra fora. */
+  min-height: 0;
+  flex: 1;
+  gap: 8px;
+}
+
+.live-chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  /* SEM BARRA DE ROLAGEM (2026-09-23, pedido do usuário): rola pela roda
+     do mouse e pelo teclado, mas não desenha barra nenhuma. Num painel
+     estreito a barra come largura útil e polui uma lista que já é densa.
+     As duas linhas abaixo cobrem Firefox e Chromium. */
+  scrollbar-width: none;
+}
+
+.live-chat-messages::-webkit-scrollbar {
+  display: none;
+}
+
+/* ⚠️ BUG REAL corrigido em 2026-09-23 (relatado pelo usuário: "a lista de
+   mensagem não tem scroll").
+
+   Aqui havia `justify-content: flex-end` no container, pra empurrar as
+   mensagens pro pé da lista enquanto há poucas. Funciona visualmente —
+   e QUEBRA A ROLAGEM: num container flex com `overflow`, o conteúdo que
+   transborda pelo alinhamento fica ANTES do início da área rolável, num
+   espaço que o `scrollTop` não alcança (ele não vai a negativo). Ou
+   seja: passando de uma tela de mensagens, as antigas ficavam
+   inacessíveis pra sempre.
+
+   `margin-top: auto` na PRIMEIRA mensagem faz o mesmo efeito sem o
+   defeito: sobrando espaço, a margem o consome e a lista assenta no pé;
+   faltando espaço, ela vira zero e a rolagem funciona normalmente. */
+.live-chat-messages > :first-child {
+  margin-top: auto;
+}
+
+/* Avatar + (nome + ":" + mensagem) numa linha que quebra. As linhas
+   seguintes alinham sob o NOME, não sob o avatar — é o recuo pendente
+   clássico de chat, e é o que mantém a coluna de avatares legível
+   quando várias mensagens seguidas são longas. */
+.live-chat-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  position: relative;
+  padding: 2px 2px 2px 0;
+  border-radius: 6px;
+}
+
+.live-chat-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  /* Meio pixel de ajuste ótico: o avatar é redondo e o texto tem altura
+     de linha, então alinhar as caixas deixa o círculo visualmente alto. */
+  margin-top: 1px;
+}
+
+.live-chat-text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ev-c-text-1);
+  /* Nome de usuário não tem espaço, e uma mensagem colada (ex: uma URL
+     longa) estouraria a largura da barra sem isto. */
+  overflow-wrap: anywhere;
+}
+
+.live-chat-author {
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+/* A minha própria mensagem não ganha balão nem lado próprio — só o nome
+   na cor de acento. Num chat de 280px de largura, alinhar as minhas à
+   direita cortaria a largura útil pela metade e quebraria a leitura em
+   coluna única, que é o que faz esse formato funcionar. */
+.live-chat-author-self {
+  color: var(--accent);
+}
+
+.live-chat-colon {
+  color: var(--ev-c-text-2);
+}
+
+/* Estado vazio e "carregando": centralizados e discretos. `margin: auto`
+   os centraliza verticalmente mesmo com o `justify-content: flex-end` da
+   lista. */
+.live-chat-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: auto;
+  padding: 12px 0;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+  text-align: center;
+}
+
+.live-chat-status-hint {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Botão de silenciar, só no chat do HOST. Invisível até o mouse passar
+   pela mensagem: o chat não pode virar uma coluna de botões. */
+.live-chat-mute {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+/* Sem realce de fundo no hover (2026-09-23, pedido do usuário): a única
+   coisa que o mouse revela é o botão de silenciar. Uma faixa acendendo a
+   cada linha que o cursor cruza é barulho numa lista densa. */
+.live-chat-message:hover .live-chat-mute {
+  opacity: 1;
+}
+
+/* Sempre visível quando o foco chega por teclado — senão o botão seria
+   inalcançável sem mouse. */
+.live-chat-mute:focus-visible {
+  opacity: 1;
+}
+
+.live-chat-mute:hover {
+  background-color: rgba(248, 113, 113, 0.14);
+  color: var(--color-danger);
+}
+
+/* --- A caixa de escrever --------------------------------------------- */
+
+.live-chat-composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Wrapper só pra ancorar o contador dentro do campo. */
+.live-chat-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.live-chat-input {
+  width: 100%;
+  /* Espaço à direita reservado pro contador, que entra sobreposto — sem
+     isso o texto passa por baixo dele nos últimos caracteres. */
+  padding: 8px 32px 8px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--ev-c-text-1);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease;
+}
+
+.live-chat-input::placeholder {
+  color: var(--ev-c-text-2);
+}
+
+.live-chat-input:focus {
+  border-color: var(--accent);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.live-chat-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Contador dos últimos caracteres, dentro do campo. Só aparece perto do
+   limite (ver COUNTER_THRESHOLD em LiveChat.tsx) — mostrar "140" o tempo
+   todo é ruído. */
+.live-chat-counter {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-c-text-2);
+  pointer-events: none;
+}
+
+.live-chat-counter-full {
+  color: var(--color-danger);
+}
+
+.live-chat-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  /* Mesmo gradiente dos botões principais do app (ver `--accent-gradient`
+     no topo deste arquivo): enviar é a ação da caixa. */
+  background: var(--accent-gradient);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    opacity 0.14s ease,
+    transform 0.08s ease,
+    box-shadow 0.14s ease;
+}
+
+.live-chat-send:hover:not(:disabled) {
+  box-shadow: var(--accent-glow);
+}
+
+.live-chat-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* Campo vazio: o botão apaga em vez de sumir, pra caixa não mudar de
+   largura a cada caractere digitado. */
+.live-chat-send:disabled {
+  background: var(--ev-button-alt-bg);
+  color: var(--ev-c-text-2);
+  cursor: default;
+}
+
+/* --- O badge de não lidas -------------------------------------------- */
+
+/* Só a aba do VIEWER (ficha da sala) desde 2026-09-24. A casca fechada
+   do host trocou este número por um aviso sem número: primeiro um ponto
+   pulsante, hoje o botão inteiro respirando em laranja — ver
+   `.host-chat-bar-button-unread`. */
+.live-chat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: var(--color-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  /* Chamar atenção UMA vez, ao aparecer — não pulsar pra sempre, que
+     viraria um ponto piscando no canto da tela do host durante a live
+     inteira. */
+  animation: live-chat-badge-in 0.22s ease-out;
+}
+
+@keyframes live-chat-badge-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* --- 2. Casca do VIEWER: aba no rodapé da ficha da sala --------------- */
+
+.room-chat {
+  display: flex;
+  flex-direction: column;
+  /* `flex-basis: auto` = a altura da própria aba: o corpo do chat
+     (`.live-chat`) tem base 0, então ele não conta aqui, e a peça
+     fechada mede exatamente o botão. É isso que deixa o `flex-grow`
+     animar sozinho, sem um salto de base no primeiro quadro. */
+  flex: 0 1 auto;
+  min-height: 0;
+  /* Anula o padding lateral da `.side-panel` pra aba encostar nas duas
+     bordas da barra — ela é o rodapé da barra, não um cartão dentro
+     dela. */
+  margin: 0 -16px;
+  border-top: 1px solid var(--app-chrome-border);
+  transition: flex-grow 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Aberto, o chat SOBE: toma a sobra de altura que era da lista de
+   espectadores, que colapsa na fila de avatares no mesmo movimento (ver
+   `.room-details-viewers-collapsed` acima). Os dois usam a mesma curva
+   e a mesma duração de propósito — é um gesto só, não dois. */
+.room-chat-open {
+  flex-grow: 1;
+}
+
+.room-chat-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 11px 16px;
+  border: none;
+  background-color: transparent;
+  color: var(--ev-c-text-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.room-chat-tab:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--ev-c-text-1);
+}
+
+/* Empurra o badge e a seta pra direita, deixando o rótulo à esquerda. */
+.room-chat-tab-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* Aberta, a aba vira o CABEÇALHO do chat — ganha a cor de texto cheia e
+   um fundo sutil que a separa das mensagens. */
+.room-chat-open .room-chat-tab {
+  color: var(--ev-c-text-1);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.room-chat-open .live-chat {
+  padding: 4px 16px 16px;
+  /* O corpo é MONTADO ao abrir (ver RoomDetailsSidebar.tsx), então não há
+     dois estados pra transicionar — aparece com uma entrada própria,
+     um pouco mais lenta que a subida do painel pra chegar depois dela. */
+  animation: room-chat-body-in 0.3s ease both;
+}
+
+@keyframes room-chat-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- 3. Casca do HOST, fechada: linha acima do rodapé ----------------- */
+
+/* A LINHA (2026-09-25, desenho do usuário): o tile de espectadores e, à
+   direita dele, o botão que abre o chat.
+
+   Ela é irmã do RODAPÉ dentro da `.watch-column`, e não irmã da grade
+   dentro da `.watch-row` como era a lingueta vertical que ela
+   substituiu. É a mesma regra de sempre vista pelo outro eixo: a casca
+   fechada ocupa espaço RESERVADO e nenhuma live fica por baixo dela — só
+   que agora o que ela reserva é ALTURA, então ela tem que morar na
+   coluna, entre a linha de conteúdo e o rodapé.
+
+   `flex-shrink: 0` é o que garante esse espaço: sem isso, a `.watch-row`
+   (que é `flex: 1`) espremeria a linha até sumir numa janela baixa, e o
+   botão do chat seria a primeira coisa a desaparecer justamente quando a
+   tela está mais apertada.
+
+   Os 16px embaixo são o pedido do usuário. Em cima, 8px de folga pro que
+   TRANSBORDA da linha: a badge do tile sobe 5px além da borda dele e o
+   avatar sobe 2px no hover — a `.watch-column` recorta (`overflow:
+   hidden`), então essa folga é o que impede os dois de serem cortados. */
+.host-chat-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  /* 16px à direita e embaixo (2026-09-25, pedido do usuário): a linha é o
+     único conteúdo da `.watch-column` que não encosta numa borda própria,
+     então sem esse recuo o botão fica grudado na borda da janela. Em cima,
+     8px de folga pro que TRANSBORDA da linha: a badge do tile sobe ~4px
+     além da borda dele e o avatar sobe 2px no hover — a `.watch-column`
+     recorta (`overflow: hidden`), então essa folga é o que impede os dois
+     de serem cortados. */
+  padding: 8px 16px 16px 0;
+}
+
+/* Nada aqui encolhe. Vale pro tile e pro `<span class="tooltip-anchor">`
+   que o Tooltip põe em volta do botão (ver Tooltip.tsx) — é ELE o item
+   flex desta linha, não o botão, então o `flex-shrink` do botão sozinho
+   não seguraria nada. */
+.host-chat-bar > * {
+  flex-shrink: 0;
+}
+
+/* O TILE dos espectadores: a mesma fila de avatares que o topo da barra
+   aberta mostra (`.viewer-avatar-row`), numa pílula.
+
+   `width: max-content` + `justify-content: flex-end` no pai: o tile
+   encosta no botão e cresce pra ESQUERDA conforme entra gente, em vez de
+   esticar pela linha inteira. A âncora do desenho é o canto direito.
+
+   `position: relative` ancora a badge. Nenhum `overflow` aqui de
+   propósito — o chip que sobe no hover e a badge que vaza pela quina
+   dependem de não ter recorte no caminho (ver `.viewer-avatar-chip`). */
+.host-chat-bar-viewers {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: max-content;
+  /* 4px em cima e embaixo dao 36px de altura (26 da fila + 8 + 2 de
+     borda) — exatamente a altura do botao ao lado. Alinhar os dois
+     numeros e o que faz as duas pecas lerem como uma linha so, em vez de
+     duas caixas de tamanhos parecidos. */
+  padding: 4px 10px;
+  /* Pílula, não um retângulo arredondado: os cantos acompanham os
+     avatares, que são redondos. É o mesmo raio do botão ao lado, o que
+     faz os dois lerem como um par. */
+  border-radius: 999px;
+  /* Mesma cor e espessura da borda de cima do rodapé (`.home-footer`),
+     pelo mesmo motivo da barra aberta: as peças que emolduram a área de
+     lives têm que ser o mesmo traço. */
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: var(--ev-c-black-mute);
+}
+
+/* QUANTOS estão assistindo, na quina de cima do tile.
+
+   Ela vaza pra fora da pílula de propósito — dentro, ela disputaria a
+   linha com os avatares e empurraria a fila; pendurada na quina, ela é
+   uma anotação SOBRE o tile e não um item dele. Os 8px de `padding-top`
+   da linha existem por causa desses 5px de transbordo.
+
+   NÃO usa `.room-details-count`: aquele é um chip retangular pensado pra
+   ficar ao lado de um rótulo numa linha de texto. Vira pílula com "99+"
+   se passar de dois dígitos; o raio de 999px cobre os dois casos sem um
+   segundo estado. */
+.host-chat-bar-count {
+  position: absolute;
+  top: -5px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  /* Borda da cor do FUNDO da área de lives, como a dos avatares: é ela
+     que abre o sulco entre a badge e a borda do tile por baixo. */
+  border: 2px solid var(--color-background);
+  background-color: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* O BOTÃO que abre o chat. Herda a FORMA do `.icon-button` do rodapé (o
+   par de controles logo abaixo dele) mas não a classe: ele precisa de
+   `position: relative` pro anel de não lidas e de uma borda igual à do
+   tile ao lado, e pendurar isso no `.icon-button` mexeria em todos os
+   outros do app. */
+.host-chat-bar-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--ev-c-gray-3);
+  border-radius: 999px;
+  background-color: var(--ev-c-black-mute);
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.host-chat-bar-button:hover {
+  background-color: var(--ev-button-alt-hover-bg);
+  color: var(--ev-c-text-1);
+}
+
+.host-chat-bar-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* TEM MENSAGEM NOVA (2026-09-25, pedido do usuário): o botão inteiro
+   acende e apaga em laranja, e um anel pulsa por trás dele.
+
+   Substituiu o ponto vermelho que a lingueta vertical pendurava no canto
+   (`.host-chat-rail-dot`). A troca é de um marcador que ficava ao LADO do
+   alvo por um estado do PRÓPRIO alvo: o botão é pequeno e está sozinho
+   num canto largo, e um ponto de 8px ali era fácil de não ver — o botão
+   inteiro respirando não é.
+
+   Continua sem número, pelo mesmo motivo de antes: fechado, o que muda a
+   decisão do host é "tem gente falando", não quantas mensagens são. O
+   número exato está a um clique. */
+.host-chat-bar-button-unread {
+  animation: host-chat-bar-glow 2.4s ease-in-out infinite;
+}
+
+/* O respiro do botão. Ele passa pelo estado APAGADO nas duas pontas
+   (0% e 100%) e acende no meio — assim a volta é tão suave quanto a ida,
+   sem o solavanco que um ciclo terminando aceso daria ao recomeçar.
+
+   O laranja do pico é fraco de propósito (16% de alfa no fundo): o que
+   chama atenção aqui é o MOVIMENTO, e um laranja forte pulsando no canto
+   de uma tela com vídeo seria a coisa mais ruidosa da interface. */
+@keyframes host-chat-bar-glow {
+  0%,
+  100% {
+    border-color: var(--ev-c-gray-3);
+    background-color: var(--ev-c-black-mute);
+    color: var(--ev-c-text-2);
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0);
+  }
+  50% {
+    border-color: rgba(251, 146, 60, 0.55);
+    background-color: rgba(251, 146, 60, 0.16);
+    color: var(--color-unread);
+    box-shadow: 0 0 14px 0 rgba(251, 146, 60, 0.3);
+  }
+}
+
+/* O anel que cresce e some por trás do botão — mesmo recurso do botão de
+   transmitir (`.app-left-sidebar-cast::after`), na cor daqui.
+
+   Num pseudo-elemento, e não no botão: o anel cresce PRA FORA dos 36px,
+   e animar o `transform` do próprio botão empurraria o espaço que a
+   linha reservou pra ele. `pointer-events: none` porque, crescido, ele
+   cobriria a área em volta e roubaria o clique perto da borda. */
+.host-chat-bar-button-unread::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(251, 146, 60, 0.6);
+  pointer-events: none;
+  animation: host-chat-bar-ring 2.4s ease-out infinite;
+}
+
+@keyframes host-chat-bar-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  70%,
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* No hover o aviso para: o botão já está respondendo ao cursor, e as duas
+   coisas juntas brigariam pela mesma cor de fundo. Mesmo tratamento do
+   anel do botão de transmitir — o pulso é pra atrair o olhar de longe,
+   não pra competir com o retorno do próprio hover. */
+.host-chat-bar-button-unread:hover {
+  animation: none;
+}
+
+.host-chat-bar-button-unread:hover::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* Quem pediu menos movimento fica com o botão PARADO E ACESO: o laranja
+   sozinho continua dizendo "tem mensagem nova", que é a informação. Aqui
+   não dá pra simplesmente desligar a animação como no anel do botão de
+   transmitir — lá o movimento era enfeite, aqui ele é o aviso, e apagar
+   os dois juntos esconderia um estado de quem pediu menos animação. */
+@media (prefers-reduced-motion: reduce) {
+  .host-chat-bar-button-unread {
+    animation: none;
+    border-color: rgba(251, 146, 60, 0.55);
+    background-color: rgba(251, 146, 60, 0.16);
+    color: var(--color-unread);
+  }
+
+  .host-chat-bar-button-unread::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* --- 4. Casca do HOST, aberta: barra lateral DIREITA ------------------ */
+
+/* Abrir a aba (2026-09-23, pedido do usuário) põe o chat aqui: uma
+   coluna encostada na direita da janela, do topo da área de conteúdo até
+   a borda de cima do rodapé.
+
+   Ela é irmã da grade de lives dentro da `.watch-row`, e não uma caixa
+   flutuante: a grade CEDE largura pra ela, do mesmo jeito que já cede pra
+   barra de detalhes da sala do outro lado. Nenhuma live fica coberta.
+
+   A largura é a mesma da barra da esquerda (280px) de propósito — com as
+   duas abertas, elas emolduram a grade simetricamente. Ela é uma
+   variável porque a aba de espectadores precisa do mesmo número pra sair
+   da frente. */
+.host-chat-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: var(--host-chat-dock-width);
+  flex-shrink: 0;
+  min-height: 0;
+  /* Sem folga embaixo: o corpo do chat termina na caixa de escrever, e um
+     respiro ali deixaria a barra parecendo curta em relação ao rodapé. */
+  padding: 14px 14px 12px;
+  /* `--ev-c-gray-3`, a MESMA cor e espessura da borda de cima do rodapé
+     (`.home-footer`) — as duas se encontram no canto, e uma linha mais
+     clara que a outra denunciaria que são peças diferentes. */
+  border-left: 1px solid var(--ev-c-gray-3);
+  /* Mesmo tom do rodapé com a live no ar: a barra é a mesma peça de
+     antes, mudou de lugar, não de identidade. */
+  background-color: var(--ev-c-black-mute);
+  /* A MESMA entrada da barra de detalhes da sala (`side-panel-in`), e
+     por pedido do usuário: as duas são a mesma peça em lados opostos da
+     grade, então entram do mesmo jeito. Ver o keyframe abaixo. */
+  animation: host-chat-dock-in 0.16s ease-out;
+}
+
+/* Entra da direita, o espelho exato do `side-panel-in` da barra de
+   detalhes da sala — mesmos 8px, mesmo fade, mesma duração, só o sinal do
+   `translateX` trocado porque esta nasce do outro lado.
+
+   ⚠️ Foram 280px (`translateX(100%)`) até 2026-09-23: uma travessia da
+   largura inteira, que o usuário leu como "chicotada" em qualquer curva
+   que se tentasse. O problema nunca foi a curva, era a DISTÂNCIA — a
+   barra aparece junto com a grade encolhendo, e esses dois movimentos
+   grandes ao mesmo tempo não têm como ler como uma coisa só. Com 8px o
+   deslocamento vira o que sempre foi na barra da esquerda: uma dica de
+   direção, não uma viagem.
+
+   Sem animar `width` de propósito: isso re-layouta a grade de lives a
+   cada quadro (e a grade tem vídeo dentro), enquanto o `translateX` roda
+   só na composição. */
+@keyframes host-chat-dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* A linha de cima da barra: "Assistindo" + contador à esquerda, o ">" que
+   recolhe à direita. Mesmo par de `.room-details-label` +
+   `.room-details-count` da ficha de uma sala assistida — é a mesma
+   informação, e reusar a tipografia dela é o que faz as duas barras
+   lerem como a mesma peça em dois lados da tela. */
+.host-chat-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.host-chat-dock-empty {
+  /* A mesma altura da fila de avatares que ele substitui, pra o bloco de
+     baixo não subir e descer quando o primeiro espectador chega. */
+  height: 26px;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--ev-c-text-2);
+}
+
+/* O cabeçalho do chat PROPRIAMENTE DITO, abaixo dos espectadores. Sem
+   linha divisória (2026-09-23, pedido do usuário): o espaço em branco e
+   o peso do título já separam as duas metades da barra. */
+.host-chat-dock-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+/* --- Barra de rolagem da lista de mensagens --------------------------- */
+
+/* O SELO DE SILENCIADO na lista vertical da ficha de uma sala assistida
+   (2026-09-23). Balão de fala cortado, em vermelho: quem assiste precisa
+   entender por que aquela pessoa parou de falar.
+
+   Na LINHA DE AVATARES o mesmo recado é o anel vermelho do chip (ver
+   `.viewer-avatar-chip-muted`) — não cabe um ícone ao lado de um avatar
+   de 26px, mas a informação não podia sumir junto com a lista do host. */
+.viewer-muted-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--color-danger);
 }

@@ -1,9 +1,6 @@
-import { spawn } from 'child_process'
-import { randomUUID } from 'crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
 import { screen } from 'electron'
+import { parseJsonList, runPowerShell } from './powershell'
+import { enumerateWindows, NativeWindow } from './windowEnumeration'
 import { logGstreamer } from './gstreamerLog'
 
 // GStreamer (d3d11screencapturesrc) aceita `monitor-handle` (HMONITOR) ou
@@ -13,63 +10,6 @@ import { logGstreamer } from './gstreamerLog'
 // número em `window:X:0` é "gerado aleatoriamente", não um HWND). Esse
 // módulo faz a ponte: roda PowerShell pra descobrir os handles reais do
 // Windows e correlaciona com o que o Electron/desktopCapturer relatou.
-
-// Roda o script via arquivo temporário (`-File`), não `-Command <string>`.
-// O script tem aspas duplas e um bloco `Add-Type @" ... "@` (here-string)
-// com código C# — smuggled através do escaping de argv do
-// child_process/CreateProcess, isso corrompia o script (o PowerShell
-// falhava ao parsear e não escrevia nada no stdout, aí o
-// `JSON.parse('')` explodia com "Unexpected end of JSON input"). Um
-// arquivo .ps1 de verdade não passa pelo escaping de linha de comando
-// nenhuma, então não tem esse problema.
-function runPowerShell(script: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const dir = mkdtempSync(join(tmpdir(), 'prisma-ps-'))
-    const scriptPath = join(dir, `${randomUUID()}.ps1`)
-    // `[Console]::OutputEncoding` do PowerShell 5.1, quando o stdout é
-    // redirecionado (nosso caso, via spawn/pipe — não um console de
-    // verdade), usa a codepage ANSI do sistema por padrão, não UTF-8 —
-    // qualquer texto com acento que passe por aqui (ex: título de janela
-    // "Configurações" no WINDOW_SCRIPT) sai corrompido do outro lado.
-    // Setar aqui, uma vez só, cobre TODOS os scripts que passam por essa
-    // função (MONITOR_SCRIPT, WINDOW_SCRIPT, DISCORD_PID_SCRIPT).
-    const scriptWithUtf8Output = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n${script}`
-    writeFileSync(scriptPath, scriptWithUtf8Output, 'utf-8')
-
-    const child = spawn('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      scriptPath
-    ])
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => (stdout += chunk))
-    child.stderr.on('data', (chunk) => (stderr += chunk))
-    child.on('error', (err) => {
-      rmSync(dir, { recursive: true, force: true })
-      reject(err)
-    })
-    child.on('close', (code) => {
-      rmSync(dir, { recursive: true, force: true })
-      if (code === 0) resolve(stdout)
-      else reject(new Error(stderr || `powershell saiu com código ${code}`))
-    })
-  })
-}
-
-// `ConvertTo-Json` não escreve nada no stdout quando o que é canalizado
-// pra ele é uma coleção vazia (ex: nenhuma janela com título encontrada)
-// — sem essa checagem, `JSON.parse('')` explodiria de novo, só que por um
-// motivo diferente do bug do escaping do -Command.
-function parseJsonList<T>(output: string): T[] {
-  const trimmed = output.trim()
-  if (!trimmed) return []
-  const parsed: unknown = JSON.parse(trimmed)
-  return Array.isArray(parsed) ? (parsed as T[]) : [parsed as T]
-}
 
 interface MonitorInfo {
   HMonitor: number
@@ -208,45 +148,94 @@ export async function resolveMonitorHandle(displayId: number | null): Promise<st
   return String(fallbackMatch.HMonitor)
 }
 
+// A janela PRINCIPAL de um processo, no formato que o app usa desde o
+// tempo em que a enumeração era um `Get-Process` (2026-09-05). Continua
+// existindo porque o seguidor de janela e a resolução por título foram
+// escritos sobre ele; o que mudou em 2026-09-25 é de onde os dados vêm
+// (ver windowEnumeration.ts) e que agora isto é uma VISÃO da enumeração
+// completa, não a enumeração inteira.
 export interface WindowInfo {
   MainWindowTitle: string
   Handle: number
   Id: number
-  // Item 29 do roadmap, pedido do usuário (2026-09-05): nome do processo
-  // dono da janela (SEM extensão — é o que `Get-Process` devolve, ex:
-  // "eldenring", não "eldenring.exe") — usado pra cruzar a janela
-  // escolhida com a lista de jogos do Discord, ver gameDetection.ts.
+  // Nome do processo dono da janela, SEM extensão ("eldenring", não
+  // "eldenring.exe") — usado pra cruzar a janela escolhida com a lista
+  // de jogos do Discord, ver gameDetection.ts.
   ProcessName: string
-  // Caminho completo do executável (2026-09-06). Serve pra saber se a
-  // janela escolhida é um jogo RODANDO PELA STEAM (caminho sob
-  // \steamapps\) — o RunningAppID do registro é global, então sem essa
-  // amarração transmitir uma janela do Chrome com um jogo Steam aberto
-  // mostraria "Jogando: <jogo>", que está errado. Pode vir null: o
-  // `Get-Process` não consegue ler o Path de processos protegidos/
-  // elevados, e nesse caso a detecção via Steam simplesmente não se
+  // Caminho completo do executável. Serve pra saber se a janela é um
+  // jogo RODANDO PELA STEAM (caminho sob \steamapps\) — o RunningAppID
+  // do registro é global, então sem essa amarração transmitir uma janela
+  // do Chrome com um jogo Steam aberto mostraria "Jogando: <jogo>", que
+  // está errado. Pode vir null: processos protegidos/elevados recusam a
+  // leitura do caminho, e aí a detecção via Steam simplesmente não se
   // aplica (cai no título da janela, que é o comportamento seguro).
   Path: string | null
 }
 
-const WINDOW_SCRIPT = `
-Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -ne '' } |
-  Select-Object MainWindowTitle, Id, ProcessName, @{Name='Path';Expression={$_.Path}}, @{Name='Handle';Expression={$_.MainWindowHandle.ToInt64()}} |
-  ConvertTo-Json -Compress
-`
+function toWindowInfo(janela: NativeWindow): WindowInfo {
+  return {
+    MainWindowTitle: janela.Title,
+    Handle: janela.Handle,
+    Id: janela.Pid,
+    ProcessName: janela.ProcessName,
+    Path: janela.Path || null
+  }
+}
 
-// Resolve o HWND real de uma janela pelo título — é a mesma limitação já
-// documentada no app Flutter antigo (os IDs do desktopCapturer não são
-// HWNDs de verdade nesta plataforma). Casa pelo título exibido no
-// `desktopCapturer` (que é o MainWindowTitle real da janela) — pode falhar
-// se duas janelas tiverem o mesmo título, ou se o app tiver sido
-// fechado/reaberto entre a seleção e o início da transmissão.
+// Janela que a enumeração vê mas que não está aberta de verdade.
 //
-// Devolve também o PID (item 31 do roadmap: captura de janela específica
-// isola o áudio dela via `loopback-mode=include-process-tree`, ver
-// resolveAudioLoopbackArgs em gstreamerCapture.ts), o nome do processo e
-// o caminho do executável (item 29, pra cruzar com a lista do Discord e
-// com a Steam em gameDetection.ts) — tudo sai de graça do mesmo
-// `Get-Process`, sem chamada extra nenhuma.
+// Precisa dos DOIS campos: "cloaked" sozinho também pega janela numa
+// outra área de trabalho virtual, que continua sendo janela de verdade.
+// Cloaked + NESTA área = fantasma (app UWP suspenso em segundo plano, o
+// caso do "Configurações"); cloaked + em outra área = janela real, só
+// que noutro lugar.
+//
+// `OnCurrentDesktop === 1` e não `!== 0` de propósito: -1 é "não deu pra
+// saber", e nesse caso a janela FICA.
+export function isPhantomWindow(janela: NativeWindow): boolean {
+  return janela.Cloaked !== 0 && janela.OnCurrentDesktop === 1
+}
+
+// FileDescription do .exe quando ele existe e não é só o nome do arquivo
+// — o mspaint declara "mspaint.exe" como FileDescription, e aí o
+// ProductName ("Paint") é que é o nome do programa. Último recurso é o
+// nome do processo, que sempre existe.
+export function windowAppName(janela: NativeWindow): string {
+  for (const candidato of [janela.Description, janela.Product]) {
+    const limpo = (candidato ?? '').trim()
+    if (limpo && !/\.exe$/i.test(limpo)) return limpo
+  }
+  return janela.ProcessName ?? ''
+}
+
+// `filho` é uma janela AUXILIAR do mesmo app que desenhou `pai`?
+//
+// O caso concreto é o WhatsApp: ele é um app WinUI que hospeda um
+// WebView2, e os dois anunciam uma janela de topo com o título
+// "WhatsApp" — a grade mostrava duas miniaturas do mesmo conteúdo.
+//
+// As duas condições importam, e a primeira é a que protege o caso que
+// motivou tudo isto. Duas janelas do MESMO processo (duas do Chrome com
+// contas diferentes, duas do Explorer) são janelas de verdade, cada uma
+// com o seu HWND — essas nunca podem sumir, e `Pid` igual já as exclui
+// aqui. Só colapsa quando um processo DIFERENTE, descendente do outro,
+// anuncia o mesmo título: aí é o app se apresentando duas vezes.
+export function isHelperDuplicate(pai: NativeWindow, filho: NativeWindow): boolean {
+  if (pai.Pid === filho.Pid) return false
+  return filho.Ancestors.includes(pai.Pid)
+}
+
+// Resolve o HWND real de uma janela pelo TÍTULO.
+//
+// Continua existindo pras fontes que não têm identidade exata: as
+// "extras" da grade (ver EXTRA_WINDOW_PREFIX em screenCapture.ts) e o
+// caminho de compatibilidade de quando a identificação por HWND não
+// pega. Onde dá pra apontar um HWND, `resolveWindowByHandle` é melhor —
+// título empata, HWND não.
+//
+// Procura entre as janelas PRINCIPAIS (a mesma lista de sempre), não
+// entre todas: mudar o conjunto mudaria qual janela ganha um empate de
+// título, e essa decisão é velha e estável.
 export interface WindowTarget {
   handle: string
   pid: number
@@ -267,9 +256,7 @@ function toWindowTarget(match: WindowInfo): WindowTarget {
 
 export async function resolveWindowTarget(windowTitle: string): Promise<WindowTarget | null> {
   const windows = await listWindows()
-  logGstreamer(
-    `resolveWindowTarget: procurando título "${windowTitle}" entre ${JSON.stringify(windows)}`
-  )
+  logGstreamer(`resolveWindowTarget: procurando título "${windowTitle}"`)
 
   const matches = windows.filter((w) => w.MainWindowTitle === windowTitle)
   if (matches.length > 1) {
@@ -285,91 +272,81 @@ export async function resolveWindowTarget(windowTitle: string): Promise<WindowTa
 // — troca automática de janela dentro do mesmo jogo). Existe porque o
 // casamento por TÍTULO não serve pra escolha feita pelo APP: cliente e
 // jogo de um mesmo título costumam ter títulos parecidos (o LoL tem
-// "League of Legends" e "League of Legends (TM) Client"), e o próprio
-// `resolveWindowTarget` já loga que, empatando, pega a primeira. Quando
-// quem escolhe é o app, ele escolhe um HWND específico e resolve por ele.
+// "League of Legends" e "League of Legends (TM) Client"), e o
+// `resolveWindowTarget` já loga que, empatando, pega a primeira.
 //
 // Continua RE-ENUMERANDO em vez de confiar no handle guardado, pelos
 // mesmos dois motivos de sempre: o Windows recicla HWND de janela morta,
-// e o PID/caminho precisam vir junto (áudio via
-// `loopback-target-pid`, detecção de jogo). O efeito colateral é o que
-// interessa pra quem chama: não achar o handle É o sinal de que a janela
-// morreu.
+// e o PID/caminho precisam vir junto (áudio via `loopback-target-pid`,
+// detecção de jogo). O efeito colateral é o que interessa pra quem
+// chama: não achar o handle É o sinal de que a janela morreu.
+//
+// Procura na enumeração COMPLETA, não só nas principais — desde que a
+// grade identifica cada card pelo HWND (2026-09-25), o handle pedido
+// aqui pode ser uma janela secundária, como a segunda janela do Chrome.
 export async function resolveWindowByHandle(
   handle: string,
   maxAgeMs = 0
 ): Promise<WindowTarget | null> {
-  const windows = await listWindows(maxAgeMs)
-  const match = windows.find((w) => String(w.Handle) === handle)
+  const janelas = await enumerateWindows(maxAgeMs)
+  const match = janelas.find((janela) => String(janela.Handle) === handle)
   if (!match) {
     logGstreamer(`resolveWindowByHandle: handle ${handle} não está mais aberto`)
     return null
   }
-  return toWindowTarget(match)
+  return toWindowTarget(toWindowInfo(match))
 }
 
-// Última enumeração, pro `maxAgeMs` de `listWindows` (2026-09-20).
-let windowCache: { at: number; windows: WindowInfo[] } | null = null
-// Enumeração em andamento. Duas chamadas simultâneas viram uma só — não
-// é micro-otimização: cada uma custa um processo PowerShell inteiro, e
-// elas acontecem mesmo (o tick do seguidor cai em cima de uma troca de
-// fonte com facilidade).
-let windowLookupInFlight: Promise<WindowInfo[]> | null = null
-
-// Enumeração crua, uma chamada de PowerShell. Exportada porque o
-// seguidor de janela (gameWindowFollow.ts) precisa varrer TODAS as
-// janelas a cada tick procurando uma "irmã" do mesmo jogo — as duas
-// funções acima só respondem sobre uma janela específica.
+// As janelas PRINCIPAIS, uma por processo.
 //
-// `maxAgeMs` aceita uma enumeração RECENTE em vez de fazer outra
-// (2026-09-20). Medido nesta máquina, ociosa: 450-800ms por chamada. O
-// caminho que mais doía era a troca de janela no fim de uma partida —
-// `tryRecoverFromExit` enumera pra decidir pra onde voltar e, logo
-// depois, `resolveCaptureArg` enumerava DE NOVO pra resolver o mesmo
-// HWND que acabou de ser escolhido. Um segundo inteiro de live parada
-// pra responder duas vezes a mesma pergunta, dentro de uma janela de
-// tempo em que a sala está por um fio (ver HOSTLESS_RECONNECT_GRACE_MS
-// no server.js).
+// É a visão que o seguidor de janela (gameWindowFollow.ts) e a resolução
+// por título enxergam — a mesma de quando isto era um `Get-Process |
+// Where MainWindowHandle -ne 0`. Ver `IsMain` em windowEnumeration.ts
+// pra como esse "principal" é reproduzido.
 //
-// O padrão é `0` — enumerar de novo — porque a maioria das chamadas está
-// justamente perguntando "esta janela AINDA existe?", e uma resposta
-// velha responderia outra pergunta. Quem passa um valor aqui é quem sabe
-// que acabou de perguntar.
+// `maxAgeMs` aceita uma enumeração recente em vez de fazer outra; quem
+// passa um valor aqui é quem sabe que acabou de perguntar.
 export async function listWindows(maxAgeMs = 0): Promise<WindowInfo[]> {
-  if (windowCache && maxAgeMs > 0 && Date.now() - windowCache.at <= maxAgeMs) {
-    logGstreamer(
-      `listWindows: reaproveitando a enumeração de ${Date.now() - windowCache.at}ms atrás`
-    )
-    return windowCache.windows
-  }
-  if (windowLookupInFlight) return windowLookupInFlight
-
-  windowLookupInFlight = (async () => {
-    try {
-      const output = await runPowerShell(WINDOW_SCRIPT)
-      const windows = parseJsonList<WindowInfo>(output)
-      windowCache = { at: Date.now(), windows }
-      return windows
-    } finally {
-      windowLookupInFlight = null
-    }
-  })()
-  return windowLookupInFlight
+  const janelas = await enumerateWindows(maxAgeMs)
+  return janelas.filter((janela) => janela.IsMain && janela.Title).map(toWindowInfo)
 }
 
-// Pedido do usuário (2026-08-31): a lista de janelas da TransmissionScreen
-// vinha só do `desktopCapturer` do próprio Electron, que no Windows tem
-// limitações conhecidas — só lista janelas de nível superior com título
-// visível, e pula janelas "cloaked" (minimizadas, em outra área de
-// trabalho virtual, apps em segundo plano/suspensos). O `Get-Process`
-// usado acima (resolveWindowTarget) não tem essas restrições — reaproveita
-// o mesmo `WINDOW_SCRIPT` só pra listar os títulos (sem HWND/PID, que só
-// importam na hora de resolver a janela ESCOLHIDA pra transmitir, ver
-// screenCapture.ts pra como isso complementa a lista do desktopCapturer).
-export async function listOpenWindowTitles(): Promise<string[]> {
-  const windows = await listWindows()
-  const titles = new Set(windows.map((w) => w.MainWindowTitle).filter((title) => title))
-  return Array.from(titles)
+export interface SelectableWindows {
+  // Janelas de verdade, as que vão pra grade. A lista INTEIRA, não só as
+  // principais: é isso que faz duas janelas do mesmo Chrome virarem dois
+  // cards.
+  windows: NativeWindow[]
+  // Títulos que SÓ existem como janela fantasma. Serve pro outro lado da
+  // grade: a lista do `desktopCapturer` é montada pelo Chromium, que
+  // checa DWMWA_CLOAKED em algumas versões e não em outras — dá pra ele
+  // trazer a fantasma por conta própria, e aí tirar da NOSSA enumeração
+  // não resolve nada. Só entra aqui o título sem nenhuma janela de
+  // verdade por trás.
+  phantomOnlyTitles: Set<string>
+  // Os HWNDs das fantasmas. Quando a fonte do desktopCapturer foi
+  // identificada por handle, dá pra tirá-la com precisão em vez de por
+  // título.
+  phantomHandles: Set<string>
+}
+
+export async function listSelectableWindows(): Promise<SelectableWindows> {
+  const todas = (await enumerateWindows()).filter((janela) => janela.Title)
+  const windows = todas.filter((janela) => !isPhantomWindow(janela))
+
+  const titulosReais = new Set(windows.map((janela) => janela.Title))
+  const fantasmas = todas.filter((janela) => isPhantomWindow(janela))
+  const phantomOnlyTitles = new Set(
+    fantasmas.map((janela) => janela.Title).filter((titulo) => !titulosReais.has(titulo))
+  )
+
+  if (fantasmas.length > 0) {
+    logGstreamer(
+      `listSelectableWindows: ${fantasmas.length} janela(s) cloaked nesta área de trabalho: ` +
+        fantasmas.map((j) => `${j.ProcessName} "${j.Title}"`).join(', ')
+    )
+  }
+  const phantomHandles = new Set(fantasmas.map((janela) => String(janela.Handle)))
+  return { windows, phantomOnlyTitles, phantomHandles }
 }
 
 // Nomes de processo dos canais do Discord — cobre a versão padrão e as

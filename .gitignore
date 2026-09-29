@@ -31,3 +31,7 @@ ROADMAP.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Gerado pelo build (scripts/build-native-helper.mjs) a partir de
+# native/PrismaWindows.cs — binario nao entra no repo.
+resources/prisma-windows.exe

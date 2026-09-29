@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
-import iconName from '../assets/iconName.png'
+import logoRender from '../assets/logo_render.png'
 import { formatAppVersion, VERSION_LABEL } from '../lib/appVersion'
+import { RELEASE_NOTES } from '../lib/releaseNotes'
 import Tooltip from './Tooltip'
 
 // TESTE (2026-09-03, pedido do usuário) — se não ficar bom, desfazer
@@ -17,6 +18,13 @@ import Tooltip from './Tooltip'
 // — `assets/iconName.png`. O lettering é branco com fundo transparente,
 // então só funciona sobre o tema escuro; se um dia sair um tema claro,
 // precisa de uma variante escura da arte.
+//
+// 2026-09-25 (pedido do usuário): a arte pronta saiu DESTA faixa e o
+// par voltou a ser símbolo + texto — agora `assets/logo_render.png` e um
+// "PRISMA" escrito em CSS. A diferença prática de ter o nome como texto
+// é que ele acompanha a tipografia do app, fica nítido em qualquer DPI e
+// pode ser lido/traduzido; a arte continua em uso no splash e nas telas
+// de login, que não mudaram.
 //
 // 2026-09-09 (pedido do usuário): no splash e nas telas de login/cadastro
 // a faixa fica VAZIA — sem a arte e sem a versão. Essas telas já mostram a
@@ -36,9 +44,18 @@ interface TitleBarProps {
   // quando o servidor anuncia uma publicação.
   updateVersion: string | null
   onUpdateClick: () => void
+  // Abre a janela de notas. Vem de fora (App.tsx) porque a MESMA janela
+  // também abre sozinha depois de uma atualização — quem decide isso é
+  // o useReleaseNotes, que vive lá.
+  onNotesClick: () => void
 }
 
-function TitleBar({ showContent, updateVersion, onUpdateClick }: TitleBarProps): React.JSX.Element {
+function TitleBar({
+  showContent,
+  updateVersion,
+  onUpdateClick,
+  onNotesClick
+}: TitleBarProps): React.JSX.Element {
   // Busca própria (mesmo padrão do LoginScreen.tsx), não via
   // useAppUpdate — esse hook só liga depois do login (`enabled:
   // Boolean(user)`, ver App.tsx), e a titleBar precisa aparecer em
@@ -54,7 +71,11 @@ function TitleBar({ showContent, updateVersion, onUpdateClick }: TitleBarProps):
     <div className="app-titlebar">
       {showContent && (
         <>
-          <img src={iconName} alt="Prisma" className="app-titlebar-logo" />
+          {/* `alt` vazio de propósito: o nome vem logo ao lado, em
+              texto de verdade. Descrito aqui também, a marca seria
+              anunciada duas vezes por um leitor de tela. */}
+          <img src={logoRender} alt="" className="app-titlebar-logo" />
+          <span className="app-titlebar-brand">PRISMA</span>
           {/* Os DOIS lado a lado (2026-09-17): o chip do canal e o
               número da versão. Antes o chip substituía o número, e a
               versão instalada não aparecia em lugar nenhum do app. Ver
@@ -66,6 +87,28 @@ function TitleBar({ showContent, updateVersion, onUpdateClick }: TitleBarProps):
           {VERSION_LABEL && <span className="app-titlebar-channel">{VERSION_LABEL}</span>}
           {appVersion && (
             <span className="app-titlebar-version">{formatAppVersion(appVersion)}</span>
+          )}
+          {/* NOTAS DA ATUALIZAÇÃO (2026-09-25, pedido do usuário) —
+              logo depois do número, como uma continuação dele.
+
+              Sem moldura e sem ícone: no hover só muda a cor e o cursor.
+              É um link, não um botão de ação — a faixa já tem um botão
+              de verdade (o de atualizar, à direita), e dois elementos
+              com peso de botão numa faixa de 32px disputariam a atenção.
+
+              Some junto com a lista vazia: um link que abre uma janela
+              dizendo "não há nada" é pior que link nenhum. */}
+          {RELEASE_NOTES.length > 0 && (
+            <>
+              {appVersion && (
+                <span className="app-titlebar-separator" aria-hidden="true">
+                  -
+                </span>
+              )}
+              <button type="button" className="app-titlebar-notes" onClick={onNotesClick}>
+                Notas da atualização
+              </button>
+            </>
           )}
         </>
       )}
