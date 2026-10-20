@@ -1,4 +1,4 @@
-import { Fps, FPS_OPTIONS, Resolution, RESOLUTIONS } from './transmissionSettings'
+import { Fps, isValidFps, Resolution, RESOLUTIONS } from './transmissionSettings'
 
 // Pedido do usuário (2026-09-25): a combinação Resolução + FPS escolhida
 // na TransmissionScreen fica guardada NA MÁQUINA e volta pré-selecionada
@@ -44,7 +44,12 @@ export function loadLastQuality(): TransmissionQuality {
       resolution: RESOLUTIONS.includes(saved.resolution as Resolution)
         ? (saved.resolution as Resolution)
         : DEFAULT_QUALITY.resolution,
-      fps: FPS_OPTIONS.includes(saved.fps as Fps) ? (saved.fps as Fps) : DEFAULT_QUALITY.fps
+      // FAIXA, e não lista (2026-10-09): desde que o FPS passou a
+      // depender da taxa do monitor, a lista de opções muda conforme a
+      // tela que estiver ligada. Um 48 gravado num monitor de 144 Hz
+      // continua um valor legítimo e não deve virar o padrão só porque o
+      // monitor de agora oferece outra lista — ver isValidFps.
+      fps: isValidFps(saved.fps) ? saved.fps : DEFAULT_QUALITY.fps
     }
   } catch (err) {
     // JSON corrompido ou localStorage indisponível. Cair no padrão é

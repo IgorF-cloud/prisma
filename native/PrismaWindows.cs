@@ -21,6 +21,27 @@
 // A saída é UMA linha de JSON no stdout. O contrato está espelhado na
 // interface `NativeWindow` (windowEnumeration.ts) e no script de
 // PowerShell que faz as vezes dele — os três mudam juntos.
+//
+// TRÊS PERGUNTAS NUMA PASSADA SÓ (2026-10-13)
+//
+// O objeto que sai daqui responde `windows`, `monitors` e `discordPid`.
+// Eram três processos antes: este, mais dois scripts de PowerShell em
+// nativeCaptureTargets.ts. Medido nesta máquina, o preço daqueles dois
+// era 550ms (o HMONITOR de cada tela, que ainda compila C# na hora com
+// `Add-Type`) e 630ms (o PID raiz do Discord, via `Get-CimInstance`) —
+// 1,2 segundo parado no caminho entre clicar em "iniciar transmissão" e
+// o pipeline subir.
+//
+// Os dois saem praticamente de graça AQUI porque o trabalho já estava
+// feito: as telas são um `EnumDisplayMonitors` (a mesma ordem de
+// grandeza do EnumWindows que já roda), e o Discord sai do snapshot de
+// processos que o `LoadParents` já tira pra montar a árvore de
+// ancestrais. A chamada inteira continua custando os mesmos ~85ms.
+//
+// Antes desta data a saída era o ARRAY de janelas, sem embrulho. O lado
+// do TypeScript ainda aceita aquele formato (ver windowEnumeration.ts):
+// um .exe antigo numa árvore de desenvolvimento continua servindo a
+// grade, e o PowerShell assume as outras duas perguntas.
 
 using System;
 using System.Collections.Generic;
@@ -52,6 +73,53 @@ public static class PrismaWindows
 
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+    // --- Telas (2026-10-13) -------------------------------------------
+    //
+    // O retângulo que o callback recebe (`lprcMonitor`) já é o que o app
+    // precisa: posição e tamanho da tela em coordenadas da área de
+    // trabalho virtual. Não precisa do `GetMonitorInfo` pra isso.
+    //
+    // O caminho de PowerShell que isto substitui perguntava por
+    // `MonitorFromPoint` no centro de cada tela do
+    // `System.Windows.Forms.Screen`. Dá no mesmo HMONITOR; o motivo
+    // daquele desvio era que o PowerShell não recebe um callback de
+    // enumeração sem compilar C# na hora — que é exatamente o que
+    // custava os 200ms do `Add-Type`.
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr dc, ref RECT rect, IntPtr param);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc callback, IntPtr param);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    // DPI: o lado do TypeScript compara estas bordas com as do Electron
+    // MULTIPLICADAS pelo `scaleFactor`, ou seja, espera PIXEL FÍSICO (ver
+    // `resolveMonitorHandle` em nativeCaptureTargets.ts). Um processo sem
+    // consciência de DPI recebe do Windows bordas já esticadas pra escala
+    // de 100%, e numa máquina a 125% a comparação erraria todas as telas
+    // de uma vez.
+    //
+    // O PowerShell que isto substitui é um processo desses — o casamento
+    // por bordas só funciona lá porque esta máquina roda a 100%.
+    // Declarar a consciência conserta o caso escalado em vez de herdá-lo.
+    //
+    // `SetProcessDpiAwarenessContext` é do Windows 10 1607 em diante; o
+    // `SetProcessDPIAware` atrás dele existe desde o Vista e resolve o
+    // mesmo pro caso de uma tela só. Os dois podem falhar sem
+    // consequência — nenhum é obrigatório pra enumerar janela.
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetProcessDpiAwarenessContext(IntPtr context);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetProcessDPIAware();
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
@@ -106,9 +174,22 @@ public static class PrismaWindows
 
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_LAYERED = 0x00080000;
     private const int DWMWA_CLOAKED = 14;
     private const uint TH32CS_SNAPPROCESS = 2;
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 — um valor-sentinela,
+    // não um ponteiro de verdade (é assim que a API é declarada).
+    private static readonly IntPtr DPI_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+
+    // Os canais do Discord que existem. Portado do DISCORD_PROCESS_NAMES
+    // do lado do TypeScript, SEM o ".exe": o `_names` guarda o nome como
+    // o `Get-Process` devolvia, já sem extensão.
+    private static readonly string[] DISCORD_NAMES = new string[]
+    {
+        "Discord", "DiscordPTB", "DiscordCanary", "DiscordDevelopment"
+    };
 
     private static IVirtualDesktopManager _vdm;
     private static readonly Dictionary<int, int> _parents = new Dictionary<int, int>();
@@ -150,8 +231,16 @@ public static class PrismaWindows
     // Árvore de processos via Toolhelp32. A alternativa óbvia seria
     // `Get-CimInstance Win32_Process`, que é o que o PowerShell usava —
     // e que sozinho custava 776ms medidos. Aqui sai junto com o resto.
+    private static bool _parentsLoaded;
+
     private static void LoadParents()
     {
+        // Chamado tanto pelo `Collect` quanto pelo `DiscordRootPid`, e o
+        // snapshot de processos é a parte cara: uma vez por execução
+        // basta, e os dois leem o mesmo instante da máquina.
+        if (_parentsLoaded) return;
+        _parentsLoaded = true;
+
         IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return;
         try
@@ -253,7 +342,17 @@ public static class PrismaWindows
             // Alt-Tab. NÃO é filtrada aqui, é só sinalizada — o Chromium
             // lista essas, e precisamos reconhecê-las pra casar com o que
             // ele devolve. Quem decide o que fazer com elas é a grade.
-            bool toolWindow = (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0;
+            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+            bool toolWindow = (exStyle & WS_EX_TOOLWINDOW) != 0;
+
+            // Camada que deixa o clique passar (2026-10-17): `LAYERED`
+            // (pintada com transparência por pixel) + `TRANSPARENT` (o
+            // mouse atravessa). É o desenho de uma sobreposição, não de
+            // uma janela — o "Shell Handwriting Canvas" do teclado de
+            // toque é uma dessas, do tamanho da tela. Também só
+            // sinalizado; quem decide é a grade.
+            bool clickThrough =
+                (exStyle & WS_EX_LAYERED) != 0 && (exStyle & WS_EX_TRANSPARENT) != 0;
 
             int pid;
             GetWindowThreadProcessId(hwnd, out pid);
@@ -299,6 +398,7 @@ public static class PrismaWindows
                .Append(",\"IsMain\":").Append(isMain ? "true" : "false")
                .Append(",\"Minimized\":").Append(IsIconic(hwnd) ? "true" : "false")
                .Append(",\"ToolWindow\":").Append(toolWindow ? "true" : "false")
+               .Append(",\"ClickThrough\":").Append(clickThrough ? "true" : "false")
                .Append(",\"Cloaked\":").Append(cloaked)
                .Append(",\"OnCurrentDesktop\":").Append(OnCurrentDesktop(hwnd))
                .Append(",\"Ancestors\":[").Append(string.Join(",", ancestors.ConvertAll(x => x.ToString()).ToArray())).Append("]")
@@ -315,6 +415,69 @@ public static class PrismaWindows
         return rows;
     }
 
+    // As telas, pro GStreamer (2026-10-13).
+    //
+    // `d3d11screencapturesrc` só aceita `monitor-handle=<HMONITOR>`, e o
+    // id que o `desktopCapturer` do Electron devolve pra uma tela NÃO é
+    // o HMONITOR (diferente do caso de janela, onde é). Quem casa os dois
+    // é o lado do TypeScript, pelas bordas — ver resolveMonitorHandle.
+    private static List<string> Monitors()
+    {
+        List<string> rows = new List<string>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate (IntPtr monitor, IntPtr dc, ref RECT rect, IntPtr param)
+        {
+            StringBuilder row = new StringBuilder();
+            row.Append("{\"HMonitor\":").Append(monitor.ToInt64())
+               .Append(",\"X\":").Append(rect.Left)
+               .Append(",\"Y\":").Append(rect.Top)
+               .Append(",\"Width\":").Append(rect.Right - rect.Left)
+               .Append(",\"Height\":").Append(rect.Bottom - rect.Top)
+               .Append("}");
+            rows.Add(row.ToString());
+            return true;
+        }, IntPtr.Zero);
+        return rows;
+    }
+
+    // O processo RAIZ do Discord, se ele estiver aberto.
+    //
+    // Serve pra excluir o áudio dele da captura de monitor inteiro (item
+    // 31 do roadmap). O Discord é Electron e roda vários processos de
+    // mesmo nome (principal, renderer, GPU, utilitário); o
+    // `loopback-mode=exclude-process-tree` do GStreamer exclui o PID alvo
+    // E SEUS FILHOS, nunca os ancestrais — apontar um filho faz a
+    // exclusão simplesmente não acontecer (mesmo bug já resolvido no app
+    // Flutter em 2026-08-26).
+    //
+    // O raiz é o único entre eles cujo pai NÃO é outro processo do
+    // Discord. É a mesma regra do `Get-CimInstance` que isto substitui,
+    // só que lida do snapshot que o `LoadParents` já tirou.
+    private static int DiscordRootPid()
+    {
+        LoadParents();
+
+        List<int> discordPids = new List<int>();
+        foreach (KeyValuePair<int, string> entry in _names)
+        {
+            foreach (string name in DISCORD_NAMES)
+            {
+                if (string.Equals(entry.Value, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    discordPids.Add(entry.Key);
+                    break;
+                }
+            }
+        }
+
+        foreach (int pid in discordPids)
+        {
+            int parent;
+            if (!_parents.TryGetValue(pid, out parent)) return pid;
+            if (!discordPids.Contains(parent)) return pid;
+        }
+        return 0;
+    }
+
     private static string Quote(string value)
     {
         StringBuilder result = new StringBuilder("\"");
@@ -327,6 +490,31 @@ public static class PrismaWindows
         return result.Append("\"").ToString();
     }
 
+    // Consciência de DPI, antes de qualquer pergunta ao Windows. Melhor
+    // esforço dos dois lados: falhar aqui só devolve as bordas de tela
+    // escaladas, que é exatamente o que o PowerShell devolvia.
+    private static void DeclareDpiAwareness()
+    {
+        try
+        {
+            if (SetProcessDpiAwarenessContext(DPI_PER_MONITOR_AWARE_V2) != IntPtr.Zero) return;
+        }
+        catch
+        {
+            // Windows anterior ao 10 1607: a função não existe no user32
+            // e o .NET levanta EntryPointNotFoundException na primeira
+            // chamada. O degrau de baixo cobre.
+        }
+
+        try
+        {
+            SetProcessDPIAware();
+        }
+        catch
+        {
+        }
+    }
+
     public static int Main()
     {
         try
@@ -335,13 +523,28 @@ public static class PrismaWindows
             // sem isto quando a saída é redirecionada (é o mesmo motivo do
             // `[Console]::OutputEncoding` no lado do PowerShell).
             Console.OutputEncoding = new UTF8Encoding(false);
-            Console.Out.Write("[" + string.Join(",", Collect().ToArray()) + "]");
+            DeclareDpiAwareness();
+
+            // A ordem importa só por um motivo: `Collect` é quem enche a
+            // árvore de processos que o `DiscordRootPid` lê. Chamado
+            // fora de ordem ele tiraria um snapshot próprio — correto,
+            // mas pago duas vezes.
+            string windows = string.Join(",", Collect().ToArray());
+            string monitors = string.Join(",", Monitors().ToArray());
+            int discord = DiscordRootPid();
+
+            Console.Out.Write(
+                "{\"windows\":[" + windows +
+                "],\"monitors\":[" + monitors +
+                "],\"discordPid\":" + (discord > 0 ? discord.ToString() : "null") +
+                "}");
             return 0;
         }
         catch (Exception error)
         {
             // stderr, não stdout: quem chama distingue "deu ruim" de uma
-            // lista vazia legítima, e cai no PowerShell.
+            // lista vazia legítima (ver windowEnumeration.ts — falhar aqui
+            // é erro, e a grade segue com o que o Chromium listou).
             Console.Error.Write(error.ToString());
             return 1;
         }

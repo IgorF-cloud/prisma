@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RemoteVideoTrack, Room, RoomEvent, Track } from 'livekit-client'
-import { RawTrackStats } from './useTrackStats'
+import { RawTrackStats, readVideoReceiverStats } from './useTrackStats'
 
 interface UseHostPreviewResult {
   // Desabilitado por padrão (pedido explícito do usuário) — só conecta
@@ -154,9 +154,7 @@ export function useHostPreview(
   }, [])
 
   const getStats = useCallback(async (): Promise<RawTrackStats | undefined> => {
-    const track = videoTrackRef.current
-    if (!track) return undefined
-    return track.getReceiverStats()
+    return readVideoReceiverStats(videoTrackRef.current)
   }, [])
 
   const getBitrate = useCallback((): number => {

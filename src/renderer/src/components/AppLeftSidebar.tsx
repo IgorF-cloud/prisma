@@ -43,6 +43,12 @@ interface AppLeftSidebarProps {
   // do rodapé; virou este tile circular, logo acima do avatar. Mesma
   // função, só mudou de lugar e ganhou destaque.
   onNavigateTransmission: () => void
+  // Chamado quando o ponteiro ENCOSTA no botão de transmitir, antes de
+  // qualquer clique (2026-10-13). Quem recebe usa isso pra adiantar o
+  // trabalho da tela que vem — ver `onPrepareTransmission` em
+  // HomeScreen.tsx. Daqui não se sabe o que é esse trabalho, e é de
+  // propósito: a barra lateral não tem assunto com captura de tela.
+  onPrepareTransmission: () => void
   // Some enquanto há live no ar — aí o rodapé mostra os controles de
   // parar/atualizar, e um atalho pra "começar" no meio disso só
   // confundiria. Mesmo comportamento do botão antigo.
@@ -50,8 +56,11 @@ interface AppLeftSidebarProps {
   onOpenSettings: () => void
   onUserUpdate: (user: AuthUser) => void
   onLogout: () => void
-  // Só pra repassar ao popover de perfil, que usa no upload de foto.
-  onNotify: (message: string, isError?: boolean, options?: { durationMs?: number }) => void
+  // Abre a janela de perfil (2026-10-19). Repassado ao popover; quem
+  // renderiza a janela é a HomeScreen, pelo mesmo motivo das
+  // Configurações. Substituiu o `onNotify`, que só existia pro upload de
+  // foto que o popover fazia.
+  onOpenProfile: () => void
 }
 
 // Item 5 do roadmap, 1ª parte (2026-09-09) — a barra vertical fina da
@@ -76,11 +85,12 @@ function AppLeftSidebar({
   onRefreshRooms,
   onJoinByCode,
   onNavigateTransmission,
+  onPrepareTransmission,
   transmitting,
   onOpenSettings,
   onUserUpdate,
   onLogout,
-  onNotify
+  onOpenProfile
 }: AppLeftSidebarProps): React.JSX.Element {
   const [profileOpen, setProfileOpen] = useState(false)
   // Mesmo padrão da sidebar antiga: o ref envolve o botão E o popover,
@@ -218,6 +228,10 @@ function AppLeftSidebar({
             type="button"
             className="app-left-sidebar-cast"
             onClick={onNavigateTransmission}
+            // Os dois eventos, não só o do mouse: `onFocus` é o mesmo
+            // aviso pra quem chega no botão pelo teclado.
+            onPointerEnter={onPrepareTransmission}
+            onFocus={onPrepareTransmission}
             aria-label="Transmitir"
           >
             <Cast size={20} />
@@ -255,7 +269,7 @@ function AppLeftSidebar({
             onClose={() => setProfileOpen(false)}
             onUserUpdate={onUserUpdate}
             onLogout={onLogout}
-            onNotify={onNotify}
+            onOpenProfile={onOpenProfile}
             onOpenSettings={onOpenSettings}
           />
         )}

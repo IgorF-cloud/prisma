@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronRight,
+  Clock,
   Eye,
   EyeOff,
+  Hash,
   Lock,
   MessageSquare,
   MessageSquareOff,
@@ -18,8 +20,9 @@ import { AuthUser } from '../lib/authUser'
 import { ViewerAudioState } from '../lib/useViewer'
 import { ChatRoomState } from '../lib/useLiveChat'
 import { RawTrackStats } from '../lib/useTrackStats'
-import UpdateTransmissionModal from '../components/UpdateTransmissionModal'
+import SourcePickerDialog from '../components/SourcePickerDialog'
 import SettingsModal from '../components/SettingsModal'
+import ProfileWindow from '../components/ProfileWindow'
 import HostPreviewTile from '../components/HostPreviewTile'
 import ViewerTile from '../components/ViewerTile'
 import LiveTimer from '../components/LiveTimer'
@@ -31,6 +34,7 @@ import ViewerAvatarRow from '../components/ViewerAvatarRow'
 import Tooltip from '../components/Tooltip'
 import JoinByCodeModal from '../components/JoinByCodeModal'
 import NowPlayingArt from '../components/NowPlayingArt'
+import MarqueeText from '../components/MarqueeText'
 import { AvatarRef } from '../lib/avatar'
 import { useRoomPresenceSounds } from '../lib/useRoomPresenceSounds'
 import { useNewLiveSound } from '../lib/useNewLiveSound'
@@ -92,22 +96,30 @@ interface HomeScreenProps {
   // ainda não foi reimplementada — ver ROADMAP.md).
   getViewerStatsFetcher: (code: string) => () => Promise<RawTrackStats | undefined>
   getViewerBitrateFetcher: (code: string) => () => number
-  // Transmissão via GStreamer (ver useGstreamerTransmission.ts) — a
-  // mesma TransmissionScreen de sempre (itens 9/10/11) dispara isso.
+  // Transmissão via GStreamer (ver useGstreamerTransmission.ts) — abre o
+  // dialog de iniciar (SourcePickerDialog, montado pelo App).
   onNavigateTransmission: () => void
   transmitting: boolean
+  // Entre o clique em "Compartilhar tela" e o pipeline rodando
+  // (2026-10-16). A ficha da live já aparece; só o selo diz "iniciando".
+  launchingTransmission: boolean
   // Pedido do usuário (2026-08-31): entre clicar em "Parar" e a sala ser
   // confirmada derrubada de verdade (ver useGstreamerTransmission.ts,
   // que insiste até confirmar) — footer mostra "Parando transmissão..."
   // em vez dos controles normais nesse meio tempo.
   stoppingTransmission: boolean
   roomCode: string | null
+  // Quando o APP começou a contar esta live (epoch ms), marcado no
+  // clique em "Compartilhar tela" (2026-10-16). Relógio provisório: o
+  // oficial é o `startedAt` que o LiveKit grava na sala e que chega pela
+  // lista alguns instantes depois. Ver `startedAt` em
+  // useGstreamerTransmission.ts.
+  transmissionStartedAt: number | null
   // Item 29 do roadmap: jogo (Steam/lista do Discord) ou título da janela
   // sendo transmitida agora, detectado pelo main — null enquanto nada foi
   // identificado ainda.
   nowPlaying: NowPlayingInfo | null
   transmissionSettings: TransmissionSettings | null
-  transmissionError: string | null
   // Mensagem no snackbar (quem renderiza ele é o App, pra sobreviver a
   // troca de tela). Usado pelo retorno de convite enviado/falhou e
   // pelo upload de foto de perfil.
@@ -147,7 +159,6 @@ interface HomeScreenProps {
   // vive no App, não aqui (esse componente desmonta ao navegar pra
   // TransmissionScreen). Só reinicia (volta pro padrão expandido) no
   // logout, ver handleLogout em App.tsx.
-
 }
 
 function HomeScreen({
@@ -184,11 +195,12 @@ function HomeScreen({
   getViewerBitrateFetcher,
   onNavigateTransmission,
   transmitting,
+  launchingTransmission,
   stoppingTransmission,
   roomCode,
+  transmissionStartedAt,
   nowPlaying,
   transmissionSettings,
-  transmissionError,
   onNotify,
   chatRooms,
   onSendChat,
@@ -200,8 +212,7 @@ function HomeScreen({
   onToggleHostPreview,
   attachHostPreviewVideo,
   getHostPreviewStats,
-  getHostPreviewBitrate,
-
+  getHostPreviewBitrate
 }: HomeScreenProps): React.JSX.Element {
   // Diretório de contas. Vive AQUI, e não dentro do UsersSidebar, porque
   // aquele componente só existe enquanto o painel está aberto — buscar
@@ -275,7 +286,6 @@ function HomeScreen({
     }
   }
 
-
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   // O PIN de sala saiu em 2026-09-10, e com ele o modal que pedia a
   // senha antes de entrar. Uma sala privada simplesmente não chega até
@@ -329,6 +339,9 @@ function HomeScreen({
   // sidebar antiga: quem controla abrir/fechar (e o clique fora) agora é
   // a AppLeftSidebar, que é onde o avatar mora.
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Janela de perfil (2026-10-19) — mesma lógica do modal de
+  // Configurações acima: aberta pelo popover, renderizada aqui.
+  const [profileWindowOpen, setProfileWindowOpen] = useState(false)
   // Item 9: entrar numa sala digitando o código (o tile do "+" na barra
   // da esquerda).
   const [joinByCodeOpen, setJoinByCodeOpen] = useState(false)
@@ -448,6 +461,37 @@ function HomeScreen({
   // "Só o host pode convidar" enquanto o nome está null).
   const liveReadyForInvites = Boolean(myRoom?.hostName)
 
+  // A SALA JÁ ESTÁ PUBLICADA PRO MUNDO? (2026-10-13, "fast start")
+  //
+  // Desde esta data a Home volta a aparecer quando o PIPELINE está
+  // rodando (passo 5 de 8, ver PipelineOutcome em
+  // useGstreamerTransmission.ts), e não mais quando o servidor publica a
+  // sala (passo 8). Entre um e outro passam uns segundos de rede, e
+  // nesse intervalo a live existe pro host mas ainda não existe pra mais
+  // ninguém.
+  //
+  // É a MESMA condição do `liveReadyForInvites` logo acima, e de
+  // propósito: lá ela decide se dá pra convidar, aqui ela decide se o
+  // selo mostra "conectando". As duas perguntas têm a mesma resposta —
+  // a sala está na lista e com host — e separá-las em dois cálculos só
+  // criaria a chance de uma mentir enquanto a outra diz a verdade.
+  //
+  // E o pipeline rodando, desde 2026-10-16 ("start instantâneo"): a ficha
+  // aparece no clique e a sala, com host, logo depois — antes de haver
+  // vídeo. Convidar já funciona nesse intervalo (o servidor sabe quem é o
+  // dono desde a criação da sala); só o selo continua dizendo
+  // "iniciando" até a captura estar de pé.
+  const liveNoAr = liveReadyForInvites && !launchingTransmission
+
+  // O cronômetro usa o relógio do LIVEKIT quando ele chega, e o local
+  // enquanto não chega.
+  //
+  // A ordem importa: o oficial vem primeiro porque é ele que sobrevive a
+  // um restart do servidor e a uma troca de fonte (a sala continua a
+  // mesma, o processo não). O local só preenche o buraco dos primeiros
+  // segundos — ver `startedAt` em useGstreamerTransmission.ts.
+  const liveStartedAt = myRoom?.startedAt ?? transmissionStartedAt
+
   // Convites desta live: quem está pendente, quem aceitou (2026-09-14).
   // Vive aqui, e não no painel de usuários, porque o painel é
   // destruído ao fechar e o resultado pode chegar depois disso.
@@ -514,7 +558,6 @@ function HomeScreen({
     onNotify(muted ? `${name} foi silenciado no chat` : `${name} voltou a falar no chat`)
   }
 
-
   // Alimenta a sobreposição de viewers (2026-09-10). Quem decide é AQUI
   // e não o main, porque as três coisas necessárias já estão juntas
   // nesta tela: a preferência do usuário, se há live no ar e quem está
@@ -534,13 +577,7 @@ function HomeScreen({
     // Depende de `overlayViewerNames` (string) e não de `myViewers`: o
     // array é recriado a cada render e dispararia o efeito sem parar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    user.settings.showViewersOverlay,
-    myRoomCode,
-    overlayViewerNames,
-    userAvatars,
-    apiBaseUrl
-  ])
+  }, [user.settings.showViewersOverlay, myRoomCode, overlayViewerNames, userAvatars, apiBaseUrl])
 
   // Item novo (2026-09-04, "sala com senha"): sala que abriu o modal de
   // senha, se ainda existir na lista em tempo real (pode ter caído
@@ -550,10 +587,7 @@ function HomeScreen({
   // (a sala sai da lista e o find devolve null), sem precisar limpar
   // estado em lugar nenhum.
   const detailsRoom =
-    sidePanel?.kind === 'room'
-      ? (rooms.find((room) => room.name === sidePanel.code) ?? null)
-      : null
-
+    sidePanel?.kind === 'room' ? (rooms.find((room) => room.name === sidePanel.code) ?? null) : null
 
   // A EXPANSÃO AUTOMÁTICA DA LISTA DE ESPECTADORES SAIU (2026-09-23).
   //
@@ -569,7 +603,11 @@ function HomeScreen({
   // agora só a MINHA sala (pedido do usuário, 2026-09-06 — antes valia
   // pra toda sala assistida também). A sala inteira sumindo (host parou a
   // live) não toca nada aqui, ver useViewer.ts.
-  useRoomPresenceSounds(rooms, roomCode, user.name)
+  //
+  // O `stoppingTransmission` é o que cala o "saiu" enquanto EU derrubo a
+  // minha própria live — ali os viewers somem da lista sem ter saído de
+  // nada (ver o cabeçalho do hook).
+  useRoomPresenceSounds(rooms, roomCode, user.name, stoppingTransmission)
 
   // Alerta de "sala nova apareceu na lista" — único som que passa pela
   // preferência da conta (ver useNewLiveSound.ts pro porquê de o hook
@@ -654,11 +692,27 @@ function HomeScreen({
           onRefreshRooms={onRefreshRooms}
           onJoinByCode={() => setJoinByCodeOpen(true)}
           onNavigateTransmission={onNavigateTransmission}
+          // PRÉ-CARGA DA GRADE DE FONTES (2026-10-13, pedido do usuário)
+          //
+          // Encostar o ponteiro no botão já manda o main montar a grade
+          // de telas/janelas, que é o que a próxima tela vai pedir. O
+          // caminho entre encostar e clicar costuma dar os poucos
+          // décimos de que ela precisa, e aí a tela abre com as
+          // miniaturas prontas em vez de preenchê-las depois.
+          //
+          // Aqui, e não na montagem da Home: montar a grade é capturar
+          // uma imagem de cada janela aberta, e fazer isso na abertura do
+          // app seria pagar sempre por quem talvez nem vá transmitir.
+          //
+          // Sem `await` e sem tratamento de erro de propósito — o main já
+          // engole a falha, e não existe nada pra mostrar sobre um
+          // trabalho que ninguém pediu (ver screenCapture:prefetch).
+          onPrepareTransmission={() => void window.api.screenCapture.prefetch()}
           transmitting={transmitting}
           onOpenSettings={() => setSettingsOpen(true)}
           onUserUpdate={onUserUpdate}
           onLogout={onLogout}
-          onNotify={onNotify}
+          onOpenProfile={() => setProfileWindowOpen(true)}
         />
 
         {sidePanel?.kind === 'users' && (
@@ -802,62 +856,41 @@ function HomeScreen({
                 novo aqui. */}
             {myChat && chatOpen && (
               <aside className="host-chat-dock">
-                {/* QUEM ESTÁ ASSISTINDO, no topo (2026-09-23, pedido do
-                    usuário) — o mesmo arranjo do estado colapsado da ficha
-                    de uma sala assistida: "Assistindo" + contador numa
-                    linha, fila de avatares na de baixo.
+                {/* A LISTA DE ESPECTADORES SAIU DAQUI (2026-09-29, pedido
+                    do usuário). Ela era o topo desta barra: "Assistindo" +
+                    contador numa linha, fila de avatares na de baixo.
 
-                    Isto substitui a aba de espectadores que vivia no
-                    rodapé. A lista que o host precisa é a da live dele, e
-                    ela pertence ao mesmo lugar que o chat dela. */}
+                    Agora quem mostra isso é o RODAPÉ, ao lado das
+                    informações da live (ver `.footer-viewers`), e de lá
+                    ela é visível com o chat aberto ou fechado. Mantida
+                    aqui também, seria a mesma fila duas vezes na tela ao
+                    mesmo tempo.
+
+                    Sobrou o cabeçalho, que agora é só o do chat: o título
+                    à esquerda e o ">" que recolhe a barra à direita —
+                    ">" e não uma seta pra baixo porque aqui o movimento é
+                    horizontal, a barra sai pela direita e vira a lingueta
+                    de onde veio. */}
                 <div className="host-chat-dock-header">
-                  <span className="room-details-label">
-                    Assistindo
-                    {myViewers.length > 0 && (
-                      <span className="room-details-count">{myViewers.length}</span>
-                    )}
+                  <span className="host-chat-dock-title">
+                    <MessageSquare size={14} />
+                    Chat ao vivo
                   </span>
-                  {/* ">" e não uma seta pra baixo: aqui o movimento é
-                      horizontal — a barra sai pela direita e vira a
-                      lingueta de onde veio. */}
+                  {/* Mesmo botão do "<" que fecha os detalhes da sala
+                      (RoomDetailsSidebar.tsx), pedido do usuário
+                      (2026-10-16): tamanho, cor e ícone iguais, só o
+                      sentido da seta muda com o lado da barra. */}
                   <button
                     type="button"
-                    className="participants-collapse-button"
+                    className="icon-button"
                     onClick={() => setChatOpen(false)}
                     aria-label="Recolher chat ao vivo"
                     title="Recolher"
                   >
-                    <ChevronRight size={14} />
+                    <ChevronRight size={16} />
                   </button>
                 </div>
 
-                {myViewers.length === 0 ? (
-                  <p className="host-chat-dock-empty">Ninguém assistindo ainda.</p>
-                ) : (
-                  <ViewerAvatarRow
-                    names={myViewers}
-                    userAvatars={userAvatars}
-                    apiBaseUrl={apiBaseUrl}
-                    mutedNames={myChat.mutedNames}
-                    activeName={userCard?.name ?? null}
-                    onViewerClick={openUserCard}
-                    // Botão direito abre "Expulsar"/"Silenciar" — só aqui,
-                    // que é a única lista em que eu sou o host.
-                    onViewerContextMenu={(event, name) => {
-                      // Sem isto o Electron abre o menu de contexto padrão
-                      // do Chromium por cima.
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setUserCard(null)
-                      setKickMenu({ name, position: { x: event.clientX, y: event.clientY } })
-                    }}
-                  />
-                )}
-
-                <span className="host-chat-dock-title">
-                  <MessageSquare size={14} />
-                  Chat ao vivo
-                </span>
                 <LiveChat
                   messages={myChat.messages}
                   loading={myChat.loading}
@@ -891,42 +924,15 @@ function HomeScreen({
               fora de uma transmissão minha. */}
           {myChat && !chatOpen && (
             <div className="host-chat-bar">
-              {/* Sem ninguém assistindo o tile nem aparece (pedido do
-                  usuário) — uma caixa vazia não diria nada que a ausência
-                  dela já não diga, e o botão do chat fica sozinho na
-                  linha, que é o estado natural de uma live que acabou de
-                  começar. */}
-              {myViewers.length > 0 && (
-                <div className="host-chat-bar-viewers">
-                  <ViewerAvatarRow
-                    names={myViewers}
-                    userAvatars={userAvatars}
-                    apiBaseUrl={apiBaseUrl}
-                    // 10 e não os 11 do padrão: aqui a largura é livre
-                    // (o tile cresce com a fila), então o corte é uma
-                    // escolha de desenho do usuário e não uma medida.
-                    max={10}
-                    mutedNames={myChat.mutedNames}
-                    activeName={userCard?.name ?? null}
-                    onViewerClick={openUserCard}
-                    onViewerContextMenu={(event, name) => {
-                      // Sem isto o Electron abre o menu de contexto
-                      // padrão do Chromium por cima.
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setUserCard(null)
-                      setKickMenu({ name, position: { x: event.clientX, y: event.clientY } })
-                    }}
-                  />
-                  {/* QUANTOS estão assistindo, na quina de cima do tile.
-                      O mesmo número que o cabeçalho da barra aberta
-                      mostra ao lado de "Assistindo": com a fila cortada
-                      em 10, ele é a única coisa que diz o total. */}
-                  <span className="host-chat-bar-count">
-                    {myViewers.length > 99 ? '99+' : myViewers.length}
-                  </span>
-                </div>
-              )}
+              {/* O TILE DE ESPECTADORES SAIU DAQUI (2026-09-29, pedido do
+                  usuário). A fila de avatares desceu pro RODAPÉ, ao lado
+                  das informações da live — ver `.footer-viewers` lá
+                  embaixo.
+
+                  Sobrou o botão do chat sozinho nesta linha, que é o que
+                  ela sempre foi de fato: o acesso ao chat fechado. Quem
+                  está assistindo é uma informação da LIVE, e o rodapé já
+                  é o lugar onde todas as outras moram. */}
 
               {/* O rótulo "Chat ao vivo" era TEXTO na lingueta vertical;
                   aqui ele não cabe, então virou balão — e encolheu pra
@@ -982,8 +988,8 @@ function HomeScreen({
               `home-footer-live` continua só trocando a COR de fundo — o
               tamanho é o mesmo nos dois estados em que ele aparece. */}
           {(transmitting || stoppingTransmission) && (
-          <footer className={`home-footer${transmitting ? ' home-footer-live' : ''}`}>
-            {/* Pedido do usuário (2026-09-04): o "tile" de USER INFO saiu
+            <footer className={`home-footer${transmitting ? ' home-footer-live' : ''}`}>
+              {/* Pedido do usuário (2026-09-04): o "tile" de USER INFO saiu
                 daqui de vez (virou o "profile tile" fixo no rodapé da
                 sidebar, ver acima) — esse lado esquerdo do footer agora é
                 só as informações da MINHA transmissão (nada clicável,
@@ -992,69 +998,183 @@ function HomeScreen({
                 baixo, sem a animação de "virar" de antes (removida a
                 pedido do usuário) — só aparece mesmo, sem esconder atrás
                 de hover nenhum. */}
-            <div className="home-footer-left">
-              {!stoppingTransmission && transmitting && roomCode && (
-                <div className="live-tile">
-                  {/* Pedido do usuário (2026-09-05): arte do que está
+              <div className="home-footer-left">
+                {/* A FICHA DA MINHA LIVE (redesenhada em 2026-10-13, pedido
+                  do usuário).
+
+                  Mesma informação de antes, redistribuída em duas
+                  leituras em vez de uma fila de pedaços separados por
+                  tracinhos iguais:
+
+                    linha 1  o ESTADO e O QUÊ — o selo da live e o nome
+                             do que está sendo transmitido, que é a
+                             pergunta que a pessoa faz de relance.
+                    linha 2  os DADOS DA SALA — há quanto tempo, qual o
+                             código, se é privada. Coisas que ela lê
+                             quando precisa, não de relance.
+
+                  Antes os cinco pedaços dividiam a linha de cima,
+                  separados por divisórias idênticas, e o nome do jogo
+                  ficava sozinho embaixo em letra menor — ou seja, a
+                  informação mais importante era a menos destacada, e as
+                  outras quatro tinham todas o mesmo peso. Nada foi
+                  acrescentado nem removido.
+
+                  O estado "iniciando" não vive mais aqui (2026-10-02):
+                  a espera acontece na tela de iniciar, no lugar do
+                  botão. O que mudou em 2026-10-13 é só até ONDE ela
+                  espera — ver "liveNoAr" lá em cima. */}
+                {!stoppingTransmission && transmitting && roomCode && (
+                  <div className="live-tile">
+                    {/* Pedido do usuário (2026-09-05): arte do que está
                       sendo transmitido (capa do jogo ou placeholder) no
-                      leading do tile. Só renderiza com `nowPlaying`
+                      leading da ficha. Só renderiza com nowPlaying
                       resolvido — sem info nenhuma não há placeholder
                       certo a escolher, e a janela de tempo até a
                       primeira detecção é curta (o monitor já reporta o
                       nome da tela de cara, ver gameDetection.ts). */}
-                  {nowPlaying && <NowPlayingArt info={nowPlaying} />}
+                    {nowPlaying && <NowPlayingArt info={nowPlaying} />}
 
-                  <div className="live-tile-info">
-                    <div className="live-tile-title">
-                      <span className="live-tile-dot" />
-                      <span className="live-tile-label">AO VIVO</span>
-                      {/* Sala privada (2026-09-10, no lugar do PIN):
+                    <div className="live-tile-info">
+                      <div className="live-tile-headline">
+                        {/* O selo virou uma pílula (antes eram um ponto e
+                          uma palavra soltos na fila). É o que separa o
+                          ESTADO do resto — tudo o mais na ficha é dado,
+                          só isto é estado.
+
+                          A variante "connecting" vale enquanto o
+                          servidor não publicou a sala: mesma pílula,
+                          mesmo tamanho, só o ponto pulsando e o tom mais
+                          apagado — não pode pular layout, porque isso
+                          dura segundos e acontece justo quando a pessoa
+                          está olhando. */}
+                        <span
+                          className={liveNoAr ? 'live-badge' : 'live-badge live-badge-connecting'}
+                          title={
+                            liveNoAr
+                              ? undefined
+                              : 'Iniciando — sua sala já está aberta e o vídeo chega em instantes'
+                          }
+                        >
+                          <span className="live-tile-dot" />
+                          <span className="live-tile-label">LIVE</span>
+                        </span>
+
+                        {/* Item 29 do roadmap: jogo/janela sendo
+                          transmitida. Subiu pra linha de cima em
+                          2026-10-13 — é o que a ficha está respondendo.
+
+                          No MarqueeText desde 2026-09-29 (pedido do
+                          usuário): o mesmo vai-e-vem que a ficha de uma
+                          sala já usa pro nome do jogo. Ele só anima
+                          quando o texto não cabe, e título de janela
+                          costuma ser comprido.
+
+                          A caixa é div porque o MarqueeText monta uma
+                          div por dentro, e div dentro de span é
+                          aninhamento inválido. */}
+                        {nowPlaying && (
+                          <div className="live-tile-subtitle">
+                            <MarqueeText text={nowPlaying.name} className="now-playing-name" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Os dados da sala. Todos com o mesmo tratamento de
+                        chip discreto, porque são todos da mesma
+                        natureza — o que os separa é o ícone, não um
+                        traço vertical. */}
+                      <div className="live-tile-meta">
+                        {/* Item 42 do roadmap: há quanto tempo a MINHA
+                          live está no ar. "liveStartedAt" é o relógio do
+                          LiveKit quando ele já chegou e o local enquanto
+                          não chegou — ver a derivação lá em cima. */}
+                        <span className="live-meta-item">
+                          <Clock size={11} />
+                          <LiveTimer startedAt={liveStartedAt} className="live-tile-timer" />
+                        </span>
+
+                        {/* Código da sala (2026-09-13, pedido do usuário):
+                          o número que a pessoa passa pra quem ela quer
+                          chamar. Mono e em branco porque é o único dado
+                          da ficha feito pra ser LIDO e ditado em voz
+                          alta. */}
+                        <span className="live-meta-item">
+                          <Hash size={11} />
+                          <span className="live-tile-code">{roomCode}</span>
+                        </span>
+
+                        {/* Sala privada (2026-09-10, no lugar do PIN):
                           lembra o host de que a live dele não está na
                           lista de ninguém — sem isso ele acharia que
                           ninguém quis entrar. */}
-                      {transmissionSettings?.private && (
-                        <>
-                          <span className="live-tile-divider" />
-                          <span className="live-tile-private-chip">
+                        {transmissionSettings?.private && (
+                          <span className="live-meta-item live-meta-private">
                             <Lock size={11} />
                             Privada
                           </span>
-                        </>
-                      )}
-                      {/* Código da sala (2026-09-13, pedido do usuário).
-                          Vem DEPOIS do selo "Privada" quando ele existe,
-                          porque é essa a ordem do que a pessoa precisa
-                          saber: primeiro que a live não está na lista de
-                          ninguém, depois o número que ela vai passar pra
-                          quem quer chamar.
-
-                          É o mesmo `roomCode` que o guard deste bloco já
-                          exige, então nunca renderiza vazio. */}
-                      <span className="live-tile-divider" />
-                      <span className="live-tile-code">{roomCode}</span>
-                      <span className="live-tile-divider" />
-                      {/* Item 42 do roadmap: há quanto tempo a MINHA live
-                          está no ar — mesmo `myRoom` que já alimenta o
-                          painel de quem está assistindo, só lendo
-                          `startedAt` agora também. */}
-                      <LiveTimer startedAt={myRoom?.startedAt} className="live-tile-timer" />
+                        )}
+                      </div>
                     </div>
-
-                    {/* Item 29 do roadmap: jogo/janela sendo transmitida
-                        — sem "Clique para editar" embaixo (isso foi pro
-                        profile tile da sidebar) e sem a animação de
-                        virar de antes, mostra direto quando detectado. */}
-                    {nowPlaying && (
-                      <span className="live-tile-subtitle">              
-                        <span className="now-playing-name">{nowPlaying.name}</span>
-                      </span>
-                    )}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
 
-            {/* Botão de iniciar live (quando não transmitindo) ou os
+                {/* QUEM ESTÁ ASSISTINDO, no rodapé (2026-09-29, desenho do
+                  usuário). Era a pílula de avatares na linha acima do
+                  rodapé (`.host-chat-bar-viewers`), que saiu.
+
+                  A divisória é o que separa as duas leituras: à esquerda
+                  dela, a MINHA live (estado, código, há quanto tempo, o
+                  que está sendo transmitido); à direita, QUEM está do
+                  outro lado. Duas perguntas diferentes, dois blocos — e
+                  o tile da live parou de esticar pelo rodapé inteiro
+                  justamente pra a divisória cair logo depois do timer,
+                  que é onde a primeira leitura termina.
+
+                  Sem fundo próprio (pedido do usuário): o rodapé já tem o
+                  dele, e uma segunda caixa dentro de uma caixa faria a
+                  fila de avatares parecer um controle e não uma
+                  informação.
+
+                  Sem ninguém assistindo, nada disto aparece — nem a
+                  divisória. Uma linha vertical solta e um "0" não dizem
+                  nada que a ausência dos dois já não diga, e esse é o
+                  estado normal de uma live que acabou de começar. */}
+                {myViewers.length > 0 && (
+                  <>
+                    <span className="footer-section-divider" />
+                    <div className="footer-viewers">
+                      <span className="footer-viewers-title">
+                        Assistindo
+                        <span className="footer-viewers-count">{myViewers.length}</span>
+                      </span>
+                      <ViewerAvatarRow
+                        names={myViewers}
+                        userAvatars={userAvatars}
+                        apiBaseUrl={apiBaseUrl}
+                        // 10 e não os 11 do padrão, como na pílula que esta
+                        // fila substituiu: aqui a largura é livre (o bloco
+                        // cresce com a fila), então o corte é uma escolha
+                        // de desenho do usuário e não uma medida da caixa.
+                        max={10}
+                        mutedNames={myChat?.mutedNames}
+                        activeName={userCard?.name ?? null}
+                        onViewerClick={openUserCard}
+                        onViewerContextMenu={(event, name) => {
+                          // Sem isto o Electron abre o menu de contexto
+                          // padrão do Chromium por cima.
+                          event.preventDefault()
+                          event.stopPropagation()
+                          setUserCard(null)
+                          setKickMenu({ name, position: { x: event.clientX, y: event.clientY } })
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Botão de iniciar live (quando não transmitindo) ou os
             controles da live (preview/atualizar/parar), alinhados à
             direita. Pedido do usuário (2026-09-02): botão de ver quem
             está assistindo (item 18) volta pra cá, à esquerda dos
@@ -1063,60 +1183,101 @@ function HomeScreen({
             (2026-09-03): "Parando transmissão..." também fica aqui
             (nesse mesmo canto direito) em vez de junto do "USER INFO" à
             esquerda — sempre alinhado à direita do footer. */}
-            <div className="home-footer-right">
-              {stoppingTransmission ? (
-                <span className="footer-stopping-indicator">
-                  <span className="live-status-stopping-spinner" />
-                  <span className="live-tile-stopping-label">Parando transmissão...</span>
-                </span>
-              ) : transmitting ? (
-                <div className="home-live-controls">
-                  {/* A LISTA DE ESPECTADORES SAIU DAQUI (2026-09-23, pedido
+              <div className="home-footer-right">
+                {stoppingTransmission ? (
+                  <span className="footer-stopping-indicator">
+                    <span className="live-status-stopping-spinner" />
+                    <span className="live-tile-stopping-label">Parando transmissão...</span>
+                  </span>
+                ) : transmitting ? (
+                  <div className="home-live-controls">
+                    {/* A LISTA DE ESPECTADORES SAIU DAQUI (2026-09-23, pedido
                       do usuário). Ela era uma aba deste rodapé, ao lado da
                       do chat; agora as duas moram na mesma peça — os
                       espectadores da minha live são o TOPO da barra do
                       chat (ver `.host-chat-dock` lá em cima). Uma lista só,
                       num lugar só, em vez de duas abas disputando o canto
                       da tela do host. */}
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={onToggleHostPreview}
-                    aria-label={
-                      hostPreviewEnabled
-                        ? 'Ocultar preview da transmissão'
-                        : 'Mostrar preview da transmissão'
-                    }
-                  >
-                    {hostPreviewEnabled ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={() => setShowUpdateModal(true)}
-                    aria-label="Atualizar transmissão"
-                  >
-                    <SlidersHorizontal size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button icon-button-danger"
-                    onClick={() => onStopTransmission()}
-                    aria-label="Parar live"
-                  >
-                    <Square size={16} fill="currentColor" />
-                  </button>
-                  {showUpdateModal && transmissionSettings && (
-                    <UpdateTransmissionModal
-                      currentSettings={transmissionSettings}
-                      onClose={() => setShowUpdateModal(false)}
-                      onUpdate={onUpdateTransmission}
-                      error={transmissionError}
-                    />
-                  )}
-                </div>
-              ) : (
-                // Inalcançável desde 2026-09-18: o rodapé inteiro só é
+                    {/* Tooltips no NOSSO balão e não no `title` do sistema
+                      (2026-09-30, pedido do usuário), pelo mesmo motivo do
+                      botão do chat logo acima: o nativo demora ~1s, aparece
+                      no canto do cursor e não se parece com o resto do app.
+                      `placement="top"` porque estes botões moram no rodapé —
+                      embaixo não cabe.
+
+                      O balão do preview tem rótulo FIXO ("Preview"), mas o
+                      `aria-label` continua dizendo o que o clique faz
+                      (mostrar/ocultar), que é do que o leitor de tela
+                      precisa. */}
+                    <Tooltip label="Preview" placement="top">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={onToggleHostPreview}
+                        aria-label={
+                          hostPreviewEnabled
+                            ? 'Ocultar preview da transmissão'
+                            : 'Mostrar preview da transmissão'
+                        }
+                      >
+                        {hostPreviewEnabled ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Definições" placement="top">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => setShowUpdateModal(true)}
+                        aria-label="Atualizar transmissão"
+                      >
+                        <SlidersHorizontal size={16} />
+                      </button>
+                    </Tooltip>
+                    {/* `top-end` e não `top` (2026-09-30, defeito relatado
+                      pelo usuário): este é o ÚLTIMO botão do rodapé, quase
+                      encostado na borda direita da janela, e um balão
+                      centrado nele — ainda por cima o de rótulo mais
+                      comprido dos três — saía da tela e vinha cortado.
+                      Alinhado pela direita ele cresce pra dentro, e a
+                      setinha continua em cima do botão. */}
+                    <Tooltip label="Parar transmissão" placement="top-end">
+                      <button
+                        type="button"
+                        className="icon-button icon-button-danger"
+                        onClick={() => onStopTransmission()}
+                        aria-label="Parar live"
+                      >
+                        <Square size={16} fill="currentColor" />
+                      </button>
+                    </Tooltip>
+                    {/* O mesmo dialog do iniciar (2026-10-16), só com os
+                      rótulos de atualizar. Fecha no clique, como lá: a
+                      troca leva um ou dois segundos (o pipeline é
+                      reiniciado) e uma falha chega pelo snackbar — ver
+                      update() em useGstreamerTransmission.ts. */}
+                    {showUpdateModal && transmissionSettings && (
+                      <SourcePickerDialog
+                        mode="update"
+                        initialQuality={{
+                          resolution: transmissionSettings.resolution,
+                          fps: transmissionSettings.fps
+                        }}
+                        initialPrivate={transmissionSettings.private}
+                        currentSourceId={transmissionSettings.sourceId}
+                        onClose={() => setShowUpdateModal(false)}
+                        onPick={(settings) => {
+                          setShowUpdateModal(false)
+                          // Privacidade não muda com a live no ar: trocar
+                          // resolução/FPS/fonte não recria a sala.
+                          void onUpdateTransmission({
+                            ...settings,
+                            private: transmissionSettings.private
+                          })
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : // Inalcançável desde 2026-09-18: o rodapé inteiro só é
                 // montado quando `transmitting || stoppingTransmission`
                 // (ver a condição lá em cima), então este terceiro caso
                 // não acontece mais.
@@ -1125,19 +1286,31 @@ function HomeScreen({
                 // de um: o que sumiu daqui foi o botão "Transmitir", que
                 // em 2026-09-13 virou um tile circular na barra da
                 // esquerda (ver AppLeftSidebar.tsx).
-                null
-              )}
-            </div>
-          </footer>
+                null}
+              </div>
+            </footer>
           )}
         </div>
       </div>
-
 
       {joinByCodeOpen && (
         <JoinByCodeModal
           onClose={() => setJoinByCodeOpen(false)}
           onJoin={(code) => onJoinRoom(code)}
+        />
+      )}
+
+      {profileWindowOpen && (
+        <ProfileWindow
+          user={user}
+          apiBaseUrl={apiBaseUrl}
+          onClose={() => setProfileWindowOpen(false)}
+          onUserUpdate={onUserUpdate}
+          onNotify={onNotify}
+          onLogout={() => {
+            setProfileWindowOpen(false)
+            onLogout()
+          }}
         />
       )}
 

@@ -19,7 +19,6 @@ export interface LivekitTokenParams {
   // role 'viewer' — o server.js confere contra a senha da sala (ver
   // /token em server.js) antes de emitir o token, devolvendo 401 se
   // não bater.
-
 }
 
 export interface LivekitTokenResult {
@@ -105,7 +104,7 @@ export function setupLivekitHandlers(): void {
         roomName: params.roomName,
         participantName: params.participantName,
         role: params.role,
-        ...(params.hidden ? { hidden: 'true' } : {}),
+        ...(params.hidden ? { hidden: 'true' } : {})
         // A senha de sala saiu em 2026-09-10; sala privada agora é
         // decidida por convite, e o servidor confere isso sozinho em
         // /token (ver presence.isAllowedInRoom lá).
@@ -132,7 +131,19 @@ export function setupLivekitHandlers(): void {
     'livekit:createIngress',
     async (
       _event,
-      params: { roomName: string; participantName: string; private?: boolean }
+      params: {
+        roomName: string
+        participantName: string
+        private?: boolean
+        // O jogo/janela que o host já sabe da fonte escolhida
+        // (2026-09-30; desde 2026-10-16 o nome da janela/monitor da
+        // grade, sem esperar detecção de jogo). Vai junto
+        // pro servidor gravar na sala no mesmo instante em que a cria —
+        // assim a live aparece INTEIRA quando aparecer, em vez de ganhar
+        // o subtítulo alguns segundos depois. Opcional: sem ele a
+        // informação chega pelo POST /rooms/:roomName/game de sempre.
+        game?: { kind: string; name: string; iconUrl?: string | null } | null
+      }
     ): Promise<{ url: string; streamKey: string }> => {
       const response = await fetch(`${API_BASE_URL}/ingress`, {
         method: 'POST',

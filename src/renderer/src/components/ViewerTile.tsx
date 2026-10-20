@@ -147,7 +147,10 @@ function ViewerTile({
 
         {hasVideo && (
           <div
-            className={`tile-overlay${overlay.visible ? ' tile-overlay-visible' : ''}`}
+            // Com as estatísticas abertas a barra não some sozinha: o
+            // painel fica pendurado nela, e sumir junto seria fechar o
+            // painel sem a pessoa ter pedido.
+            className={`tile-overlay${overlay.visible || statsOpen ? ' tile-overlay-visible' : ''}`}
             onMouseMove={overlay.onMouseMove}
             onMouseLeave={overlay.onMouseLeave}
           >
@@ -166,15 +169,16 @@ function ViewerTile({
                 <Users size={13} />
                 {participants.length}
               </span>
-              <div
-                className="stats-toggle-wrapper"
-                onMouseEnter={() => setStatsOpen(true)}
-                onMouseLeave={() => setStatsOpen(false)}
-              >
+              {/* Pedido do usuário (2026-10-16): abre e fecha no CLIQUE,
+                  não mais no hover — dá pra deixar aberto olhando os
+                  números enquanto a live roda. */}
+              <div className="stats-toggle-wrapper">
                 <button
                   type="button"
-                  className="stats-toggle tile-control"
-                  aria-label="Ver estatísticas"
+                  className={`stats-toggle tile-control${statsOpen ? ' stats-toggle-active' : ''}`}
+                  onClick={() => setStatsOpen((open) => !open)}
+                  aria-label={statsOpen ? 'Fechar estatísticas' : 'Ver estatísticas'}
+                  aria-expanded={statsOpen}
                 >
                   <Activity size={14} />
                 </button>

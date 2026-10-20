@@ -70,20 +70,18 @@ function HostPreviewTile({
           <>
             <span className="watch-tile-label">Sua transmissão</span>
 
-            {/* Pedido do usuário (2026-09-03): mesmo padrão hover do
-                ViewerTile.tsx — `stats-toggle-solo` porque aqui é o
+            {/* Mesmo padrão do ViewerTile.tsx — abre e fecha no clique
+                desde 2026-10-16. `stats-toggle-solo` porque aqui é o
                 ÚNICO botão do chip (precisa de raio nos 4 cantos, não só
                 nos 2 de uma ponta como no ViewerTile). */}
             <div className="tile-top-right-actions">
-              <div
-                className="stats-toggle-wrapper"
-                onMouseEnter={() => setStatsOpen(true)}
-                onMouseLeave={() => setStatsOpen(false)}
-              >
+              <div className="stats-toggle-wrapper">
                 <button
                   type="button"
-                  className="stats-toggle stats-toggle-solo tile-control"
-                  aria-label="Ver estatísticas"
+                  className={`stats-toggle stats-toggle-solo tile-control${statsOpen ? ' stats-toggle-active' : ''}`}
+                  onClick={() => setStatsOpen((open) => !open)}
+                  aria-label={statsOpen ? 'Fechar estatísticas' : 'Ver estatísticas'}
+                  aria-expanded={statsOpen}
                 >
                   <Activity size={14} />
                 </button>

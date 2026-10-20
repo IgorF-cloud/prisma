@@ -9,7 +9,8 @@ import { persistSessionToken, updateSessionUser } from './session'
 // abaixo) — `id`/`version` de um avatar customizado servem pro cliente
 // montar a URL (/avatars/<id>.webp?v=<version>, cache-buster).
 export type AvatarRef =
-  { type: 'preset'; key: string } | { type: 'custom'; id: number; version: number }
+  | { type: 'preset'; key: string }
+  | { type: 'custom'; id: number; version: number; format?: 'webp' | 'gif' }
 
 // Preferências da conta (2026-09-06) — o token-server sempre devolve
 // esse objeto completo (defaults costurados na leitura, ver settingsOf no
@@ -150,18 +151,27 @@ async function apiRequest<T>(method: string, path: string, body: unknown): Promi
 // POST /users/:id/avatar — corpo binário cru (WebP já comprimido no
 // cliente, ver UserProfileModal.tsx), Content-Type: image/webp. Caminho
 // separado do apiRequest acima porque não é JSON.
-async function uploadAvatarRequest(id: number, webpBytes: Uint8Array): Promise<AuthUser> {
+//
+// Também manda o avatar em GIF (2026-10-19): com `gifBytes`, vai pra
+// /avatar/animated num corpo só — a cópia parada na frente, o GIF depois
+// e o header dizendo onde uma acaba. Ver a rota no server.js.
+async function uploadAvatarRequest(
+  id: number,
+  webpBytes: Uint8Array,
+  gifBytes?: Uint8Array
+): Promise<AuthUser> {
   let response: Response
   try {
-    response = await fetch(`${API_BASE_URL}/users/${id}/avatar`, {
+    response = await fetch(`${API_BASE_URL}/users/${id}/avatar${gifBytes ? '/animated' : ''}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'image/webp',
+        'Content-Type': gifBytes ? 'application/octet-stream' : 'image/webp',
+        ...(gifBytes ? { 'X-Avatar-Static-Bytes': String(webpBytes.byteLength) } : {}),
         Authorization: authHeader()
       },
       // Node's fetch/BodyInit types (lib.dom vs @types/node) não batem
       // com Uint8Array direto — Buffer (subclasse de Uint8Array) resolve.
-      body: Buffer.from(webpBytes),
+      body: gifBytes ? Buffer.concat([webpBytes, gifBytes]) : Buffer.from(webpBytes),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     })
   } catch (err) {
@@ -203,24 +213,21 @@ export function setupAuthHandlers(): void {
   //
   // Os outros erros do cadastro (nome em uso, e-mail inválido) continuam
   // lançando: aqueles a tela já trata marcando o campo.
-  ipcMain.handle(
-    'auth:register',
-    async (_event, name: string, email: string, password: string) => {
-      try {
-        const result = await apiRequest<{ user: AuthUser; status: string }>(
-          'POST',
-          '/register',
-          { name, email, password }
-        )
-        return { ok: true as const, user: result.user }
-      } catch (err) {
-        if (err instanceof ApiFieldError && err.code === 'user_limit_reached') {
-          return { ok: false as const, reason: 'limitReached' as const, message: err.message }
-        }
-        throw err
+  ipcMain.handle('auth:register', async (_event, name: string, email: string, password: string) => {
+    try {
+      const result = await apiRequest<{ user: AuthUser; status: string }>('POST', '/register', {
+        name,
+        email,
+        password
+      })
+      return { ok: true as const, user: result.user }
+    } catch (err) {
+      if (err instanceof ApiFieldError && err.code === 'user_limit_reached') {
+        return { ok: false as const, reason: 'limitReached' as const, message: err.message }
       }
+      throw err
     }
-  )
+  })
 
   // Devolve um RESULTADO, e não só lança (2026-09-16).
   //
@@ -245,7 +252,7 @@ export function setupAuthHandlers(): void {
         return {
           ok: false as const,
           status: err.accountStatus,
-          message: err.message,
+          message: err.message
         }
       }
       throw err
@@ -288,6 +295,43 @@ export function setupAuthHandlers(): void {
       apiRequest<void>('POST', '/password-reset/confirm', { email, code, newPassword })
   )
 
+  // Troca de senha pela janela de PERFIL (2026-10-19, pedido do usuário):
+  // mesmo caminho do "Esqueci minha senha" — código no e-mail da conta,
+  // depois código + senha nova no /password-reset/confirm.
+  //
+  // O detalhe é que aquela rota DERRUBA todas as sessões da conta,
+  // inclusive esta, e não devolve token (ver o comentário dela no
+  // server.js). Pra quem está logado isso significaria ser jogado no
+  // login logo depois de trocar a senha. Então, assim que a troca
+  // confirma, entra de novo com a senha nova — que acabou de ser provada
+  // — e guarda o token novo, igual o `auth:changePassword` faz.
+  //
+  // Os dois passos ficam juntos AQUI, e não em duas chamadas do
+  // renderer: entre um e outro o token antigo já está revogado, e
+  // qualquer request nesse intervalo tomaria 401 e deslogaria o app.
+  // Aqui o intervalo é o tempo de um request.
+  //
+  // As outras sessões (outra máquina) continuam caindo — é o objetivo.
+  ipcMain.handle(
+    'auth:resetOwnPassword',
+    async (_event, email: string, code: string, newPassword: string, name: string) => {
+      await apiRequest<void>('POST', '/password-reset/confirm', { email, code, newPassword })
+      try {
+        const result = await apiRequest<AuthResult>('POST', '/login', {
+          name,
+          password: newPassword
+        })
+        setApiToken(result.token)
+        persistSessionToken()
+        return result.user
+      } catch {
+        // A senha JÁ mudou — só o login automático falhou. Mensagem
+        // própria pra tela não dizer "não foi possível trocar a senha".
+        throw new Error('PASSWORD_CHANGED_RELOGIN_FAILED')
+      }
+    }
+  )
+
   ipcMain.handle('auth:rename', async (_event, id: number, name: string) => {
     const user = await apiRequest<AuthUser>('PUT', `/users/${id}`, { name })
     updateSessionUser(user)
@@ -307,6 +351,17 @@ export function setupAuthHandlers(): void {
     updateSessionUser(user)
     return user
   })
+
+  // Avatar em GIF (2026-10-19): o GIF já recodificado no renderer e a
+  // cópia parada em WebP — ver lib/avatarGif.ts lá.
+  ipcMain.handle(
+    'auth:uploadAnimatedAvatar',
+    async (_event, id: number, webpBytes: Uint8Array, gifBytes: Uint8Array) => {
+      const user = await uploadAvatarRequest(id, webpBytes, gifBytes)
+      updateSessionUser(user)
+      return user
+    }
+  )
 
   // Pedido do usuário (2026-09-06): grava as preferências da conta.
   // `patch` é PARCIAL (só as chaves que mudaram) — o server faz o merge

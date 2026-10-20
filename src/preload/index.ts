@@ -66,10 +66,13 @@ const api = {
       ipcRenderer.invoke('auth:changePassword', id, currentPassword, newPassword),
     // Recuperação de senha por e-mail (2026-09-10). Públicas: quem
     // esqueceu a senha não tem token.
-    requestPasswordReset: (email: string) =>
-      ipcRenderer.invoke('auth:requestPasswordReset', email),
+    requestPasswordReset: (email: string) => ipcRenderer.invoke('auth:requestPasswordReset', email),
     confirmPasswordReset: (email: string, code: string, newPassword: string) =>
       ipcRenderer.invoke('auth:confirmPasswordReset', email, code, newPassword),
+    // Troca de senha pela janela de perfil (2026-10-19) — ver
+    // `auth:resetOwnPassword` no main.
+    resetOwnPassword: (email: string, code: string, newPassword: string, name: string) =>
+      ipcRenderer.invoke('auth:resetOwnPassword', email, code, newPassword, name),
     // O main avisa quando o JWT vence (401 em qualquer request) pro app
     // voltar à tela de login em vez de errar em silêncio.
     onSessionExpired: (callback: () => void) => {
@@ -80,6 +83,9 @@ const api = {
     rename: (id: number, name: string) => ipcRenderer.invoke('auth:rename', id, name),
     uploadAvatar: (id: number, webpBytes: Uint8Array) =>
       ipcRenderer.invoke('auth:uploadAvatar', id, webpBytes),
+    // Avatar em GIF (2026-10-19): GIF + cópia parada, num envio só.
+    uploadAnimatedAvatar: (id: number, webpBytes: Uint8Array, gifBytes: Uint8Array) =>
+      ipcRenderer.invoke('auth:uploadAnimatedAvatar', id, webpBytes, gifBytes),
     // Preferências da conta (2026-09-06) — `patch` é parcial, o server
     // faz o merge sobre o que já está salvo (ver auth.ts no main).
     updateSettings: (id: number, patch: Record<string, unknown>) =>
@@ -92,10 +98,8 @@ const api = {
       ipcRenderer.send('overlay:update', state),
     resize: (height: number) => ipcRenderer.send('overlay:resize', height),
     onState: (callback: (state: { viewers: unknown[]; apiBaseUrl: string }) => void) => {
-      const listener = (
-        _e: unknown,
-        state: { viewers: unknown[]; apiBaseUrl: string }
-      ): void => callback(state)
+      const listener = (_e: unknown, state: { viewers: unknown[]; apiBaseUrl: string }): void =>
+        callback(state)
       ipcRenderer.on('overlay:state', listener)
       return () => ipcRenderer.removeListener('overlay:state', listener)
     }
@@ -123,10 +127,8 @@ const api = {
       ipcRenderer.invoke('users:kick', roomName, username),
     // Convite CHEGANDO pelo WebSocket de salas (ver rooms.ts no main).
     onInvite: (callback: (invite: { roomName: string; hostName: string | null }) => void) => {
-      const listener = (
-        _e: unknown,
-        invite: { roomName: string; hostName: string | null }
-      ): void => callback(invite)
+      const listener = (_e: unknown, invite: { roomName: string; hostName: string | null }): void =>
+        callback(invite)
       ipcRenderer.on('rooms:invite', listener)
       return () => ipcRenderer.removeListener('rooms:invite', listener)
     },
@@ -192,7 +194,9 @@ const api = {
     clear: () => ipcRenderer.invoke('session:clear')
   },
   screenCapture: {
-    listSources: () => ipcRenderer.invoke('screenCapture:listSources')
+    listSources: (options?: { thumbnails?: boolean; maxAgeMs?: number }) =>
+      ipcRenderer.invoke('screenCapture:listSources', options),
+    prefetch: () => ipcRenderer.invoke('screenCapture:prefetch')
   },
   livekit: {
     getToken: (params: {
@@ -204,8 +208,15 @@ const api = {
     deleteRoom: (roomName: string) => ipcRenderer.invoke('livekit:deleteRoom', roomName),
     // `private` (2026-09-10): o switch "Transmissão privada" da tela de
     // iniciar live, no lugar da senha de sala que existia antes.
-    createIngress: (params: { roomName: string; participantName: string; private?: boolean }) =>
-      ipcRenderer.invoke('livekit:createIngress', params),
+    // `game` (2026-09-30): o que está sendo transmitido, já na criação da
+    // sala — desde 2026-10-16 é o nome da janela/monitor da grade, sem
+    // esperar detecção de jogo (ver useGstreamerTransmission.ts).
+    createIngress: (params: {
+      roomName: string
+      participantName: string
+      private?: boolean
+      game?: { kind: 'game' | 'window' | 'screen'; name: string; iconUrl?: string | null } | null
+    }) => ipcRenderer.invoke('livekit:createIngress', params),
     deleteIngress: (roomName: string) => ipcRenderer.invoke('livekit:deleteIngress', roomName)
   },
   gstreamer: {
@@ -219,6 +230,10 @@ const api = {
       fps: number
       bitrateKbps: number
     }) => ipcRenderer.invoke('gstreamer:start', params),
+    // Ver 'gstreamer:prepareSource' em gstreamerCapture.ts: resolve a
+    // fonte escolhida enquanto a sala é criada, pro start pegar pronta.
+    prepareSource: (sourceId: string | null) =>
+      ipcRenderer.invoke('gstreamer:prepareSource', sourceId),
     // Item 13 do roadmap: troca resolução/FPS/fonte de uma live já no ar
     // (mesmo whipUrl/streamKey do start original — não recria o
     // ingress/sala).
@@ -240,6 +255,12 @@ const api = {
       ): void => callback(info)
       ipcRenderer.on('gstreamer:exited', listener)
       return () => ipcRenderer.removeListener('gstreamer:exited', listener)
+    },
+    onPlaying: (callback: (info: { roomCode: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, info: { roomCode: string }): void =>
+        callback(info)
+      ipcRenderer.on('gstreamer:playing', listener)
+      return () => ipcRenderer.removeListener('gstreamer:playing', listener)
     },
     // Item 13 do roadmap, troca automática de janela (2026-09-10): o
     // main pede a troca de janela em

@@ -3,7 +3,9 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 // Item 43 do roadmap: avatar de usuário. O braço `preset` é LEGADO
 // (contas anteriores a 2026-09-11 ainda têm um gravado) — quem desenha
 // só distingue "custom" de "qualquer outra coisa", ver UserAvatar.tsx.
-type AvatarRef = { type: 'preset'; key: string } | { type: 'custom'; id: number; version: number }
+type AvatarRef =
+  | { type: 'preset'; key: string }
+  | { type: 'custom'; id: number; version: number; format?: 'webp' | 'gif' }
 type UserAvatars = Record<string, AvatarRef>
 
 // Uma mensagem do chat da live (2026-09-23). `id` é `${epochMs}-${seq}`
@@ -42,6 +44,9 @@ interface CaptureSource {
   type: 'screen' | 'window'
   thumbnailDataUrl: string
   displayId: number | null
+  // Taxa de atualização (Hz) do monitor dessa fonte (2026-10-09) — ver
+  // screenCapture.ts. `null` quando não dá pra saber.
+  refreshHz: number | null
   // Só pra fontes de janela (2026-09-24) — nome do PROGRAMA dono dela e
   // ícone dele em data URL, ver screenCapture.ts.
   appName: string | null
@@ -129,8 +134,7 @@ interface Api {
       email: string,
       password: string
     ) => Promise<
-      | { ok: true; user: AuthUser }
-      | { ok: false; reason: 'limitReached'; message: string }
+      { ok: true; user: AuthUser } | { ok: false; reason: 'limitReached'; message: string }
     >
     // Dois desfechos: entrou, ou a conta está bloqueada. Credencial
     // errada continua REJEITANDO a promise — ver src/main/auth.ts pro
@@ -138,24 +142,32 @@ interface Api {
     login: (
       name: string,
       password: string
-    ) => Promise<
-      | { ok: true; user: AuthUser }
-      | { ok: false; status: 'blocked'; message: string }
-    >
-    changePassword: (
-      id: number,
-      currentPassword: string,
-      newPassword: string
-    ) => Promise<void>
+    ) => Promise<{ ok: true; user: AuthUser } | { ok: false; status: 'blocked'; message: string }>
+    changePassword: (id: number, currentPassword: string, newPassword: string) => Promise<void>
     // Recuperação de senha (2026-09-10). O `request` resolve sempre, o
     // e-mail existindo ou não — o servidor não revela isso de
     // propósito. O `confirm` rejeita com a mensagem do servidor quando
     // o código está errado ou expirado.
     requestPasswordReset: (email: string) => Promise<void>
     confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>
+    // Troca de senha pela janela de perfil (2026-10-19): confirma o
+    // código e entra de novo com a senha nova, devolvendo o usuário — a
+    // sessão atual sobrevive. Ver `auth:resetOwnPassword` no main.
+    resetOwnPassword: (
+      email: string,
+      code: string,
+      newPassword: string,
+      name: string
+    ) => Promise<AuthUser>
     onSessionExpired: (callback: () => void) => () => void
     rename: (id: number, name: string) => Promise<AuthUser>
     uploadAvatar: (id: number, webpBytes: Uint8Array) => Promise<AuthUser>
+    // Avatar em GIF (2026-10-19): GIF + cópia parada em WebP, num envio só.
+    uploadAnimatedAvatar: (
+      id: number,
+      webpBytes: Uint8Array,
+      gifBytes: Uint8Array
+    ) => Promise<AuthUser>
     updateSettings: (id: number, patch: Partial<UserSettings>) => Promise<AuthUser>
   }
   overlay: {
@@ -223,7 +235,15 @@ interface Api {
     clear: () => Promise<void>
   }
   screenCapture: {
-    listSources: () => Promise<CaptureSource[]>
+    // `thumbnails: false` devolve a grade sem capturar miniatura nenhuma
+    // — bem mais rápido, e é com o que a tela de iniciar pinta a primeira
+    // vez e checa de 2 em 2 segundos se alguma janela nasceu ou morreu.
+    // `maxAgeMs` aceita a última grade completa se ela for recente (a
+    // pré-carga da Home). Ver src/main/screenCapture.ts.
+    listSources: (options?: { thumbnails?: boolean; maxAgeMs?: number }) => Promise<CaptureSource[]>
+    // Manda montar a grade em segundo plano e NÃO devolve nada: serve só
+    // pra que a tela de iniciar encontre tudo pronto.
+    prefetch: () => Promise<void>
   }
   livekit: {
     getToken: (params: {
@@ -239,6 +259,7 @@ interface Api {
       roomName: string
       participantName: string
       private?: boolean
+      game?: { kind: 'game' | 'window' | 'screen'; name: string; iconUrl?: string | null } | null
     }) => Promise<{ url: string; streamKey: string }>
     deleteIngress: (roomName: string) => Promise<boolean>
   }
@@ -247,12 +268,22 @@ interface Api {
       ok: boolean
       error?: string
     }>
+    // Resolve a fonte escolhida em segundo plano, enquanto a sala é
+    // criada (2026-10-16) — ver 'gstreamer:prepareSource'. Não precisa
+    // ser aguardado: o `start` seguinte pega o resultado.
+    prepareSource: (sourceId: string | null) => Promise<void>
     update: (params: GstreamerPipelineParams) => Promise<{
       ok: boolean
       error?: string
     }>
     stop: () => Promise<{ ok: boolean }>
     onExited: (callback: (info: { code: number | null; error?: string }) => void) => () => void
+    // O pipeline do GStreamer chegou a PLAYING (2026-10-13): a fonte
+    // abriu, o encoder existe, os elementos linkaram. É o sinal em que a
+    // Home volta mostrando a live no ar — o resto (WHIP, webhook) segue
+    // em segundo plano. Ver o comentário em startPipeline
+    // (src/main/gstreamerCapture.ts).
+    onPlaying: (callback: (info: { roomCode: string }) => void) => () => void
     // Item 13 do roadmap (troca automática de janela): o main mandou
     // trocar a janela capturada
     // sozinho (jogo do mesmo título abriu/fechou, ver

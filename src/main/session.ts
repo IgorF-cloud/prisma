@@ -8,7 +8,9 @@ import { join } from 'path'
 // propósito, seguindo o padrão já existente no projeto de não
 // compartilhar tipos pequenos entre main/preload/renderer (ver RoomInfo,
 // duplicado em 3 lugares).
-type AvatarRef = { type: 'preset'; key: string } | { type: 'custom'; id: number; version: number }
+type AvatarRef =
+  | { type: 'preset'; key: string }
+  | { type: 'custom'; id: number; version: number; format?: 'webp' | 'gif' }
 
 // Mesma duplicação deliberada do AvatarRef acima.
 interface UserSettings {

@@ -514,6 +514,56 @@ async function detectWindowNowPlaying(
   }
 }
 
+// A fonte já resolvida pelo `resolveCaptureArg` (gstreamerCapture.ts) —
+// monitor ou janela, com o que se descobriu dela na hora de resolver.
+export interface TransmissionSource {
+  name: string
+  value: string
+  windowTitle?: string
+  windowProcessName?: string
+  windowProcessPath?: string | null
+  sourceName?: string
+}
+
+// Qual detector e qual fallback servem PARA ESTA FONTE. Era chamada
+// também antes de a sala existir, pra mandar o jogo junto do POST
+// /ingress (2026-09-30); desde 2026-10-16 a sala nasce com o nome da
+// janela/monitor que o renderer já tem, e isto ficou só no polling.
+function detectorsForSource(captureArg: TransmissionSource): {
+  detect: () => Promise<NowPlaying | null>
+  monitorFallback: NowPlaying | null
+} {
+  const isWindow = captureArg.name === 'window-handle'
+
+  // Pedido do usuário (2026-09-03): transmitindo um monitor inteiro sem
+  // NENHUM jogo detectado, mostra o nome do próprio monitor escolhido
+  // (mesmo nome já exibido na grade de seleção da TransmissionScreen, ex:
+  // "Screen 1") em vez de nada — "Transmitindo: <nome do monitor>".
+  //
+  // `kind: 'screen'` desde 2026-09-05 (era 'window'): o rótulo exibido
+  // continua o mesmo, mas o footer precisa saber que é uma TELA pra
+  // escolher o ícone do placeholder (monitor, não janela).
+  //
+  // Janela não tem equivalente disso porque não precisa:
+  // `detectWindowNowPlaying` nunca devolve null — no pior caso devolve o
+  // título da janela com o placeholder.
+  const monitorFallback: NowPlaying | null =
+    !isWindow && captureArg.sourceName
+      ? { kind: 'screen', name: captureArg.sourceName, iconUrl: null }
+      : null
+
+  const detect = isWindow
+    ? (): Promise<NowPlaying | null> =>
+        detectWindowNowPlaying(
+          captureArg.windowTitle ?? 'Janela',
+          captureArg.windowProcessName,
+          captureArg.windowProcessPath
+        )
+    : detectNowPlaying
+
+  return { detect, monitorFallback }
+}
+
 // Windows não diferencia caixa em caminhos, daí o `toLowerCase`. Checa o
 // segmento com as barras dos dois lados pra não casar com uma pasta que
 // só COMECE com "steamapps" (ex: "steamapps-backup").
@@ -593,14 +643,7 @@ export function resendNowPlayingAfterReconnect(): void {
 export async function handleTransmissionSourceChanged(
   mainWindow: BrowserWindow,
   roomCode: string,
-  captureArg: {
-    name: string
-    value: string
-    windowTitle?: string
-    windowProcessName?: string
-    windowProcessPath?: string | null
-    sourceName?: string
-  }
+  captureArg: TransmissionSource
 ): Promise<void> {
   stopPollingOnly()
   // Depois do stop, que zera o estado do ciclo anterior e incrementa o
@@ -608,33 +651,8 @@ export async function handleTransmissionSourceChanged(
   const myGeneration = generation
   activeRoomCode = roomCode
 
-  const isWindow = captureArg.name === 'window-handle'
-
-  // Pedido do usuário (2026-09-03): transmitindo um monitor inteiro sem
-  // NENHUM jogo detectado, mostra o nome do próprio monitor escolhido
-  // (mesmo nome já exibido na grade de seleção da TransmissionScreen, ex:
-  // "Screen 1") em vez de nada — "Transmitindo: <nome do monitor>".
-  //
-  // `kind: 'screen'` desde 2026-09-05 (era 'window'): o rótulo exibido
-  // continua o mesmo, mas o footer precisa saber que é uma TELA pra
-  // escolher o ícone do placeholder (monitor, não janela).
-  //
-  // Janela não tem equivalente disso porque não precisa:
-  // `detectWindowNowPlaying` nunca devolve null — no pior caso devolve o
-  // título da janela com o placeholder.
-  const monitorFallback: NowPlaying | null =
-    !isWindow && captureArg.sourceName
-      ? { kind: 'screen', name: captureArg.sourceName, iconUrl: null }
-      : null
-
-  const detect = isWindow
-    ? (): Promise<NowPlaying | null> =>
-        detectWindowNowPlaying(
-          captureArg.windowTitle ?? 'Janela',
-          captureArg.windowProcessName,
-          captureArg.windowProcessPath
-        )
-    : detectNowPlaying
+  // Qual detector e qual fallback (ver detectorsForSource).
+  const { detect, monitorFallback } = detectorsForSource(captureArg)
 
   // UMA PASSADA POR VEZ, encadeada por setTimeout em vez de setInterval
   // (2026-09-24). Duas coisas saem de graça dessa forma:

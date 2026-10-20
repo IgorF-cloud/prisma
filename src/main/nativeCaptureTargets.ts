@@ -1,24 +1,39 @@
 import { screen } from 'electron'
 import { parseJsonList, runPowerShell } from './powershell'
-import { enumerateWindows, NativeWindow } from './windowEnumeration'
+import {
+  enumerateSnapshot,
+  enumerateWindows,
+  NativeMonitor,
+  NativeWindow
+} from './windowEnumeration'
 import { logGstreamer } from './gstreamerLog'
 
 // GStreamer (d3d11screencapturesrc) aceita `monitor-handle` (HMONITOR) ou
 // `window-handle` (HWND) — handles de verdade do Win32. O `desktopCapturer`
 // do Electron só devolve IDs internos do Chromium (`screen:X:0`/`window:X:0`)
-// que NÃO são HMONITOR/HWND reais (confirmado: a doc do Electron diz que o
-// número em `window:X:0` é "gerado aleatoriamente", não um HWND). Esse
-// módulo faz a ponte: roda PowerShell pra descobrir os handles reais do
-// Windows e correlaciona com o que o Electron/desktopCapturer relatou.
+// que NÃO são HMONITOR/HWND reais — no caso do monitor, pelo menos (o
+// número do `window:X:0` acabou sendo o HWND mesmo, ver
+// `handleFromDesktopCapturerId` em screenCapture.ts). Esse módulo faz a
+// ponte: a enumeração nativa responde as duas coisas
+// (windowEnumeration.ts) e este módulo correlaciona com o que o
+// desktopCapturer relatou.
+//
+// O HMONITOR vinha de um script de PowerShell até 2026-10-13 — 550ms
+// medidos, quase todos de overhead (o `powershell.exe` sozinho custa
+// 333ms, e o `Add-Type` que compila o C# embutido, mais 200ms). O helper
+// nativo responde isso junto das janelas, sem custo perceptível. O script
+// continua aqui como degrau de baixo: ele é o que responde quando o
+// helper não está lá ou é de uma versão anterior à mudança.
 
-interface MonitorInfo {
-  HMonitor: number
-  X: number
-  Y: number
-  Width: number
-  Height: number
-}
+// O formato é o mesmo dos dois lados de propósito: o script de
+// PowerShell abaixo foi escrito pra devolver exatamente o que o helper
+// nativo devolve, pra que `resolveMonitorHandle` não precise saber de
+// qual dos dois veio a resposta.
+type MonitorInfo = NativeMonitor
 
+// DEGRAU DE BAIXO desde 2026-10-13 (ver `resolveMonitorHandle`): só roda
+// quando o helper nativo não respondeu as telas.
+//
 // MonitorFromPoint no centro de cada tela (flag 2 = MONITOR_DEFAULTTONEAREST)
 // devolve o HMONITOR de verdade daquela tela — não depende de ordem de
 // enumeração (diferente de um "monitor-index", que foi a causa de um bug
@@ -70,13 +85,39 @@ const BOUNDS_TOLERANCE_PX = 4
 // doc do Electron — visto na prática em 2026-08-30) — nesse caso, se só
 // existir um monitor conectado, não tem ambiguidade nenhuma e usamos ele
 // direto, sem precisar de correlação.
-export async function resolveMonitorHandle(displayId: number | null): Promise<string | null> {
+// As telas da máquina, do helper nativo quando ele sabe responder
+// (2026-10-13) e do PowerShell quando não.
+//
+// `maxAgeMs` vale só pro caminho nativo, e existe pelo motivo de sempre:
+// quem acabou de enumerar as janelas já tem as telas na mão, e pagar
+// outro processo pra reler o que não muda seria desperdício. O degrau de
+// PowerShell não tem cache — ele é o caminho raro.
+async function listMonitors(maxAgeMs: number): Promise<MonitorInfo[]> {
+  try {
+    const { monitores } = await enumerateSnapshot(maxAgeMs)
+    if (monitores) {
+      logGstreamer(`listMonitors: telas pelo helper nativo = ${JSON.stringify(monitores)}`)
+      return monitores
+    }
+    logGstreamer('listMonitors: helper nativo não respondeu as telas — indo de PowerShell')
+  } catch (err) {
+    logGstreamer(`listMonitors: helper nativo falhou (${err}) — indo de PowerShell`)
+  }
+
   const output = await runPowerShell(MONITOR_SCRIPT)
   const monitors = parseJsonList<MonitorInfo>(output)
-  logGstreamer(`resolveMonitorHandle: monitores via PowerShell = ${JSON.stringify(monitors)}`)
+  logGstreamer(`listMonitors: telas via PowerShell = ${JSON.stringify(monitors)}`)
+  return monitors
+}
+
+export async function resolveMonitorHandle(
+  displayId: number | null,
+  maxAgeMs = 0
+): Promise<string | null> {
+  const monitors = await listMonitors(maxAgeMs)
 
   if (monitors.length === 0) {
-    logGstreamer('resolveMonitorHandle: PowerShell não reportou nenhum monitor')
+    logGstreamer('resolveMonitorHandle: nenhuma tela reportada')
     return null
   }
   if (monitors.length === 1) return String(monitors[0].HMonitor)
@@ -124,12 +165,10 @@ export async function resolveMonitorHandle(displayId: number | null): Promise<st
   // dois lados, casa por posição relativa (ordenado da esquerda pra
   // direita, depois de cima pra baixo). Não é perfeito (pode falhar em
   // arranjos verticais/empilhados), mas é melhor que falhar sempre.
-  logGstreamer(
-    'resolveMonitorHandle: nenhum monitor do PowerShell bateu por bounds, tentando por posição relativa'
-  )
+  logGstreamer('resolveMonitorHandle: nenhuma tela bateu por bounds, tentando por posição relativa')
   if (monitors.length !== displays.length) {
     logGstreamer(
-      `resolveMonitorHandle: quantidade de monitores não bate (PowerShell=${monitors.length}, Electron=${displays.length}) — desistindo`
+      `resolveMonitorHandle: quantidade de telas não bate (Windows=${monitors.length}, Electron=${displays.length}) — desistindo`
     )
     return null
   }
@@ -182,20 +221,6 @@ function toWindowInfo(janela: NativeWindow): WindowInfo {
   }
 }
 
-// Janela que a enumeração vê mas que não está aberta de verdade.
-//
-// Precisa dos DOIS campos: "cloaked" sozinho também pega janela numa
-// outra área de trabalho virtual, que continua sendo janela de verdade.
-// Cloaked + NESTA área = fantasma (app UWP suspenso em segundo plano, o
-// caso do "Configurações"); cloaked + em outra área = janela real, só
-// que noutro lugar.
-//
-// `OnCurrentDesktop === 1` e não `!== 0` de propósito: -1 é "não deu pra
-// saber", e nesse caso a janela FICA.
-export function isPhantomWindow(janela: NativeWindow): boolean {
-  return janela.Cloaked !== 0 && janela.OnCurrentDesktop === 1
-}
-
 // FileDescription do .exe quando ele existe e não é só o nome do arquivo
 // — o mspaint declara "mspaint.exe" como FileDescription, e aí o
 // ProductName ("Paint") é que é o nome do programa. Último recurso é o
@@ -206,23 +231,6 @@ export function windowAppName(janela: NativeWindow): string {
     if (limpo && !/\.exe$/i.test(limpo)) return limpo
   }
   return janela.ProcessName ?? ''
-}
-
-// `filho` é uma janela AUXILIAR do mesmo app que desenhou `pai`?
-//
-// O caso concreto é o WhatsApp: ele é um app WinUI que hospeda um
-// WebView2, e os dois anunciam uma janela de topo com o título
-// "WhatsApp" — a grade mostrava duas miniaturas do mesmo conteúdo.
-//
-// As duas condições importam, e a primeira é a que protege o caso que
-// motivou tudo isto. Duas janelas do MESMO processo (duas do Chrome com
-// contas diferentes, duas do Explorer) são janelas de verdade, cada uma
-// com o seu HWND — essas nunca podem sumir, e `Pid` igual já as exclui
-// aqui. Só colapsa quando um processo DIFERENTE, descendente do outro,
-// anuncia o mesmo título: aí é o app se apresentando duas vezes.
-export function isHelperDuplicate(pai: NativeWindow, filho: NativeWindow): boolean {
-  if (pai.Pid === filho.Pid) return false
-  return filho.Ancestors.includes(pai.Pid)
 }
 
 // Resolve o HWND real de uma janela pelo TÍTULO.
@@ -311,42 +319,16 @@ export async function listWindows(maxAgeMs = 0): Promise<WindowInfo[]> {
   return janelas.filter((janela) => janela.IsMain && janela.Title).map(toWindowInfo)
 }
 
-export interface SelectableWindows {
-  // Janelas de verdade, as que vão pra grade. A lista INTEIRA, não só as
-  // principais: é isso que faz duas janelas do mesmo Chrome virarem dois
-  // cards.
-  windows: NativeWindow[]
-  // Títulos que SÓ existem como janela fantasma. Serve pro outro lado da
-  // grade: a lista do `desktopCapturer` é montada pelo Chromium, que
-  // checa DWMWA_CLOAKED em algumas versões e não em outras — dá pra ele
-  // trazer a fantasma por conta própria, e aí tirar da NOSSA enumeração
-  // não resolve nada. Só entra aqui o título sem nenhuma janela de
-  // verdade por trás.
-  phantomOnlyTitles: Set<string>
-  // Os HWNDs das fantasmas. Quando a fonte do desktopCapturer foi
-  // identificada por handle, dá pra tirá-la com precisão em vez de por
-  // título.
-  phantomHandles: Set<string>
-}
-
-export async function listSelectableWindows(): Promise<SelectableWindows> {
-  const todas = (await enumerateWindows()).filter((janela) => janela.Title)
-  const windows = todas.filter((janela) => !isPhantomWindow(janela))
-
-  const titulosReais = new Set(windows.map((janela) => janela.Title))
-  const fantasmas = todas.filter((janela) => isPhantomWindow(janela))
-  const phantomOnlyTitles = new Set(
-    fantasmas.map((janela) => janela.Title).filter((titulo) => !titulosReais.has(titulo))
-  )
-
-  if (fantasmas.length > 0) {
-    logGstreamer(
-      `listSelectableWindows: ${fantasmas.length} janela(s) cloaked nesta área de trabalho: ` +
-        fantasmas.map((j) => `${j.ProcessName} "${j.Title}"`).join(', ')
-    )
-  }
-  const phantomHandles = new Set(fantasmas.map((janela) => String(janela.Handle)))
-  return { windows, phantomOnlyTitles, phantomHandles }
+// A enumeração indexada pelo HWND, que é como a grade pergunta
+// (2026-09-30): pra cada card que o Chromium listou, o que mais se sabe
+// daquela janela — o .exe dono dela, pro ícone e pro nome do programa.
+//
+// Substituiu a `listSelectableWindows`, que devolvia também as janelas
+// fantasma pra grade poder descartá-las. A grade não filtra mais nada: o
+// que o Chromium lista é o que aparece.
+export async function windowsByHandle(): Promise<Map<string, NativeWindow>> {
+  const janelas = await enumerateWindows()
+  return new Map(janelas.map((janela) => [String(janela.Handle), janela]))
 }
 
 // Nomes de processo dos canais do Discord — cobre a versão padrão e as
@@ -359,6 +341,10 @@ const DISCORD_PROCESS_NAMES = [
   'DiscordDevelopment.exe'
 ]
 
+// DEGRAU DE BAIXO desde 2026-10-13 (ver `findDiscordPid`): o helper
+// nativo responde isto de graça, e este script só roda quando ele não
+// está disponível.
+//
 // Acha o PID do processo RAIZ do Discord, se estiver rodando — usado pra
 // excluir automaticamente o áudio dele da captura de monitor inteiro
 // (item 31 do roadmap), sem o usuário precisar escolher nada.
@@ -382,7 +368,29 @@ $root = $procs | Where-Object { $ids -notcontains $_.ParentProcessId } | Select-
 if ($root) { $root.ProcessId }
 `
 
-export async function findDiscordPid(): Promise<number | null> {
+// Pelo helper nativo desde 2026-10-13 — ele já tira o snapshot de
+// processos pra montar a árvore de ancestrais das janelas, e o raiz do
+// Discord sai de lá sem custo nenhum. O `Get-CimInstance` abaixo custava
+// 630ms medidos, pagos SEMPRE que a live é de monitor inteiro, bem no
+// meio do caminho entre o clique e o pipeline subir.
+//
+// `maxAgeMs` importa aqui mais do que em qualquer outro lugar: quem
+// chama é o `startPipeline`, logo depois de `resolveCaptureArg` ter
+// enumerado tudo — com a leitura reaproveitada, a resposta é instantânea
+// e o processo do helper roda uma vez só no start inteiro.
+export async function findDiscordPid(maxAgeMs = 0): Promise<number | null> {
+  try {
+    const { monitores, discordPid } = await enumerateSnapshot(maxAgeMs)
+    // `monitores` é o que distingue um helper que SABE responder isto de
+    // um anterior à mudança — ver NativeSnapshot. Sabendo, `null` aqui é
+    // resposta de verdade ("o Discord não está aberto"), e não falta de
+    // resposta.
+    if (monitores) return discordPid
+    logGstreamer('findDiscordPid: helper nativo não responde o Discord — indo de PowerShell')
+  } catch (err) {
+    logGstreamer(`findDiscordPid: helper nativo falhou (${err}) — indo de PowerShell`)
+  }
+
   try {
     const output = (await runPowerShell(DISCORD_PID_SCRIPT)).trim()
     if (!output) return null

@@ -17,17 +17,26 @@
 // chega — mentira que só apareceria em produção. O código trata
 // qualquer coisa que não seja 'custom' como "sem foto", então o dado
 // antigo é inofensivo.
+//
+// `format` (2026-10-19): 'gif' pra avatar animado. Opcional porque um
+// servidor anterior a isso não manda o campo — e aí é sempre WebP.
 export type AvatarRef =
-  { type: 'preset'; key: string } | { type: 'custom'; id: number; version: number }
+  | { type: 'preset'; key: string }
+  | { type: 'custom'; id: number; version: number; format?: 'webp' | 'gif' }
 
 // Monta a URL de uma foto customizada — `?v=` é só cache-buster (sem
 // isso, um <img> já teria cacheado a foto antiga do mesmo id e não
 // atualizaria sozinho depois de trocar).
+//
+// Quem tem GIF tem também `<id>.webp` no servidor (a cópia parada, pras
+// versões antigas) — mas aqui o `format` é conhecido, então pede o
+// animado.
 export function customAvatarUrl(
   apiBaseUrl: string,
-  avatar: { id: number; version: number }
+  avatar: { id: number; version: number; format?: 'webp' | 'gif' }
 ): string {
-  return `${apiBaseUrl}/avatars/${avatar.id}.webp?v=${avatar.version}`
+  const extension = avatar.format === 'gif' ? 'gif' : 'webp'
+  return `${apiBaseUrl}/avatars/${avatar.id}.${extension}?v=${avatar.version}`
 }
 
 const AVATAR_UPLOAD_SIZE = 96

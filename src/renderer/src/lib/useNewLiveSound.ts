@@ -20,6 +20,15 @@ import { playSound } from './sounds'
 // A própria sala do usuário é ignorada: o som de iniciar a live dele
 // já é tocado por useGstreamerTransmission (e não passa por essa
 // preferência, por ser resposta a um clique dele).
+//
+// A baseline só funciona se a Home NASCER com a lista de agora. Até
+// 2026-10-19 não nascia: a conexão do login libera a Home quando o
+// WebSocket abre, às vezes antes do primeiro retrato das salas — a Home
+// via a lista VAZIA, tomava isso como baseline, e a live que já estava
+// no ar chegava um instante depois parecendo nova (o som tocava no
+// login). Agora o loading do login e o splash do "manter conectado"
+// buscam a lista por HTTP antes de liberar a Home (`load` em
+// useRooms.ts), e a primeira observação daqui já é a lista certa.
 export function useNewLiveSound(
   rooms: RoomInfo[],
   myRoomCode: string | null,

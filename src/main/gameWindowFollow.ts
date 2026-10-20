@@ -52,8 +52,8 @@ import { WINDOW_HANDLE_PREFIX } from './screenCapture'
 
 // Mais curto que o polling de jogo (8s, ver gameDetection.ts) porque
 // aqui a latência é visível pro viewer: é o tempo que ele passa olhando
-// pro cliente depois da partida já ter começado. O WINDOW_SCRIPT é
-// PowerShell (~200ms de arranque), a 4s isso é ruído.
+// pro cliente depois da partida já ter começado. Cada olhada é uma
+// enumeração de janelas (~85ms no helper nativo), a 4s isso é ruído.
 const TICK_MS = 4000
 
 // Só na VOLTA. O fim de partida do LoL fecha a janela do jogo em etapas,
@@ -314,8 +314,8 @@ export function isFollowingAutoWindow(): boolean {
 // RECOVERY_LOOKUP_ATTEMPTS) — "não achei o cliente" logo depois de uma
 // partida costuma significar "ainda não", e não "nunca mais".
 //
-// Cada olhada custa 500-800ms de PowerShell no meio do caminho crítico.
-// Vale: sem ela a decisão seria um chute — "morreu, deve ter sido a
+// Cada olhada custa uma enumeração de janelas (~85ms) no meio do caminho
+// crítico. Vale: sem ela a decisão seria um chute — "morreu, deve ter sido a
 // janela" — e errar significa trocar a fonte de uma live cujo problema
 // era outro.
 export async function tryRecoverFromExit(mainWindow: BrowserWindow): Promise<boolean> {

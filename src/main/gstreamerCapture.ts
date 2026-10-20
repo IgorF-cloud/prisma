@@ -10,7 +10,7 @@ import {
 } from './nativeCaptureTargets'
 import { getGstreamerLogPath, logGstreamer } from './gstreamerLog'
 import { deleteIngress, deleteRoom } from './livekit'
-import { EXTRA_WINDOW_PREFIX, WINDOW_HANDLE_PREFIX } from './screenCapture'
+import { EXTRA_WINDOW_PREFIX, WINDOW_HANDLE_PREFIX, screenDisplayName } from './screenCapture'
 import {
   handleTransmissionSourceChanged,
   stopGameDetection,
@@ -158,10 +158,15 @@ function gstreamerEnv(): NodeJS.ProcessEnv {
 // que o d3d11screencapturesrc entende (monitor-handle=<HMONITOR> ou
 // window-handle=<HWND>) — ver nativeCaptureTargets.ts pro porquê de não
 // dar pra usar o id do desktopCapturer direto.
-// `windowListMaxAgeMs` deixa reaproveitar uma enumeração de janelas
-// recente em vez de fazer outra (2026-09-20, ver listWindows). Só quem
+// `windowListMaxAgeMs` deixa reaproveitar uma leitura recente da máquina
+// em vez de fazer outra (2026-09-20, ver enumerateSnapshot). Só quem
 // ACABOU de enumerar passa um valor aqui — hoje só o `gstreamer:update`,
 // que pode vir logo atrás de uma decisão do seguidor de janela.
+//
+// Desde 2026-10-13 vale pras TELAS também, e não só pras janelas: as duas
+// respostas saem da mesma execução do helper nativo (ver
+// windowEnumeration.ts). O nome ficou — mudá-lo seria mexer em três
+// chamadas pra não dizer nada de novo.
 async function resolveCaptureArg(
   sourceId: string | null,
   windowListMaxAgeMs = 0
@@ -189,11 +194,6 @@ async function resolveCaptureArg(
     }
   | { error: string }
 > {
-  // Fontes "extras" (ver screenCapture.ts): não existem no desktopCapturer
-  // (vieram só da enumeração via PowerShell, que pega janelas minimizadas/
-  // em outra área de trabalho/cloaked que o Chromium não lista) — o título
-  // já vem embutido no próprio sourceId, resolve direto sem procurar no
-  // desktopCapturer.
   // Janela identificada pelo HWND exato. Nasceu pra troca automática de
   // janela (2026-09-10, ver gameWindowFollow.ts), onde o app já sabe qual
   // HWND quer; desde 2026-09-24 é também a forma normal dos cards da
@@ -221,6 +221,11 @@ async function resolveCaptureArg(
     }
   }
 
+  // Fontes "extras" (ver EXTRA_WINDOW_PREFIX em screenCapture.ts): a
+  // grade não produz mais nenhuma, mas o `sourceId` da última
+  // transmissão fica guardado nas configurações — um id antigo ainda
+  // chega aqui depois de uma atualização. O título vem embutido no
+  // próprio id, resolve direto.
   if (sourceId?.startsWith(EXTRA_WINDOW_PREFIX)) {
     const title = decodeURIComponent(sourceId.slice(EXTRA_WINDOW_PREFIX.length))
     const target = await resolveWindowTarget(title)
@@ -242,7 +247,15 @@ async function resolveCaptureArg(
     }
   }
 
-  const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] })
+  // SEM MINIATURA (2026-10-13). O `thumbnailSize` do `getSources` tem
+  // padrão 150x150 — omiti-lo não é "não pedir miniatura", é pedir uma de
+  // 150px. Aqui só interessam `id`, `name` e `display_id`; a imagem era
+  // capturada de TODA janela da máquina, jogada fora, e isso acontecia
+  // duas vezes a cada live (uma na detecção da fonte, outra no start).
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 0, height: 0 }
+  })
   const selected = sourceId ? sources.find((source) => source.id === sourceId) : undefined
   const fallback = sources.find((source) => source.id.startsWith('screen:'))
   const chosen = selected ?? fallback
@@ -262,12 +275,21 @@ async function resolveCaptureArg(
     // `chosen.display_id ? ... : null` explícito abaixo, em vez de
     // `Number(chosen.display_id)` direto.
     const displayId = chosen.display_id ? Number(chosen.display_id) : NaN
-    const handle = await resolveMonitorHandle(Number.isFinite(displayId) ? displayId : null)
+    const handle = await resolveMonitorHandle(
+      Number.isFinite(displayId) ? displayId : null,
+      windowListMaxAgeMs
+    )
     if (!handle) {
       return { error: 'Não foi possível mapear o monitor escolhido pro GStreamer.' }
     }
     logGstreamer(`monitor-handle resolvido: ${handle}`)
-    return { name: 'monitor-handle', value: handle, sourceName: chosen.name }
+    // "Tela N", o mesmo nome da grade (ver screenDisplayName) — é ele que
+    // a sala mostra quando nenhum jogo é detectado na tela.
+    return {
+      name: 'monitor-handle',
+      value: handle,
+      sourceName: screenDisplayName(sources, chosen.id)
+    }
   }
 
   const target = await resolveWindowTarget(chosen.name)
@@ -289,6 +311,37 @@ async function resolveCaptureArg(
   }
 }
 
+type ResolvedCapture = Awaited<ReturnType<typeof resolveCaptureArg>>
+
+// A fonte que o renderer mandou resolver no clique, antes de a sala
+// existir (ver 'gstreamer:prepareSource').
+let preparedSource: {
+  sourceId: string | null
+  at: number
+  result: Promise<ResolvedCapture>
+} | null = null
+
+// Até quando uma resolução antecipada vale. O caminho normal leva de
+// meio a um segundo entre o prepare e o start; o que passar muito disso
+// é um start que não veio daquele clique, e a janela pode ter fechado.
+const PREPARED_SOURCE_MAX_AGE_MS = 10000
+
+// Consome a resolução antecipada se ela for desta fonte e ainda recente;
+// senão resolve agora, como sempre foi. Consome (e não só lê) pra que um
+// segundo start nunca reaproveite a fonte de outra live.
+function takePreparedSource(sourceId: string | null): Promise<ResolvedCapture> {
+  const prepared = preparedSource
+  preparedSource = null
+  if (
+    prepared &&
+    prepared.sourceId === sourceId &&
+    Date.now() - prepared.at < PREPARED_SOURCE_MAX_AGE_MS
+  ) {
+    return prepared.result
+  }
+  return resolveCaptureArg(sourceId)
+}
+
 // Item 31 do roadmap ("Ignorar áudio do Discord"): mesma lógica do app
 // Flutter (lib/core/gstreamer_publisher.dart + window_enumerator.dart).
 // WASAPI2 só aceita UM pid de loopback-target por vez — não dá pra
@@ -301,13 +354,25 @@ async function resolveCaptureArg(
 // colateral aceito: se o host assistir outra live enquanto transmite o
 // monitor inteiro, o áudio dela pode vazar de volta pra própria
 // transmissão, ver item 23).
+// Quanto tempo o PID do Discord pode ter de idade aqui.
+//
+// Quem chama é o `startPipeline`, imediatamente depois de
+// `resolveCaptureArg` ter lido a máquina inteira — o número existe pra
+// que essa leitura seja REAPROVEITADA em vez de virar um segundo
+// processo do helper no mesmo clique. Cinco segundos é folga pro caminho
+// todo (resolver a fonte, montar os argumentos) sem chegar perto de um
+// Discord que tenha aberto ou fechado no meio; e se isso acontecer, o
+// pior caso é a exclusão de áudio de uma live mirando um PID velho —
+// o mesmo risco que já existia com a leitura feita na hora.
+const AUDIO_PID_MAX_AGE_MS = 5000
+
 async function resolveAudioLoopbackArgs(windowPid: number | undefined): Promise<string[]> {
   if (windowPid !== undefined) {
     logGstreamer(`áudio: isolando o processo da janela capturada (pid=${windowPid})`)
     return ['loopback-mode=include-process-tree', `loopback-target-pid=${windowPid}`]
   }
 
-  const discordPid = await findDiscordPid()
+  const discordPid = await findDiscordPid(AUDIO_PID_MAX_AGE_MS)
   if (discordPid !== null) {
     logGstreamer(`áudio: excluindo o Discord da captura (pid=${discordPid})`)
     return ['loopback-mode=exclude-process-tree', `loopback-target-pid=${discordPid}`]
@@ -321,8 +386,8 @@ interface BuildArgsParams {
   whipUrl: string
   streamKey: string
   // Teto de pico do encoder (ver rc-mode=pcvbr em buildArgs).
-  // Calculado no renderer junto do alvo, pra a regra viver num lugar
-  // só — ver BITRATE_PEAK_FACTOR em transmissionSettings.ts.
+  // Calculado aqui no main a partir do alvo — ver BITRATE_PEAK_FACTOR
+  // no topo deste arquivo.
   maxBitrateKbps: number
   captureArgName: string
   captureArgValue: string
@@ -359,6 +424,19 @@ function buildArgs(params: BuildArgsParams): string[] {
     '!',
     `video/x-raw(memory:D3D11Memory),format=NV12,width=${width},height=${height},framerate=${fps}/1`,
     '!',
+
+    // SEM FILA ENTRE A CAPTURA E O ENCODER (rollback, 2026-10-17).
+    //
+    // Entre 2026-10-09 e esta data havia aqui um `queue` de 3 quadros com
+    // `leaky=downstream`, pra que um soluço do encoder não segurasse o
+    // laço de captura. Saiu na investigação de lives congelando a cada
+    // segundo em dois usuários (1.4.0), junto com as outras mudanças do
+    // caminho do vídeo daquela versão — sem causa confirmada, voltou tudo
+    // ao que a 1.3.0 tinha e funcionava.
+    //
+    // O suspeito, nesta peça: com um jogo puxando a GPU, o encoder atrasa
+    // e a fila passa a jogar quadros fora em rajada, onde antes a captura
+    // só desacelerava junto.
     'mfh264enc',
     `bitrate=${bitrateKbps}`,
 
@@ -399,6 +477,12 @@ function buildArgs(params: BuildArgsParams): string[] {
     'config-interval=1',
     'pt=96',
     '!',
+
+    // A `queue` padrão (até 1 s / 200 buffers), como na 1.3.0 (rollback,
+    // 2026-10-17). Entre 2026-10-16 e esta data ela era limitada a 200 ms;
+    // saiu junto com a fila de antes do encoder (ver acima). Com keyframes
+    // de ~400 KB a cada 2 s (medido a 1080p48), 200 ms deixava pouca folga
+    // pra rajada num upload no limite.
     'queue',
     '!',
     'whip.sink_0',
@@ -407,18 +491,95 @@ function buildArgs(params: BuildArgsParams): string[] {
     // resolvido em `audioLoopbackArgs`, ver resolveAudioLoopbackArgs.
     'wasapi2src',
     'loopback=true',
+
+    // O ÁUDIO NÃO DÁ O RELÓGIO DA LIVE (2026-10-17, causa das travadas em
+    // TELA INTEIRA relatadas na 1.4.0).
+    //
+    // Sem isto o `wasapi2src` vira o relógio do pipeline inteiro
+    // (`New clock: GstAudioSrcClock` no log), e a captura de vídeo espera
+    // ESSE relógio pra soltar cada quadro. No loopback do DISPOSITIVO — o
+    // que a tela inteira usa quando o Discord não está aberto (ver
+    // resolveAudioLoopbackArgs) — o Windows entrega o áudio aos trancos, e
+    // o relógio anda do mesmo jeito: para ~117 ms e pula.
+    //
+    // Medido nesta máquina, mesmo monitor, 60 FPS pedidos, 12 s:
+    //   relógio do áudio   ~100 quadros/s, 282 com carimbo REPETIDO
+    //                      (rajadas de 7 quadros "no mesmo instante") e
+    //                      123 voltando 1 ms no tempo
+    //   relógio do sistema 60,1 quadros/s, nenhum repetido
+    // Quem assiste recebe as rajadas e congela tentando ordená-las.
+    //
+    // Por que só tela inteira: janela usa o loopback POR PROCESSO
+    // (include-process-tree), e a tela inteira com Discord aberto também
+    // (exclude) — esses entregam áudio contínuo, e o relógio não engasga.
+    //
+    // Com `provide-clock=false` o pipeline usa o relógio do sistema e o
+    // áudio é que se ajusta a ele. Vale pros três modos: nenhum precisa
+    // do relógio do áudio, e assim nenhum fica refém dele.
+    'provide-clock=false',
     ...audioLoopbackArgs,
     '!',
     'audioconvert',
     '!',
     'audioresample',
     '!',
+
+    // FORMATO FIXO antes do encoder (2026-09-30, defeito relatado pelo
+    // usuário: áudio "abafado"). Sem estes caps, quem manda no formato é
+    // o que o loopback do WASAPI entregar naquela máquina — e o
+    // `audioconvert`/`audioresample` acima só fazem o mínimo pra fechar a
+    // negociação com o encoder. Numa placa entregando mono, a live saía
+    // mono; entregando 44100, o opusenc reamostrava por conta própria
+    // (ele só aceita 48/24/16/12/8 kHz).
+    //
+    // Pedir 48000/2 explicitamente força a conversão a acontecer AQUI,
+    // nos dois elementos que existem pra isso, e o encoder recebe sempre
+    // a mesma coisa em qualquer máquina. 48 kHz porque é a taxa nativa do
+    // Opus — qualquer outra vira reamostragem no caminho.
+    'audio/x-raw,rate=48000,channels=2',
+    '!',
     'opusenc',
+
+    // 128 kbps (2026-09-30). O padrão do `opusenc` é 64000 — que é
+    // bitrate de VOZ. Pra áudio de jogo (música, efeito, explosão) 64k
+    // em estéreo obriga o codec a jogar fora agudo pra caber, e é
+    // exatamente isso que se ouve como "abafado". 128k é o ponto em que
+    // o Opus em estéreo fica transparente na prática pra este tipo de
+    // material; acima disso o ganho não se nota.
+    //
+    // Custo: +64 kbps sobre o orçamento da transmissão. Perto do vídeo
+    // (medido em milhares de kbps, ver `bitrateKbps`) isso é ruído de
+    // arredondamento.
+    'bitrate=128000',
+
+    // Já é o padrão do elemento, escrito por extenso de propósito: o
+    // outro valor possível é `voice`, que aplica modelo de fala e é o
+    // caminho mais curto pra trazer o som abafado de volta. Explícito
+    // aqui, ninguém troca sem querer.
+    'audio-type=generic',
+
+    // Correção de erro DENTRO do próprio Opus (2026-10-16): cada pacote
+    // leva uma cópia em baixa qualidade do anterior. Se um se perde no
+    // caminho, quem assiste reconstrói o trecho a partir do seguinte em
+    // vez de ouvir um estalo/buraco. `packet-loss-percentage` diz ao
+    // encoder quanta perda esperar — é o que decide quanto do bitrate vai
+    // pra essa redundância.
+    'inband-fec=true',
+    'packet-loss-percentage=10',
     '!',
     'rtpopuspay',
     'pt=97',
     '!',
+
+    // Mesmo limite de 200 ms do vídeo, mas aqui com `leaky`: o áudio não
+    // tem fila antes do encoder pra absorver a pressão (segurar o
+    // `wasapi2src` vira picote), e um pacote de Opus perdido é um trecho
+    // de 20 ms que o FEC acima recupera — não corrompe nada adiante.
     'queue',
+    'max-size-buffers=0',
+    'max-size-bytes=0',
+    'max-size-time=200000000',
+    'leaky=downstream',
     '!',
     'whip.sink_1',
     'whipsink',
@@ -479,10 +640,7 @@ function finishFailedRecovery(mainWindow: BrowserWindow): void {
   }
 }
 
-async function handleUnexpectedExit(
-  mainWindow: BrowserWindow,
-  code: number | null
-): Promise<void> {
+async function handleUnexpectedExit(mainWindow: BrowserWindow, code: number | null): Promise<void> {
   // Uma segunda morte enquanto a primeira ainda está sendo recuperada:
   // desiste das duas. Insistir aqui seria um laço de reinício
   // disfarçado.
@@ -593,7 +751,49 @@ async function startPipeline(
   const child = spawn(exePath, args, { env: gstreamerEnv() })
   gstProcess = child
 
-  child.stdout.on('data', (chunk) => logGstreamer(`stdout: ${chunk}`))
+  // O PIPELINE ESTÁ RODANDO (2026-10-13, pedido do usuário: "fast start")
+  //
+  // Até esta data a tela de iniciar segurava a pessoa até o SERVIDOR
+  // publicar a sala — o último dos oito passos de uma live subindo, e o
+  // que mais depende de rede (negociação WHIP, webhook do LiveKit
+  // chegando ao prisma_server). Davam 4 a 6 segundos de spinner.
+  //
+  // Esta linha é o passo CINCO, e é um sinal de verdade: quando o
+  // `gst-launch` a escreve, a fonte abriu, o encoder existe e os
+  // elementos linkaram — que é tudo o que pode dar errado por aqui. O
+  // que falta dali em diante é rede, e é feito em segundo plano com a
+  // Home já na tela.
+  //
+  // Por que não o passo QUATRO (o `spawn` ter dado certo): ele prova
+  // apenas que um processo nasceu. Era o comportamento de antes de
+  // 2026-10-02, e o problema dele era exatamente este — a Home aparecia
+  // com a live no ar e, um segundo depois, o erro de um pipeline que
+  // nunca montou.
+  //
+  // UMA VEZ SÓ por processo. O `gst-launch` escreve a linha na subida, e
+  // um `update` (troca de fonte) mata este processo e sobe outro — que
+  // avisa de novo, pelo seu próprio listener. Quem espera do outro lado
+  // já se desarmou (ver `start` em useGstreamerTransmission.ts).
+  const MARCA_PLAYING = 'Setting pipeline to PLAYING'
+  let avisouPlaying = false
+  // A sobra do chunk anterior, pra não perder a marca partida no meio.
+  // O stdout chega em pedaços do tamanho que o SO entregar, e nada
+  // garante que uma linha caia inteira num deles — guardar os últimos
+  // caracteres e procurar na emenda custa nada e fecha essa fresta.
+  let rabo = ''
+  child.stdout.on('data', (chunk) => {
+    logGstreamer(`stdout: ${chunk}`)
+    if (avisouPlaying) return
+    const texto = rabo + String(chunk)
+    if (!texto.includes(MARCA_PLAYING)) {
+      rabo = texto.slice(-MARCA_PLAYING.length)
+      return
+    }
+    avisouPlaying = true
+    rabo = ''
+    logGstreamer('pipeline em PLAYING — avisando o renderer (fast start)')
+    mainWindow.webContents.send('gstreamer:playing', { roomCode: params.roomCode })
+  })
   child.stderr.on('data', (chunk) => logGstreamer(`stderr: ${chunk}`))
   // Os dois handlers abaixo só rodam numa morte INESPERADA: o
   // `killCurrentProcess()` (usado pelo stop e pelo update) remove os
@@ -619,17 +819,58 @@ async function startPipeline(
 }
 
 export function setupGstreamerHandlers(mainWindow: BrowserWindow): void {
+  // A FONTE É RESOLVIDA ENQUANTO A SALA NASCE (2026-10-16, "start
+  // instantâneo")
+  //
+  // Achar o HWND/HMONITOR da fonte escolhida custa enumerações de janela
+  // pelo helper nativo — centenas de milissegundos. Antes elas
+  // aconteciam em fila: primeiro a detecção do que estava sendo
+  // transmitido (que esperava antes até de pedir a sala), depois o
+  // `createIngress`, e só então o `gstreamer:start` resolvia a fonte de
+  // novo.
+  //
+  // Agora o renderer chama isto no clique, SEM esperar, e logo em
+  // seguida pede a sala. As duas coisas correm juntas, e o
+  // `gstreamer:start` só pega o resultado pronto.
+  //
+  // A detecção de JOGO saiu deste caminho de vez (pedido do usuário): a
+  // sala nasce com o nome da janela ou do monitor, que o renderer já tem
+  // da grade, e o jogo chega depois pelo polling de sempre (ver
+  // handleTransmissionSourceChanged).
+  ipcMain.handle('gstreamer:prepareSource', (_event, sourceId: string | null): void => {
+    preparedSource = { sourceId, at: Date.now(), result: resolveCaptureArg(sourceId) }
+    // Sem dono da promessa até o `start` chegar: uma rejeição aqui não
+    // pode virar "unhandled". Quem a vê de verdade é o `start`, que
+    // aguarda a mesma promessa.
+    preparedSource.result.catch(() => undefined)
+  })
+
+  // UM START POR VEZ (2026-10-17). O `gstProcess` só é preenchido dentro
+  // do `startPipeline`, depois de esperar a fonte — e nesse intervalo um
+  // segundo pedido passaria pela checagem dele também, subindo DOIS
+  // `gst-launch` capturando e enviando juntos (upload dobrado, e o
+  // primeiro órfão: o "parar" só mata o que está no `gstProcess`). Esta
+  // trava vale desde a primeira linha do pedido.
+  let startInFlight = false
+
   ipcMain.handle(
     'gstreamer:start',
     async (_event, params: StartParams): Promise<{ ok: boolean; error?: string }> => {
-      if (gstProcess) {
+      if (gstProcess || startInFlight) {
         return { ok: false, error: 'Já existe uma captura GStreamer em andamento.' }
       }
-      const captureArg = await resolveCaptureArg(params.sourceId)
-      if ('error' in captureArg) {
-        return { ok: false, error: captureArg.error }
+      startInFlight = true
+      let captureArg: ResolvedCapture
+      let result: { ok: boolean; error?: string }
+      try {
+        captureArg = await takePreparedSource(params.sourceId)
+        if ('error' in captureArg) {
+          return { ok: false, error: captureArg.error }
+        }
+        result = await startPipeline(mainWindow, params, captureArg)
+      } finally {
+        startInFlight = false
       }
-      const result = await startPipeline(mainWindow, params, captureArg)
       activeRoomCode = params.roomCode
       // Item 29 do roadmap (detectar jogo/janela em andamento): dispara
       // sem esperar (fire-and-forget) — não deve atrasar a confirmação de

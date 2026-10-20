@@ -1,11 +1,11 @@
 import { Fragment, useCallback, useMemo, useState } from 'react'
-import { ChevronLeft, Pin, PinOff, Send } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Eye, Pin, PinOff, Send } from 'lucide-react'
 import { AvatarRef } from '../lib/avatar'
 import { PresenceMap } from '../lib/useRooms'
 import { getErrorMessage } from '../lib/errors'
 import UserAvatar from './UserAvatar'
-import Tooltip from './Tooltip'
 import UserCardPopover, { UserCardTarget } from './UserCardPopover'
+import ContextMenu, { ContextMenuItem, ContextMenuPosition } from './ContextMenu'
 
 interface DirectoryUser {
   id: number
@@ -70,8 +70,12 @@ interface UsersSidebarProps {
   // Convites NO AR desta live, por id (2026-09-14). Vem de fora — do
   // useInviteTracking na HomeScreen — porque o resultado de um convite
   // pode chegar com este painel FECHADO, e ele é destruído ao fechar.
-  // Guardado aqui dentro, o "recusou" se perderia e o botão
-  // reapareceria travado.
+  // Guardado aqui dentro, o "recusou" se perderia.
+  //
+  // Desde 2026-09-30 isto não aparece mais na tela: o menu não distingue
+  // mais quem tem convite de pé. O único uso que restou é não reiniciar o
+  // timeout de segurança quando o mesmo clique se repete (ver
+  // `handleInvite`).
   pendingInvites: Set<number>
   onInvited: (userId: number) => void
   // Quem está assistindo a MINHA live agora, por nome. É daqui que sai
@@ -147,6 +151,28 @@ function UsersSidebar({
   // eles seriam removidos e re-registrados a cada render.
   const closeCard = useCallback(() => setCard(null), [])
 
+  // MENU DE AÇÕES do tile (2026-09-29, pedido do usuário). `null` =
+  // nenhum aberto — e só um por vez, porque é um estado só pro painel
+  // inteiro.
+  //
+  // Fixar e convidar eram dois botões na própria linha; viraram as duas
+  // opções daqui, atrás de um único botão de chevron. A lista tem uma
+  // coluna estreita e muitos nomes: dois controles por linha, vezes N
+  // linhas, é uma parede de ícones — e nenhum deles é a ação principal
+  // do tile, que é abrir a ficha.
+  //
+  // Guarda o USUÁRIO e não o id: os itens do menu precisam do nome (pros
+  // rótulos e pras mensagens de erro) e do status (pra decidir se dá pra
+  // convidar), e os dois já estão resolvidos aqui. O "está fixado" NÃO
+  // vem guardado — é lido de `pinned` na hora de montar os itens, que é
+  // a fonte viva.
+  const [menu, setMenu] = useState<{
+    user: DirectoryUser
+    status: UserStatus
+    position: ContextMenuPosition
+  } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
+
   // A foto EM TEMPO REAL quando existir; a do retrato como reserva.
   //
   // A ordem é o que conserta o defeito: a lista buscada tem a versão do
@@ -172,6 +198,18 @@ function UsersSidebar({
     // segundo clique no mesmo tile fecharia e reabriria no mesmo
     // instante — e a ficha nunca fecharia pelo tile.
     event.stopPropagation()
+    // ...e por morrer aqui, ele também não chega ao listener que fecha o
+    // MENU de ações — que é o mesmo mecanismo, no ContextMenu (defeito
+    // relatado pelo usuário em 2026-09-29: com o menu aberto, clicar num
+    // tile abria a ficha e o menu ficava pendurado na tela).
+    //
+    // Fechar aqui, na mão, e não trocar o listener do ContextMenu pra
+    // fase de captura: em captura ele fecharia o menu ANTES do
+    // handleMenuClick abaixo, e o clique no próprio chevron passaria a
+    // reabrir o que acabou de fechar — o botão nunca mais alternaria.
+    // Este é o único clique do painel que interrompe a subida do evento,
+    // então é o único lugar que precisa disto.
+    setMenu(null)
     // Medido ANTES do setState: `currentTarget` só vale durante o
     // despacho do evento, e dentro da função de atualização já é
     // null.
@@ -186,11 +224,49 @@ function UsersSidebar({
     )
   }
 
+  // Abre o menu ancorado no botão de chevron do tile.
+  function handleMenuClick(
+    event: React.MouseEvent<HTMLButtonElement>,
+    user: DirectoryUser,
+    status: UserStatus
+  ): void {
+    // Pelo mesmo motivo do clique do tile: o menu fecha por um listener
+    // de clique no documento, e sem isto o próprio clique que o abre
+    // chegaria lá e o fecharia no mesmo instante.
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    // Abre logo ABAIXO do botão, alinhado pela esquerda dele — o
+    // ContextMenu espelha sozinho se não couber. Ancorado no botão e não
+    // no cursor porque este menu não é de botão direito: ele tem um alvo
+    // visível, e sair de baixo dele é o que liga uma coisa à outra.
+    const position = { x: rect.left, y: rect.bottom + 6 }
+    // A ficha do usuário e o menu ocupam o mesmo canto da tela; abrir um
+    // fecha o outro.
+    setCard(null)
+    setMenu((current) => (current?.user.id === user.id ? null : { user, status, position }))
+  }
+
   async function handleInvite(user: DirectoryUser): Promise<void> {
     if (!myRoomCode || !liveReadyForInvites) return
+    // Lido ANTES do await: o `onInvited` logo abaixo entra neste mesmo
+    // conjunto, e depois da ida ao servidor não dá mais pra distinguir a
+    // pendência de antes da que este clique acabou de criar.
+    const jaPendente = pendingInvites.has(user.id)
     try {
+      // A chamada sai mesmo com um convite de pé. Quem decide se ela vira
+      // um convite novo é o servidor, e só ele sabe: este conjunto aqui é
+      // um espelho que pode estar velho (um resultado perdido numa
+      // reconexão, por exemplo), e curto-circuitar por ele arriscaria
+      // engolir pra sempre um convite legítimo.
       await window.api.users.invite(myRoomCode, user.id)
-      onInvited(user.id)
+      // Só no PRIMEIRO. Repetir `markInvited` reiniciaria o timeout de
+      // segurança daqui (ver useInviteTracking) a cada clique, enquanto o
+      // convite de verdade continua expirando na hora dele — a tela
+      // ficaria esperando a resposta de um convite que já morreu.
+      if (!jaPendente) onInvited(user.id)
+      // O aviso sai sempre igual, mesmo quando o servidor ignorou: é o
+      // mesmo motivo de o rótulo não mudar mais — um "já havia um convite"
+      // aqui contaria justamente o que se decidiu não contar.
       onNotify(`Convite enviado para ${user.name}`)
     } catch (err) {
       onNotify(getErrorMessage(err, 'Não foi possível enviar o convite'), true)
@@ -272,6 +348,71 @@ function UsersSidebar({
     ]
   }, [users, presence, currentUserId, pinned])
 
+  // OS ITENS DO MENU de um tile (2026-09-29). Fora do laço da lista de
+  // propósito: só existe um menu aberto por vez, então montar isto por
+  // tile seria montar N listas pra usar uma.
+  //
+  // Uma função e não um `useMemo`: ela roda uma vez por render, e só
+  // quando há menu aberto. E tudo que ela lê — `pinned`, `myViewers`,
+  // `pendingInvites` — é lido AQUI, e não no clique que abriu o menu: ele
+  // fica aberto enquanto gente entra e sai da live, e um retrato tirado
+  // no clique já estaria velho.
+  function menuItemsFor(target: { user: DirectoryUser; status: UserStatus }): ContextMenuItem[] {
+    const { user, status } = target
+    const isPinned = pinned.has(user.id)
+
+    // Fixar vem primeiro: é a ação que vale pra QUALQUER pessoa da lista,
+    // inclusive offline. A de convidar depende de eu estar ao vivo, e um
+    // menu que abre com o primeiro item apagado parece um menu quebrado.
+    const items: ContextMenuItem[] = [
+      {
+        label: isPinned ? 'Desfixar' : 'Fixar no topo',
+        icon: isPinned ? <PinOff size={14} /> : <Pin size={14} />,
+        onSelect: () => handleTogglePin(user, !isPinned)
+      }
+    ]
+
+    if (myViewers.includes(user.name)) {
+      // Não é um item apagado, é uma LINHA DE INFORMAÇÃO: apagado diria
+      // "não dá pra convidar agora", e a verdade é outra — não há o que
+      // convidar, a pessoa já está lá dentro.
+      items.push({ label: 'Já assistindo sua live', icon: <Eye size={14} />, info: true })
+      return items
+    }
+
+    // A ordem das três razões é a ordem em que elas travam: sem live não
+    // há pra onde convidar; com a live subindo, o servidor ainda não
+    // registrou a sala (ver `liveReadyForInvites` na HomeScreen); e quem
+    // está offline não tem como receber, porque a entrega é pelo
+    // WebSocket dele.
+    const motivo = !myRoomCode
+      ? 'Você não está ao vivo'
+      : !liveReadyForInvites
+        ? 'Aguarde a live entrar no ar'
+        : status === 'offline'
+          ? 'Está offline'
+          : null
+    // Convite pendente NÃO aparece no menu (2026-09-30, pedido do
+    // usuário; antes o item virava "Convidar de novo" com a dica "Convite
+    // já enviado"). O item é sempre o mesmo e sempre clicável: quem
+    // convida não precisa saber que o clique de agora não mandou nada.
+    //
+    // A regra de UM convite de pé por pessoa continua valendo — ela mora
+    // no servidor, que ignora o pedido enquanto o anterior não for
+    // respondido, e o relógio de 30s de quem recebeu segue correndo do
+    // primeiro. O que muda é só o que a tela conta (ver também o guarda
+    // em `handleInvite`, que evita esticar o relógio DAQUI a cada clique).
+    items.push({
+      label: 'Convidar para a live',
+      icon: <Send size={14} />,
+      hint: motivo ?? undefined,
+      disabled: Boolean(motivo),
+      onSelect: () => handleInvite(user)
+    })
+
+    return items
+  }
+
   // Só pra escolher entre a lista e o "não há ninguém". Grupo vazio some
   // INTEIRO, título incluído (pedido do usuário) — então com os dois
   // vazios não sobraria nada na tela, nem uma explicação.
@@ -331,38 +472,21 @@ function UsersSidebar({
                 </li>
 
                 {group.entries.map(({ user, status, isPinned }) => {
-                  // Convite só pra quem está logado (decisão do usuário):
-                  // quem está offline não tem como receber, porque a
-                  // entrega é pelo WebSocket dele.
-                  const canInvite = Boolean(myRoomCode) && status !== 'offline'
-                  // Convite no ar: o botão CONTINUA clicável (2026-09-14,
-                  // pedido do usuário) — isto aqui só muda o texto da
-                  // dica. Quem garante que ninguém seja incomodado duas
-                  // vezes é o servidor, que ignora o clique quando já
-                  // existe um convite de pé. Ver a rota de convite no
-                  // server.js.
-                  const waitingAnswer = pendingInvites.has(user.id)
-                  // Esta sim ainda desabilita: não há o que convidar
-                  // alguém que já está assistindo.
+                  // A única coisa que o TILE ainda precisa saber sobre
+                  // convite (2026-09-29): quem pode ou não ser convidado,
+                  // e por quê, virou decisão do menu — ver `menuItems`.
                   const alreadyWatching = myViewers.includes(user.name)
+                  // O menu deste tile está aberto: o tile fica realçado e
+                  // o botão de chevron não se recolhe enquanto isso, mesmo
+                  // com o mouse longe dali.
+                  const menuOpen = menu?.user.id === user.id
                   return (
                     <li
                       key={user.id}
                       className={`users-list-item${
-                        card?.name === user.name ? ' user-tile-active' : ''
+                        card?.name === user.name || menuOpen ? ' user-tile-active' : ''
                       }${isPinned ? ' users-list-item-pinned' : ''}`}
                     >
-                      {/* O alfinete de "está fixado". Decorativo de
-                          propósito (`aria-hidden`): pra quem usa leitor
-                          de tela a mesma informação já sai no
-                          `aria-pressed` do botão de desfixar, e repetida
-                          aqui viraria ruído a cada tile. */}
-                      {isPinned && (
-                        <span className="users-list-pin-badge" aria-hidden="true">
-                          <Pin size={14} fill="currentColor" />
-                        </span>
-                      )}
-
                       {/* Avatar + nome viraram um botão (2026-09-13): clicar
                           abre a ficha do usuário. Os botões de ação ficam
                           FORA dele — convidar ou fixar não pode abrir ficha. */}
@@ -378,85 +502,94 @@ function UsersSidebar({
                         </span>
 
                         <span className="users-list-text">
+                          {/* A SOBRANCELHA de "está na minha live"
+                              (2026-09-29, pedido do usuário): uma linha
+                              curta ACIMA do nome, verde, com o ponto que
+                              respira.
+
+                              Acima e não no lugar do status: "Online" e
+                              "está assistindo" são duas coisas
+                              diferentes, e a segunda não substitui a
+                              primeira. Em cima porque é o que muda
+                              enquanto a live corre — o olho pega a linha
+                              antes de chegar no nome, que é o dado fixo.
+
+                              Minúscula (9px) e em versalete de
+                              propósito: ela empurra o tile ~11px pra
+                              baixo, e só nos tiles de quem está
+                              assistindo. Maior que isso, a lista perderia
+                              o ritmo toda vez que alguém entrasse na
+                              live. */}
+                          {alreadyWatching && (
+                            <span className="users-list-eyebrow">
+                              <span className="users-list-watching-dot" />
+                              {/* O texto num <span> próprio, e não solto
+                                  na linha: `text-overflow: ellipsis` não
+                                  vale pro texto anônimo de um contêiner
+                                  flex. Sem ele, o rótulo seria cortado no
+                                  meio de uma letra no tile mais apertado
+                                  da lista (fixado, com o menu aberto) em
+                                  vez de terminar em reticências. */}
+                              <span className="users-list-eyebrow-text">Assistindo sua live</span>
+                            </span>
+                          )}
                           <span className="users-list-name">{user.name}</span>
                           <span className="users-list-status">{STATUS_LABEL[status]}</span>
                         </span>
                       </button>
 
-                      {/* Os dois botões num contêiner só, SEM o `gap` de
-                          10px do tile (2026-09-25): é ele que dá o efeito
-                          pedido — o alfinete cresce de 0 até a largura
-                          cheia e EMPURRA o convite pra esquerda, em vez
-                          de aparecer num espaço que já estava reservado
-                          esperando por ele. */}
+                      {/* A coluna de ações do tile, SEM o `gap` de 10px da
+                          linha (2026-09-25): é ele que dá o efeito de o
+                          botão de menu crescer de 0 até a largura cheia e
+                          EMPURRAR o que estiver à esquerda, em vez de
+                          aparecer num espaço que já estava reservado
+                          esperando por ele.
+
+                          (O `gap` da linha continua valendo entre o nome e
+                          este bloco, então todo tile reserva os mesmos
+                          10px no fim — inclusive os de quem está offline.
+                          É de propósito: os nomes passam a truncar no
+                          mesmo ponto em toda a lista.) */}
                       <span className="users-list-actions">
-                        {canInvite && (
-                          <Tooltip
-                            label={
-                              !liveReadyForInvites
-                                ? 'Aguarde...'
-                                : alreadyWatching
-                                  ? 'Já está na sua live'
-                                  : waitingAnswer
-                                    ? 'Convite já enviado'
-                                    : 'Enviar convite'
-                            }
-                            // ACIMA (2026-09-25, pedido do usuário). Antes
-                            // abria pra direita (2026-09-14) pra fugir da
-                            // borda da janela — este painel encosta na barra
-                            // da esquerda, e pra aquele lado o balão era
-                            // espremido. Em cima o problema não existe, e o
-                            // balão para de cobrir os nomes da lista, que é o
-                            // que ficava atrás dele quando abria pro lado.
-                            placement="top"
-                          >
-                            <button
-                              type="button"
-                              className={`users-list-invite${
-                                liveReadyForInvites ? '' : ' users-list-invite-waiting'
-                              }`}
-                              onClick={() => handleInvite(user)}
-                              // Convite pendente NÃO trava mais o botão
-                              // (2026-09-14): clicar de novo é inofensivo, o
-                              // servidor ignora. O que trava é só a live ainda
-                              // não existir no servidor e a pessoa já estar
-                              // assistindo.
-                              disabled={alreadyWatching || !liveReadyForInvites}
-                              aria-label={`Convidar ${user.name}`}
-                            >
-                              <Send size={13} />
-                            </button>
-                          </Tooltip>
+                        {/* "ESTÁ FIXADO" é só um ÍCONE (2026-09-29, pedido
+                            do usuário): alfinete pequeno, cinza e
+                            preenchido, sem fundo, sem borda e sem hover —
+                            não é botão, e não deve parecer um. Quem
+                            desfixa é o menu ao lado.
+
+                            Cinza e não âmbar porque o âmbar já está no
+                            tile inteiro (ver `.users-list-item-pinned`):
+                            repetido no ícone, ele viraria a terceira
+                            coisa amarela da mesma linha. Preenchido é o
+                            que faz um ícone de 13px sobreviver sem cor —
+                            o contorno vazado do lucide some nesse
+                            tamanho.
+
+                            `aria-hidden` porque a mesma informação já sai
+                            no rótulo do botão de menu ao lado; repetida,
+                            viraria ruído a cada tile. */}
+                        {isPinned && (
+                          <span className="users-list-pin-mark" aria-hidden="true">
+                            <Pin size={13} fill="currentColor" />
+                          </span>
                         )}
 
                         {/* Quem anima é o SLOT, não o botão: ele tem
                             largura 0 em repouso e abre no hover (ver
-                            main.css). O botão lá dentro mantém o tamanho
-                            o tempo todo, então o ícone não estica nem
-                            treme durante a transição. */}
-                        <span className="users-list-pin-slot">
-                          {/* Acima, igual ao do convite ao lado
-                              (2026-09-25): os dois botoes sao vizinhos, e
-                              balao de um abrindo pro lado e do outro pra
-                              cima faria a mesma linha responder de dois
-                              jeitos. */}
-                          <Tooltip label={isPinned ? 'Desfixar' : 'Fixar'} placement="top">
-                            <button
-                              type="button"
-                              className="users-list-pin"
-                              onClick={() => handleTogglePin(user, !isPinned)}
-                              // `aria-pressed` em vez de dois botões
-                              // diferentes: é um botão que ALTERNA, e o
-                              // leitor de tela anuncia o estado junto
-                              // com o rótulo.
-                              aria-pressed={isPinned}
-                              aria-label={
-                                isPinned ? `Desfixar ${user.name}` : `Fixar ${user.name} no topo`
-                              }
-                            >
-                              {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
-                            </button>
-                          </Tooltip>
+                            main.css). O botão lá dentro mantém o tamanho o
+                            tempo todo, então o ícone não estica nem treme
+                            durante a transição. */}
+                        <span className="users-list-menu-slot">
+                          <button
+                            type="button"
+                            className="users-list-menu-button"
+                            onClick={(event) => handleMenuClick(event, user, status)}
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpen}
+                            aria-label={`Ações para ${user.name}`}
+                          >
+                            <ChevronDown size={14} />
+                          </button>
                         </span>
                       </span>
                     </li>
@@ -469,6 +602,10 @@ function UsersSidebar({
       )}
 
       {card && <UserCardPopover target={card} apiBaseUrl={apiBaseUrl} onClose={closeCard} />}
+
+      {menu && (
+        <ContextMenu position={menu.position} items={menuItemsFor(menu)} onClose={closeMenu} />
+      )}
     </aside>
   )
 }

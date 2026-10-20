@@ -54,6 +54,12 @@ interface UseRoomsResult {
   // main process manda o resultado.
   refreshing: boolean
   refresh: () => Promise<void>
+  // Busca a lista por HTTP e já põe no estado, RESOLVENDO só depois
+  // disso (2026-10-19). Chamado dentro do loading do login e do splash
+  // do "manter conectado", pra a Home nascer com as salas de agora —
+  // ver o porquê em useNewLiveSound.ts. Nunca rejeita: sem servidor, a
+  // Home abre e a lista chega pelo WebSocket quando der.
+  load: () => Promise<void>
 }
 
 // Item 19 do roadmap: lista de salas em tempo real via webhook do LiveKit
@@ -89,5 +95,19 @@ export function useRooms(onRefreshError?: (message: string) => void): UseRoomsRe
     }
   }
 
-  return { rooms, userAvatars, presence, refreshing, refresh }
+  async function load(): Promise<void> {
+    try {
+      // `refresh` devolve o retrato, e ele é aplicado AQUI em vez de
+      // esperar o evento `rooms:update` que o main também manda: assim
+      // o estado já está certo quando o `await` de quem chamou termina.
+      const snapshot = await window.api.rooms.refresh()
+      setRooms(snapshot.rooms)
+      setUserAvatars(snapshot.userAvatars)
+      setPresence(snapshot.presence ?? {})
+    } catch {
+      // Sem servidor: segue com o que houver.
+    }
+  }
+
+  return { rooms, userAvatars, presence, refreshing, refresh, load }
 }

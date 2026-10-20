@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  DisconnectReason,
-  RemoteTrack,
-  RemoteVideoTrack,
-  Room,
-  RoomEvent,
-  Track
-} from 'livekit-client'
-import { RawTrackStats } from './useTrackStats'
+import { DisconnectReason, RemoteTrack, Room, RoomEvent, Track } from 'livekit-client'
+import { RawTrackStats, readVideoReceiverStats } from './useTrackStats'
 import { getErrorMessage } from './errors'
+import { loadLastViewerVolume, saveLastViewerVolume } from './lastViewerVolume'
 import { playSound } from './sounds'
 
 interface ViewerConnection {
@@ -35,6 +29,9 @@ interface ViewerConnection {
   // de verdade (independente de `muted` acima, que é só a preferência do
   // usuário) até o vídeo ter conteúdo, ver markVideoReady().
   videoReady: boolean
+  // O `loadeddata` armado no <video> que ainda espera o primeiro quadro —
+  // guardado pra não empilhar dois no mesmo elemento. Ver `attachVideo`.
+  videoReadyListener: { element: HTMLVideoElement; listener: () => void } | null
 }
 
 export interface ViewerAudioState {
@@ -56,7 +53,10 @@ interface UseViewerResult {
     participantName: string,
     password?: string
   ) => Promise<{ ok: boolean; error?: string }>
-  leaveRoom: (roomCode: string) => void
+  // `silent` é pra saídas em lote que não são "eu saí desta live" (ex:
+  // logout derrubando todas as salas de uma vez — tocaria um 'viewerOut'
+  // por sala, empilhados).
+  leaveRoom: (roomCode: string, options?: { silent?: boolean }) => void
   // ref callback pro <video> de uma sala específica — uma por tile.
   getAttachVideo: (roomCode: string) => (element: HTMLVideoElement | null) => void
   // ref callback pro <div> escondido que hospeda o <audio> de uma sala
@@ -138,13 +138,52 @@ export function useViewer(
   // true }` no addEventListener já garante que só roda uma vez.
   function markVideoReady(connection: ViewerConnection): void {
     connection.videoReady = true
+    connection.videoReadyListener = null
     if (connection.audioElement) {
       connection.audioElement.muted = connection.muted
       connection.audioElement.volume = connection.volume
     }
   }
 
-  function leaveRoom(roomCode: string): void {
+  // Liga a track de vídeo ao <video> e, se ainda não houve quadro, arma o
+  // aviso do primeiro (`loadeddata` -> markVideoReady).
+  //
+  // Bug real (2026-10-19, relatado pelo usuário: trocar a live de JANELA
+  // pra TELA INTEIRA deixava o som "inaudível" pra quem assistia, até
+  // parar e começar outra live). O aviso só era armado quando o <video>
+  // MONTAVA. Numa troca de fonte o host sobe um pipeline novo, o viewer
+  // recebe tracks NOVAS no mesmo <video>, `videoReady` volta a false e o
+  // <audio> novo nasce mudo esperando o primeiro quadro — mas o
+  // `loadeddata` com `once` já tinha sido gasto na track anterior, e
+  // ninguém armava outro. O áudio ficava mudo pra sempre. Agora quem anexa
+  // a track nova arma também, nos dois caminhos (track chegando, <video>
+  // montando).
+  function attachVideo(connection: ViewerConnection): void {
+    const element = connection.videoElement
+    if (!element || !connection.videoTrack) return
+    connection.videoTrack.attach(element)
+    if (connection.videoReady) return
+
+    const armado = connection.videoReadyListener
+    if (armado?.element === element) return
+    if (armado) armado.element.removeEventListener('loadeddata', armado.listener)
+    const listener = (): void => markVideoReady(connection)
+    element.addEventListener('loadeddata', listener, { once: true })
+    connection.videoReadyListener = { element, listener }
+  }
+
+  // Pedido do usuário (2026-10-19): como VIEWER, eu também ouço o
+  // 'viewerOut' quando EU saio de uma live — o mesmo som que o host ouve
+  // quando alguém sai da dele. Fica só aqui, na saída voluntária: quando
+  // o host derruba a sala ou me expulsa, quem toca é o handler de
+  // Disconnected (som 'stopLive'), que usa o teardown() direto.
+  function leaveRoom(roomCode: string, options?: { silent?: boolean }): void {
+    if (!connectionsRef.current.has(roomCode)) return
+    teardown(roomCode)
+    if (!options?.silent) playSound('viewerOut')
+  }
+
+  function teardown(roomCode: string): void {
     const connection = connectionsRef.current.get(roomCode)
     if (!connection) return
 
@@ -183,6 +222,11 @@ export function useViewer(
       })
 
       const room = new Room()
+      // Lido AGORA (e não uma vez na montagem do hook) porque o valor
+      // pode ter mudado desde então: mexer no volume de uma live que já
+      // está tocando grava na hora, e é esse valor mais recente que a
+      // live entrando agora deve herdar.
+      const savedVolume = loadLastViewerVolume()
       const connection: ViewerConnection = {
         room,
         videoTrack: null,
@@ -190,15 +234,16 @@ export function useViewer(
         videoElement: null,
         audioContainer: null,
         audioElement: null,
-        volume: 1,
-        muted: false,
-        videoReady: false
+        volume: savedVolume.volume,
+        muted: savedVolume.muted,
+        videoReady: false,
+        videoReadyListener: null
       }
 
       room.on(RoomEvent.TrackSubscribed, (track) => {
         if (track.kind === Track.Kind.Video) {
           connection.videoTrack = track
-          if (connection.videoElement) track.attach(connection.videoElement)
+          attachVideo(connection)
         } else if (track.kind === Track.Kind.Audio) {
           connection.audioTrack = track
           ensureAudioAttached(connection)
@@ -235,7 +280,10 @@ export function useViewer(
       })
 
       room.on(RoomEvent.Disconnected, (reason) => {
-        leaveRoom(roomCode)
+        // teardown() e não leaveRoom(): o 'viewerOut' é só da saída
+        // voluntária. Quando fui EU que saí, leaveRoom() já desmontou
+        // tudo e isto aqui vira no-op.
+        teardown(roomCode)
         // CLIENT_INITIATED é quando o próprio viewer chama .disconnect()
         // (botão "Sair da sala") — não avisa nesse caso, só quando a
         // desconexão veio de fora (sala derrubada pelo host).
@@ -245,9 +293,7 @@ export function useViewer(
         // mesmo arquivo do antigo 'out') deixou de existir; agora host e
         // viewers da sala derrubada ouvem literalmente o mesmo som.
         if (reason !== DisconnectReason.CLIENT_INITIATED) {
-          onEndedByHost?.(
-            reason === DisconnectReason.PARTICIPANT_REMOVED ? 'removed' : 'ended'
-          )
+          onEndedByHost?.(reason === DisconnectReason.PARTICIPANT_REMOVED ? 'removed' : 'ended')
           playSound('stopLive')
         }
       })
@@ -256,7 +302,11 @@ export function useViewer(
 
       connectionsRef.current.set(roomCode, connection)
       setRoomCodes((current) => [...current, roomCode])
-      setAudioSettings((current) => ({ ...current, [roomCode]: { volume: 1, muted: false } }))
+      setAudioSettings((current) => ({ ...current, [roomCode]: savedVolume }))
+      // Pedido do usuário (2026-10-19): como VIEWER, eu também ouço o
+      // 'newViewer' ao entrar numa live — toca só depois de conectar de
+      // fato, então também serve de confirmação de que a entrada deu certo.
+      playSound('newViewer')
       return { ok: true }
     } catch (err) {
       const message = getErrorMessage(err, 'Erro ao entrar na sala')
@@ -279,6 +329,10 @@ export function useViewer(
       connection.audioElement.muted = muted
     }
     setAudioSettings((current) => ({ ...current, [roomCode]: { volume, muted } }))
+    // Grava a cada mexida (e não só ao sair da live): o app pode ser
+    // fechado com a live no ar, e volume não tem um "momento de
+    // confirmar" como a qualidade da transmissão tem.
+    saveLastViewerVolume({ volume, muted })
   }, [])
 
   const setMuted = useCallback((roomCode: string, muted: boolean) => {
@@ -290,6 +344,7 @@ export function useViewer(
       ...current,
       [roomCode]: { volume: connection.volume, muted }
     }))
+    saveLastViewerVolume({ volume: connection.volume, muted })
   }, [])
 
   const getAttachVideo = useCallback((roomCode: string) => {
@@ -313,12 +368,7 @@ export function useViewer(
         // Reanexa se a track já tinha sido assinada antes desse elemento
         // existir (ex: HomeScreen remontou depois de navegar pra
         // TransmissionScreen e voltar).
-        if (element && connection.videoTrack) connection.videoTrack.attach(element)
-        if (element && !connection.videoReady) {
-          element.addEventListener('loadeddata', () => markVideoReady(connection), {
-            once: true
-          })
-        }
+        attachVideo(connection)
       }
       videoCallbacksRef.current.set(roomCode, callback)
     }
@@ -355,12 +405,7 @@ export function useViewer(
   const getStatsFetcher = useCallback((roomCode: string) => {
     let fetcher = statsFetcherCacheRef.current.get(roomCode)
     if (!fetcher) {
-      fetcher = async () => {
-        const connection = connectionsRef.current.get(roomCode)
-        const track = connection?.videoTrack
-        if (!track || track.kind !== Track.Kind.Video) return undefined
-        return (track as RemoteVideoTrack).getReceiverStats()
-      }
+      fetcher = () => readVideoReceiverStats(connectionsRef.current.get(roomCode)?.videoTrack)
       statsFetcherCacheRef.current.set(roomCode, fetcher)
     }
     return fetcher

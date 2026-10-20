@@ -306,16 +306,32 @@ function RoomDetailsSidebar({
         <div className={chatOpen ? 'room-chat room-chat-open' : 'room-chat'}>
           <button
             type="button"
-            className="room-chat-tab"
+            // TEM MENSAGEM NOVA = a ABA INTEIRA acende em laranja e pulsa
+            // (2026-09-29, pedido do usuário), no lugar do badge vermelho
+            // com o número de não lidas que ficava aqui.
+            //
+            // A troca é a mesma que a casca fechada do host já tinha
+            // feito (ver `.host-chat-bar-button-unread`): o vermelho é a
+            // cor de erro/perigo no resto do app, e mensagem no chat não
+            // é nem uma coisa nem outra. E o NÚMERO não mudava nenhuma
+            // decisão — fechada, o que importa é "tem gente falando"; a
+            // contagem exata está a um clique.
+            className={
+              !chatOpen && chat.unread > 0 ? 'room-chat-tab room-chat-tab-unread' : 'room-chat-tab'
+            }
             onClick={() => setChatOpen((open) => !open)}
             aria-expanded={chatOpen}
           >
             <MessageSquare size={13} />
             <span className="room-chat-tab-label">Chat ao vivo</span>
-            {/* O badge só faz sentido fechado — aberto, a pessoa está
-                lendo as mensagens que ele contaria. */}
+            {/* O aviso só faz sentido fechado — aberto, a pessoa está
+                lendo as mensagens que ele anunciaria.
+
+                O ponto é só COR e movimento, sem texto nenhum: quem usa
+                leitor de tela depende do `aria-label`, daí ele existir
+                aqui e dizer o que o desenho não diz. */}
             {!chatOpen && chat.unread > 0 && (
-              <span className="live-chat-badge">{chat.unread > 99 ? '99+' : chat.unread}</span>
+              <span className="room-chat-tab-dot" role="img" aria-label="Mensagens não lidas" />
             )}
             {chatOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           </button>

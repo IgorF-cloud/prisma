@@ -2,26 +2,25 @@ import { execFile } from 'child_process'
 import { existsSync } from 'fs'
 import { dirname, join } from 'path'
 import { app } from 'electron'
-import { parseJsonList, runPowerShell } from './powershell'
 import { logGstreamer } from './gstreamerLog'
 
 // TODA janela de topo do Windows, com o que o app precisa saber sobre
-// cada uma (2026-09-25). Uma pergunta, uma resposta — antes eram dois
-// scripts de PowerShell, e o custo apareceu na cara do usuário: a grade
-// de seleção de fonte levava ~1,8s pra abrir.
+// cada uma (2026-09-25).
 //
-// Dois caminhos produzem EXATAMENTE este formato:
+// Quem decide QUAIS janelas aparecem na grade é o Chromium
+// (desktopCapturer, ver screenCapture.ts) — esta enumeração não
+// acrescenta nenhuma janela à lista dele desde 2026-09-30, a pedido do
+// usuário, e também não tira nenhuma. O que ela faz é dizer o que o
+// Chromium não sabe sobre as janelas que ele mesmo listou: o HWND de
+// verdade (o único argumento que o GStreamer aceita) e o .exe dono da
+// janela, de onde saem o ícone e o nome do programa.
 //
-//   1. o helper nativo (resources/prisma-windows.exe, ~9KB) — ~85ms
-//   2. um script de PowerShell — ~800ms
-//
-// O (2) não é código morto nem "caso raro": é o que roda quando o
-// executável não está lá (build sem ele, `npm run dev` antes do primeiro
-// build) ou quando algo o impede de rodar — um antivírus barrando um
-// .exe pequeno e sem assinatura que enumera janelas é cenário concreto.
-// A troca é silenciosa de propósito: o usuário não tem o que fazer com
-// esse aviso, e a única diferença que ele veria é a tela abrir mais
-// devagar.
+// Vem do helper nativo (resources/prisma-windows.exe, ~12KB), em ~135ms.
+// Havia um segundo caminho — o mesmo trabalho num script de PowerShell,
+// ~800ms — que rodava quando o executável não estava lá; saiu em
+// 2026-09-30 junto com o resto da busca de janelas via PowerShell. Sem o
+// helper, a grade fica com o que o Chromium listou, sem ícone e sem nome
+// do programa (ver `listSources` em screenCapture.ts).
 export interface NativeWindow {
   // HWND de verdade do Win32, o mesmo que o GStreamer aceita em
   // `window-handle`.
@@ -39,19 +38,30 @@ export interface NativeWindow {
   // Existe porque o seguidor de janela (gameWindowFollow.ts) sempre
   // trabalhou sobre "uma janela por processo" — ele filtra por este
   // campo e continua vendo o que via antes de esta enumeração existir.
-  // A grade usa a lista inteira, e é isso que faz duas janelas do mesmo
-  // Chrome virarem dois cards de verdade.
+  // A grade não filtra por ele: cada card do Chromium é casado pelo seu
+  // próprio HWND, e é isso que faz duas janelas do mesmo Chrome virarem
+  // dois cards de verdade.
   IsMain: boolean
+  // Daqui até `ClassName`: campos que o helper escreve e que NINGUÉM lê
+  // hoje. Estão aqui porque são o que o .exe devolve — o contrato com
+  // native/PrismaWindows.cs — e porque descrevem a janela do jeito que a
+  // grade precisaria se um dia voltar a filtrar alguma coisa. Filtrar é
+  // justamente o que ela não faz mais desde 2026-09-30.
   Minimized: boolean
-  // Janela de ferramenta (sem botão na barra de tarefas, fora do
-  // Alt-Tab). Não é filtrada da enumeração porque o Chromium lista
-  // essas e precisamos casar com o que ele devolve — a janela WebView2
-  // que o WhatsApp abre é uma delas, e era a duplicata do WhatsApp na
-  // grade. Quem decide o que fazer com ela é screenCapture.ts.
+  // Janela de ferramenta (`WS_EX_TOOLWINDOW`): sem botão na barra de
+  // tarefas, fora do Alt-Tab. O "Program Manager" do Explorer e a janela
+  // WebView2 do WhatsApp são as duas desta máquina.
   ToolWindow: boolean
+  // `WS_EX_LAYERED` + `WS_EX_TRANSPARENT` (2026-10-17): uma camada que o
+  // mouse atravessa — sobreposição, não janela. O "Shell Handwriting
+  // Canvas" do teclado de toque (TabTip.exe) é uma, do tamanho da tela.
+  // Opcional porque um helper anterior a esta data não escreve o campo,
+  // e aí ninguém é julgado por ele.
+  ClickThrough?: boolean
   // DWMWA_CLOAKED: janela que existe e tem título, mas que o DWM não
-  // desenha — o estado de um app UWP suspenso em segundo plano. Ver
-  // `isPhantomWindow` em nativeCaptureTargets.ts pro uso.
+  // desenha — o estado de um app UWP suspenso em segundo plano (o
+  // "Configurações" era o caso). Cloaked + nesta área de trabalho =
+  // fantasma; cloaked + em outra área = janela real, só que noutro lugar.
   Cloaked: number
   // 1 sim, 0 não, -1 não deu pra saber.
   OnCurrentDesktop: number
@@ -70,6 +80,40 @@ export interface NativeWindow {
   Title: string
 }
 
+// Uma tela física, do jeito que o GStreamer precisa dela (2026-10-13).
+//
+// `d3d11screencapturesrc` só aceita `monitor-handle=<HMONITOR>`, e o id
+// que o `desktopCapturer` devolve pra uma tela não é esse número (pra
+// JANELA é — ver handleFromDesktopCapturerId em screenCapture.ts). Quem
+// casa um com o outro, pelas bordas, é `resolveMonitorHandle`.
+//
+// X/Y/Width/Height em PIXEL FÍSICO: o helper declara consciência de DPI
+// antes de perguntar (ver native/PrismaWindows.cs).
+export interface NativeMonitor {
+  HMonitor: number
+  X: number
+  Y: number
+  Width: number
+  Height: number
+}
+
+// Tudo o que uma execução do helper responde (2026-10-13).
+//
+// As três perguntas andam juntas porque o custo é a EXECUÇÃO, não o
+// trabalho: 135ms pelo processo todo, contra os 550ms + 630ms que os
+// dois scripts de PowerShell cobravam separados por responder as duas
+// últimas. Ver o cabeçalho de native/PrismaWindows.cs.
+export interface NativeSnapshot {
+  janelas: NativeWindow[]
+  // `null` quando o helper é de antes desta mudança (devolvia só o array
+  // de janelas) — quem pergunta cai no PowerShell, que continua lá.
+  monitores: NativeMonitor[] | null
+  // `null` com dois sentidos DIFERENTES, e por isso `monitores` é que
+  // decide: com `monitores` preenchido, null aqui é "o Discord não está
+  // aberto"; com `monitores` null, é "este helper não sabe responder".
+  discordPid: number | null
+}
+
 // Onde o .exe pode estar, em ordem de probabilidade.
 //
 // Empacotado, o primeiro é O caminho: `asarUnpack: resources/**`
@@ -79,9 +123,7 @@ export interface NativeWindow {
 //
 // Conferido na saída de um `build:unpack` de verdade, e não deduzido: a
 // primeira versão disto chutou `<resources>/prisma-windows.exe` e não
-// casava com nada. Como a falha é silenciosa por desenho, o sintoma
-// seria uma release inteira rodando no caminho lento sem ninguém
-// perceber — daí os candidatos extras abaixo, que cobrem o arquivo ter
+// casava com nada. Os candidatos extras abaixo cobrem o arquivo ter
 // virado `extraResources` ou ido pra beira do .exe numa mudança futura
 // de empacotamento.
 function helperCandidates(): string[] {
@@ -96,15 +138,25 @@ function helperCandidates(): string[] {
   return [join(app.getAppPath(), 'resources', 'prisma-windows.exe')]
 }
 
-// Depois que o helper falha uma vez, não se tenta de novo nesta sessão.
-// O motivo de uma falha (antivírus, permissão, arquivo ausente) não muda
+// O JSON que o helper escreve, com os nomes DELE. É o contrato com
+// native/PrismaWindows.cs e muda junto com ele — o resto do arquivo fala
+// `janelas`/`monitores`, como o resto do app.
+interface HelperOutput {
+  windows: NativeWindow[]
+  monitors?: NativeMonitor[]
+  discordPid?: number | null
+}
+
+// Depois que o helper falha uma vez, não se tenta de novo nesta sessão:
+// guarda-se O MOTIVO, e toda chamada seguinte falha na hora com ele. O
+// motivo de uma falha (antivírus, permissão, arquivo ausente) não muda
 // de uma chamada pra outra, e insistir custaria o timeout inteiro a cada
 // vez — justamente no caminho que existe pra ser rápido.
-let helperDesistiu = false
+let helperFalhou: string | null = null
 
 // Teto pro helper. Ele leva ~85ms; se passar disto, alguma coisa está
-// segurando o processo (um antivírus inspecionando o binário é o caso
-// típico) e o PowerShell chega antes.
+// segurando o processo — um antivírus inspecionando um .exe pequeno e
+// sem assinatura que enumera janelas é o caso típico.
 const HELPER_TIMEOUT_MS = 3000
 
 function runHelper(exePath: string): Promise<string> {
@@ -126,190 +178,88 @@ function runHelper(exePath: string): Promise<string> {
   })
 }
 
-async function enumerateViaHelper(): Promise<NativeWindow[] | null> {
-  if (helperDesistiu) return null
+// Falhar aqui é ERRO, não lista vazia: quem chama usa a AUSÊNCIA de uma
+// janela como prova de que ela fechou (ver `resolveWindowByHandle`), e
+// uma lista vazia por falha do helper derrubaria a live dizendo que a
+// janela capturada morreu. Cada chamador trata isso do jeito dele — a
+// grade fica com o que o Chromium listou, o seguidor de janela pula o
+// tick.
+async function enumerateViaHelper(): Promise<NativeSnapshot> {
+  if (helperFalhou) throw new Error(helperFalhou)
 
   const exePath = helperCandidates().find((candidate) => existsSync(candidate))
   if (!exePath) {
-    helperDesistiu = true
-    logGstreamer('windowEnumeration: helper nativo não encontrado — usando PowerShell')
-    return null
+    helperFalhou = 'helper nativo (prisma-windows.exe) não encontrado'
+    logGstreamer(`windowEnumeration: ${helperFalhou}`)
+    throw new Error(helperFalhou)
   }
 
   try {
-    const janelas = parseJsonList<NativeWindow>(await runHelper(exePath))
+    const bruto: unknown = JSON.parse((await runHelper(exePath)).trim())
+
+    // DOIS FORMATOS ACEITOS (2026-10-13). O de hoje é um objeto com as
+    // três respostas; o de antes era o array de janelas puro. Aceitar os
+    // dois não é zelo decorativo: o .exe não é versionado (o build o
+    // compila, ver scripts/build-native-helper.mjs), então uma árvore de
+    // desenvolvimento com o binário antigo ao lado do código novo é o
+    // caso NORMAL até alguém rodar `npm run build:native`. Com o antigo,
+    // a grade funciona igual e as outras duas perguntas caem no
+    // PowerShell.
+    const snapshot: NativeSnapshot = Array.isArray(bruto)
+      ? { janelas: bruto as NativeWindow[], monitores: null, discordPid: null }
+      : {
+          janelas: (bruto as HelperOutput).windows,
+          monitores: (bruto as HelperOutput).monitors ?? null,
+          discordPid: (bruto as HelperOutput).discordPid ?? null
+        }
+
     // Lista vazia é suspeita: sempre existe ALGUMA janela de topo com
     // título (a do próprio app, no mínimo). Tratar como falha evita o
-    // pior desfecho — uma grade vazia sem ninguém reclamar.
-    if (janelas.length === 0) throw new Error('devolveu lista vazia')
-    return janelas
+    // pior desfecho — uma grade inteira sem ícone sem ninguém reclamar.
+    if (!snapshot.janelas || snapshot.janelas.length === 0) {
+      throw new Error('devolveu lista vazia')
+    }
+    return snapshot
   } catch (err) {
-    helperDesistiu = true
-    logGstreamer(
-      `windowEnumeration: helper nativo falhou (${err}) — usando PowerShell desta vez em diante`
-    )
-    return null
+    helperFalhou = `helper nativo falhou (${err})`
+    logGstreamer(`windowEnumeration: ${helperFalhou} — desistindo dele nesta sessão`)
+    throw new Error(helperFalhou)
   }
-}
-
-// O mesmo trabalho do helper, em PowerShell. É código duplicado de
-// propósito: são dois caminhos independentes pro mesmo contrato, e o
-// segundo só tem valor se não depender do primeiro.
-//
-// Mudou o contrato? Os três mudam juntos: `NativeWindow` aqui em cima,
-// este script e native/PrismaWindows.cs.
-const ENUMERATE_SCRIPT = `
-Add-Type @"
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-public class PrismaEnum {
-  public delegate bool EnumProc(IntPtr hwnd, IntPtr param);
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr p);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, StringBuilder s, int m);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, StringBuilder s, int m);
-  [DllImport("user32.dll")] static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
-  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
-  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
-  [DllImport("kernel32.dll")] static extern IntPtr CreateToolhelp32Snapshot(uint f, uint p);
-  [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool Process32FirstW(IntPtr h, ref PROCESSENTRY32 e);
-  [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool Process32NextW(IntPtr h, ref PROCESSENTRY32 e);
-  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
-  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
-  public struct PROCESSENTRY32 {
-    public uint dwSize; public uint cntUsage; public int th32ProcessID; public IntPtr th32DefaultHeapID;
-    public uint th32ModuleID; public uint cntThreads; public int th32ParentProcessID; public int pcPriClassBase;
-    public uint dwFlags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst=260)] public string szExeFile;
-  }
-  [ComImport, Guid("a5cd92ff-29be-454c-8d04-d82879fb3f1b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  interface IVirtualDesktopManager {
-    [PreserveSig] int IsWindowOnCurrentVirtualDesktop(IntPtr w, out bool on);
-    [PreserveSig] int GetWindowDesktopId(IntPtr w, out Guid id);
-    [PreserveSig] int MoveWindowToDesktop(IntPtr w, ref Guid id);
-  }
-  static IVirtualDesktopManager vdm;
-  public static string Title(IntPtr h) { var s = new StringBuilder(512); GetWindowTextW(h, s, 512); return s.ToString(); }
-  public static string Cls(IntPtr h) { var s = new StringBuilder(256); GetClassNameW(h, s, 256); return s.ToString(); }
-  public static int Pid(IntPtr h) { int p; GetWindowThreadProcessId(h, out p); return p; }
-  public static int Cloaked(IntPtr h) { int v = 0; if (DwmGetWindowAttribute(h, 14, out v, 4) != 0) return 0; return v; }
-  public static int OnCurrentDesktop(IntPtr h) {
-    try {
-      if (vdm == null) vdm = (IVirtualDesktopManager)Activator.CreateInstance(
-        Type.GetTypeFromCLSID(new Guid("aa509086-5ca9-4c25-8f95-589d3c07b48a")));
-      bool on; if (vdm.IsWindowOnCurrentVirtualDesktop(h, out on) != 0) return -1;
-      return on ? 1 : 0;
-    } catch { return -1; }
-  }
-  public static Dictionary<int,string> Names = new Dictionary<int,string>();
-  public static Dictionary<int,int> Parents() {
-    var d = new Dictionary<int,int>();
-    IntPtr snap = CreateToolhelp32Snapshot(2, 0);
-    if (snap == IntPtr.Zero || snap == new IntPtr(-1)) return d;
-    try {
-      var e = new PROCESSENTRY32(); e.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
-      if (Process32FirstW(snap, ref e)) do {
-        d[e.th32ProcessID] = e.th32ParentProcessID;
-        string exe = e.szExeFile == null ? "" : e.szExeFile;
-        if (exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) exe = exe.Substring(0, exe.Length - 4);
-        Names[e.th32ProcessID] = exe;
-      } while (Process32NextW(snap, ref e));
-    } finally { CloseHandle(snap); }
-    return d;
-  }
-  public static List<IntPtr> Handles() {
-    var l = new List<IntPtr>();
-    EnumWindows(delegate(IntPtr h, IntPtr p) {
-      if (!IsWindowVisible(h)) return true;
-      if (Title(h).Length == 0) return true;
-      l.Add(h); return true;
-    }, IntPtr.Zero);
-    return l;
-  }
-}
-"@
-$parents = [PrismaEnum]::Parents()
-$procs = @{}
-Get-Process | ForEach-Object { $procs[$_.Id] = $_ }
-$vistos = @{}
-$rows = foreach ($h in [PrismaEnum]::Handles()) {
-  $wpid = [PrismaEnum]::Pid($h)
-  $ehPrincipal = -not $vistos.ContainsKey($wpid)
-  $vistos[$wpid] = $true
-  $proc = $procs[$wpid]
-  $cadeia = @()
-  $cur = $wpid
-  for ($i = 0; $i -lt 8; $i++) {
-    if (-not $parents.ContainsKey($cur)) { break }
-    $up = $parents[$cur]
-    if ($up -eq 0 -or $up -eq $cur) { break }
-    $cadeia += $up
-    $cur = $up
-  }
-  [PSCustomObject]@{
-    Handle = $h.ToInt64()
-    Pid = $wpid
-    ProcessName = $(if ([PrismaEnum]::Names.ContainsKey($wpid)) { [PrismaEnum]::Names[$wpid] } else { '' })
-    IsMain = $ehPrincipal
-    Minimized = [PrismaEnum]::IsIconic($h)
-    ToolWindow = (([PrismaEnum]::GetWindowLong($h, -20) -band 128) -ne 0)
-    Cloaked = [PrismaEnum]::Cloaked($h)
-    OnCurrentDesktop = [PrismaEnum]::OnCurrentDesktop($h)
-    Ancestors = @($cadeia)
-    ClassName = [PrismaEnum]::Cls($h)
-    Path = $(if ($proc -and $proc.Path) { $proc.Path } else { '' })
-    Description = $(if ($proc -and $proc.Description) { $proc.Description } else { '' })
-    Product = $(if ($proc -and $proc.Product) { $proc.Product } else { '' })
-    Title = [PrismaEnum]::Title($h)
-  }
-}
-$rows | ConvertTo-Json -Compress -Depth 4
-`
-
-async function enumerateViaPowerShell(): Promise<NativeWindow[]> {
-  const janelas = parseJsonList<NativeWindow>(await runPowerShell(ENUMERATE_SCRIPT))
-  // `ConvertTo-Json` entrega uma lista de um item como escalar.
-  return janelas.map((janela) => ({
-    ...janela,
-    Ancestors: Array.isArray(janela.Ancestors)
-      ? janela.Ancestors
-      : janela.Ancestors == null
-        ? []
-        : [janela.Ancestors as unknown as number]
-  }))
 }
 
 // Última enumeração e a que está em andamento — a mesma mecânica que
 // `listWindows` tinha antes desta refatoração, e pelos mesmos motivos: o
 // tick do seguidor cai em cima de uma troca de fonte com facilidade, e
 // duas perguntas simultâneas não precisam virar dois processos.
-let cache: { at: number; janelas: NativeWindow[] } | null = null
-let emAndamento: Promise<NativeWindow[]> | null = null
+let cache: { at: number; snapshot: NativeSnapshot } | null = null
+let emAndamento: Promise<NativeSnapshot> | null = null
 
-// `maxAgeMs` aceita uma enumeração RECENTE em vez de fazer outra. O
-// padrão é 0 — enumerar de novo — porque a maioria das chamadas está
-// perguntando "esta janela AINDA existe?", e uma resposta velha
-// responderia outra pergunta. Quem passa um valor aqui é quem sabe que
-// acabou de perguntar.
-export async function enumerateWindows(maxAgeMs = 0): Promise<NativeWindow[]> {
+// TUDO O QUE O HELPER SABE, numa execução só (2026-10-13).
+//
+// `maxAgeMs` aceita uma leitura RECENTE em vez de fazer outra. O padrão é
+// 0 — ler de novo — porque a maioria das chamadas está perguntando "esta
+// janela AINDA existe?", e uma resposta velha responderia outra pergunta.
+// Quem passa um valor aqui é quem sabe que acabou de perguntar.
+export async function enumerateSnapshot(maxAgeMs = 0): Promise<NativeSnapshot> {
   if (cache && maxAgeMs > 0 && Date.now() - cache.at <= maxAgeMs) {
-    logGstreamer(
-      `enumerateWindows: reaproveitando a enumeração de ${Date.now() - cache.at}ms atrás`
-    )
-    return cache.janelas
+    logGstreamer(`enumerateSnapshot: reaproveitando a leitura de ${Date.now() - cache.at}ms atrás`)
+    return cache.snapshot
   }
   if (emAndamento) return emAndamento
 
   emAndamento = (async () => {
     try {
-      const janelas = (await enumerateViaHelper()) ?? (await enumerateViaPowerShell())
-      cache = { at: Date.now(), janelas }
-      return janelas
+      const snapshot = await enumerateViaHelper()
+      cache = { at: Date.now(), snapshot }
+      return snapshot
     } finally {
       emAndamento = null
     }
   })()
   return emAndamento
+}
+
+// Só as janelas, que é o que a maioria de quem chama quer.
+export async function enumerateWindows(maxAgeMs = 0): Promise<NativeWindow[]> {
+  return (await enumerateSnapshot(maxAgeMs)).janelas
 }

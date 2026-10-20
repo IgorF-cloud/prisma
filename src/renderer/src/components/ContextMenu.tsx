@@ -5,10 +5,27 @@ import { useDismissable } from '../lib/useDismissable'
 export interface ContextMenuItem {
   label: string
   icon?: ReactNode
+  // Segunda linha, menor e apagada, embaixo do rótulo. Existe pros itens
+  // DESABILITADOS (2026-09-29): um item apagado sem explicação obriga a
+  // pessoa a adivinhar o que falta — "Está offline", "Você não está ao
+  // vivo". Também serve pra qualificar um item ativo ("Convite já
+  // enviado").
+  hint?: string
   // Pinta o item de vermelho. Pra ações que tiram algo de alguém —
   // hoje só "Expulsar".
   danger?: boolean
-  onSelect: () => void
+  // Apagado e inerte. `aria-disabled` em vez do atributo `disabled`
+  // (2026-09-29): um <button disabled> não dispara nem propaga o clique,
+  // e é o clique chegando ao documento que FECHA o menu — o item
+  // apagado deixaria o menu pendurado na tela. É também o que a ARIA
+  // recomenda pra item de menu: continua alcançável pelo leitor de tela,
+  // que anuncia o estado.
+  disabled?: boolean
+  // Linha de INFORMAÇÃO, não de ação: não é botão, não tem hover e não
+  // faz nada. Pro caso em que a ação não existe porque a coisa JÁ
+  // aconteceu — "Já assistindo sua live" no lugar de "Convidar".
+  info?: boolean
+  onSelect?: () => void
 }
 
 export interface ContextMenuPosition {
@@ -79,22 +96,44 @@ function ContextMenu({ position, items, onClose }: ContextMenuProps): React.JSX.
       // Botão direito DENTRO do menu não abre outro menu por cima.
       onContextMenu={(e) => e.preventDefault()}
     >
-      {items.map((item) => (
-        <button
-          key={item.label}
-          type="button"
-          role="menuitem"
-          className={`context-menu-item${item.danger ? ' context-menu-item-danger' : ''}`}
-          // Sem `stopPropagation` aqui, ao contrário do card: o clique
-          // PRECISA chegar ao documento pra fechar o menu. Escolher um
-          // item e o menu continuar aberto seria estranho, e daria pra
-          // disparar a mesma ação duas vezes.
-          onClick={() => item.onSelect()}
-        >
-          {item.icon}
-          <span>{item.label}</span>
-        </button>
-      ))}
+      {items.map((item) =>
+        item.info ? (
+          <div key={item.label} className="context-menu-note" role="presentation">
+            {item.icon}
+            <span className="context-menu-item-label">
+              {item.label}
+              {item.hint && <span className="context-menu-item-hint">{item.hint}</span>}
+            </span>
+          </div>
+        ) : (
+          <button
+            key={item.label}
+            type="button"
+            role="menuitem"
+            className={`context-menu-item${item.danger ? ' context-menu-item-danger' : ''}${
+              item.disabled ? ' context-menu-item-disabled' : ''
+            }`}
+            aria-disabled={item.disabled || undefined}
+            // Sem `stopPropagation` aqui, ao contrário do card: o clique
+            // PRECISA chegar ao documento pra fechar o menu. Escolher um
+            // item e o menu continuar aberto seria estranho, e daria pra
+            // disparar a mesma ação duas vezes.
+            //
+            // O item apagado também deixa o clique passar — ele só não
+            // FAZ nada. Ver `disabled` na interface acima.
+            onClick={() => {
+              if (item.disabled) return
+              item.onSelect?.()
+            }}
+          >
+            {item.icon}
+            <span className="context-menu-item-label">
+              {item.label}
+              {item.hint && <span className="context-menu-item-hint">{item.hint}</span>}
+            </span>
+          </button>
+        )
+      )}
     </div>,
     document.body
   )

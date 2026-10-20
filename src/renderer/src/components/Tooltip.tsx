@@ -1,7 +1,12 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-export type TooltipPlacement = 'right' | 'left' | 'top' | 'bottom'
+// `top-end` é o `top` alinhado pela DIREITA (2026-09-30, defeito relatado
+// pelo usuário): o balão do último botão do rodapé, centrado no botão,
+// transbordava a janela e era cortado. Aqui a borda direita do balão
+// encosta na do elemento e ele cresce pra ESQUERDA, pra dentro da tela; a
+// setinha é quem volta pro centro do botão (ver o `::after` no CSS).
+export type TooltipPlacement = 'right' | 'left' | 'top' | 'top-end' | 'bottom'
 
 interface TooltipProps {
   label: ReactNode
@@ -87,6 +92,11 @@ function Tooltip({
     } else if (placement === 'top') {
       top = rect.top - GAP
       left = rect.left + rect.width / 2
+    } else if (placement === 'top-end') {
+      // Ancora na borda DIREITA do elemento, não no centro: o
+      // `translate(-100%)` do CSS faz o balão crescer daqui pra esquerda.
+      top = rect.top - GAP
+      left = rect.right
     } else {
       top = rect.bottom + GAP
       left = rect.left + rect.width / 2

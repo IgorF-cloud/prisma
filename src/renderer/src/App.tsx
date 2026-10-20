@@ -3,7 +3,6 @@ import LoginScreen from './screens/LoginScreen'
 import RegisterScreen from './screens/RegisterScreen'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
 import HomeScreen from './screens/HomeScreen'
-import TransmissionScreen from './screens/TransmissionScreen'
 import { useGstreamerTransmission } from './lib/useGstreamerTransmission'
 import { useHostPreview } from './lib/useHostPreview'
 import { useViewer } from './lib/useViewer'
@@ -12,14 +11,17 @@ import { useSnackbar } from './lib/useSnackbar'
 import { useRooms } from './lib/useRooms'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useReleaseNotes } from './lib/useReleaseNotes'
-import { useDetectableGamesSync } from './lib/useDetectableGamesSync'
 import { useHiddenOwnRoomCode } from './lib/useHiddenOwnRoomCode'
+import { saveLastQuality } from './lib/lastTransmissionQuality'
+import { nowPlayingFromSource } from './lib/nowPlaying'
+
 import Snackbar from './components/Snackbar'
 import UpdateDialog from './components/UpdateDialog'
 import ReleaseNotesModal from './components/ReleaseNotesModal'
 import PopinPlayer from './components/PopinPlayer'
 import TitleBar from './components/TitleBar'
 import InviteToast from './components/InviteToast'
+import SourcePickerDialog from './components/SourcePickerDialog'
 
 import iconName from './assets/iconName.png'
 import { AuthUser } from './lib/authUser'
@@ -41,13 +43,17 @@ function App(): React.JSX.Element {
   const transmission = useGstreamerTransmission((message) =>
     snackbar.show(message, { error: true })
   )
-  const hostPreview = useHostPreview(transmission.roomCode, user?.name ?? null)
+  // Só com a sala criada no servidor (2026-10-16): desde o "start
+  // instantâneo" o `roomCode` existe a partir do clique, um instante antes
+  // de haver sala onde o preview possa entrar.
+  const hostPreview = useHostPreview(
+    transmission.roomOpen ? transmission.roomCode : null,
+    user?.name ?? null
+  )
   const viewer = useViewer(
     (reason) =>
       snackbar.show(
-        reason === 'removed'
-          ? 'Você foi removido da transmissão'
-          : 'Transmissão encerrada'
+        reason === 'removed' ? 'Você foi removido da transmissão' : 'Transmissão encerrada'
       ),
     (message) => snackbar.show(message, { error: true })
   )
@@ -75,7 +81,8 @@ function App(): React.JSX.Element {
     userAvatars,
     presence,
     refreshing: refreshingRooms,
-    refresh: refreshRooms
+    refresh: refreshRooms,
+    load: loadRooms
   } = useRooms((message) => snackbar.show(message, { error: true }))
   // Item 43 do roadmap: só o main process conhece API_BASE_URL (nunca
   // exposto direto por env var pro renderer) — precisa disso pra montar
@@ -141,15 +148,11 @@ function App(): React.JSX.Element {
     volume: 1,
     muted: false
   }
-  // Item 29 do roadmap: lista de jogos detectáveis. O hook só OUVE o
-  // progresso do download (pro overlay) — quem DISPARA é a tela de
-  // login/cadastro, dentro do loading dela (2026-09-10).
-  //
-  // Antes ele disparava sozinho ao montar o app, o que parou de
-  // funcionar quando a auth virou JWT por usuário: o endpoint é
-  // autenticado e, antes do login, não existe token — a chamada tomaria
-  // 401 em toda abertura.
-  const detectableGamesSync = useDetectableGamesSync()
+  // Item 29 do roadmap: lista de jogos detectáveis. Baixada em segundo
+  // plano dentro do loading — o do botão de login (LoginScreen.tsx) e o
+  // do splash do "manter conectado" (logo abaixo). Não tem mais tela de
+  // progresso própria (2026-10-19, pedido do usuário): o overlay
+  // "Atualizando dependências..." e o hook que o alimentava saíram.
   // Pedido do usuário (2026-08-31): fechar o app com uma transmissão
   // ativa agora espera de verdade a sala cair (main segura o fechamento
   // e avisa via 'app:before-quit', ver index.ts) — mostra um diálogo
@@ -159,9 +162,7 @@ function App(): React.JSX.Element {
   // null. Um de cada vez: dois convites simultâneos são raros e
   // empilhar toasts complicaria mais do que resolve — o segundo
   // substitui o primeiro.
-  const [invite, setInvite] = useState<{ roomName: string; hostName: string | null } | null>(
-    null
-  )
+  const [invite, setInvite] = useState<{ roomName: string; hostName: string | null } | null>(null)
 
   useEffect(() => {
     // `session.load()` é IPC puro (lê um arquivo local), resolve em poucos
@@ -184,7 +185,19 @@ function App(): React.JSX.Element {
       //
       // Só quando HÁ sessão: sem ela a próxima tela é o login, e é lá
       // que a conexão será aberta.
-      if (session) await window.api.rooms.connect()
+      //
+      // Junto, ainda no splash (2026-10-19, pedido do usuário):
+      //   - a lista de SALAS de agora, por HTTP — a Home nasce com ela e
+      //     o alerta de live nova já vale (ver useNewLiveSound.ts);
+      //   - a lista de jogos detectáveis, em segundo plano e sem barra.
+      //     O main só baixa se o cache venceu. Antes ela era disparada ao
+      //     montar o app, sem token, e tomava 401.
+      // As duas em paralelo, depois da conexão (que é o que garante o
+      // token). Nenhuma rejeita: servidor fora do ar não prende o splash.
+      if (session) {
+        await window.api.rooms.connect()
+        await Promise.all([loadRooms(), window.api.games.ensureDetectableList().catch(() => {})])
+      }
 
       setUser(session)
       setCheckingSession(false)
@@ -262,7 +275,7 @@ function App(): React.JSX.Element {
 
   async function handleLogout(): Promise<void> {
     if (transmission.transmitting) await stopTransmission()
-    viewer.roomCodes.forEach((code) => viewer.leaveRoom(code))
+    viewer.roomCodes.forEach((code) => viewer.leaveRoom(code, { silent: true }))
     // Fecha o WebSocket e PARA o ciclo de reconexão (2026-09-13) —
     // sem isto ele continuaria tentando com um token recém-apagado,
     // enchendo o log de 4401 exatamente como fazia antes do login.
@@ -284,7 +297,7 @@ function App(): React.JSX.Element {
     // login (item pedido pelo usuário) só com a logo centralizada.
     screen = (
       <div className="auth-page">
-        <div className="auth-branding">
+        <div className="auth-branding auth-branding-splash">
           <img src={iconName} alt="Prisma" />
           {/* Spinner (2026-09-13, pedido do usuário). O splash deixou de
               ser só uma marca parada: agora ele espera de verdade — o
@@ -357,11 +370,12 @@ function App(): React.JSX.Element {
             getViewerBitrateFetcher={viewer.getBitrateFetcher}
             onNavigateTransmission={() => setHomeView('transmission')}
             transmitting={transmission.transmitting}
+            launchingTransmission={transmission.launching}
             stoppingTransmission={transmission.stopping}
             roomCode={transmission.roomCode}
+            transmissionStartedAt={transmission.startedAt}
             nowPlaying={transmission.nowPlaying}
             transmissionSettings={transmission.settings}
-            transmissionError={transmission.error}
             onNotify={(message, isError, options) =>
               snackbar.show(message, { error: isError, ...options })
             }
@@ -372,17 +386,31 @@ function App(): React.JSX.Element {
             attachHostPreviewVideo={hostPreview.attachVideo}
             getHostPreviewStats={hostPreview.getStats}
             getHostPreviewBitrate={hostPreview.getBitrate}
-
           />
         </div>
 
         {homeView === 'transmission' && (
-          <TransmissionScreen
-            onBack={() => setHomeView('home')}
-            onStart={async (settings) => {
-              const started = await transmission.start(settings, user.name)
-              if (started) setHomeView('home')
-              return started
+          // O dialog de iniciar (2026-10-16): a tela cheia virou o mesmo
+          // dialog do "atualizar", e o clique em "Compartilhar tela" já é
+          // o início. Ele fecha NA HORA — a live aparece pro host no mesmo
+          // render e o resto sobe em segundo plano (ver start() em
+          // useGstreamerTransmission.ts).
+          //
+          // A qualidade só é lembrada quando a live entrou no ar de
+          // verdade (2026-09-25): uma tentativa que falhou não "usou"
+          // nada.
+          <SourcePickerDialog
+            mode="start"
+            initialPrivate={false}
+            onClose={() => setHomeView('home')}
+            onPick={(settings, source) => {
+              setHomeView('home')
+              void transmission
+                .start(settings, user.name, nowPlayingFromSource(source))
+                .then((started) => {
+                  if (started)
+                    saveLastQuality({ resolution: settings.resolution, fps: settings.fps })
+                })
             }}
           />
         )}
@@ -403,6 +431,7 @@ function App(): React.JSX.Element {
     screen = (
       <LoginScreen
         onAuthenticated={setUser}
+        onLoadRooms={loadRooms}
         onNavigateRegister={() => setAuthScreen('register')}
         onNavigateForgotPassword={() => setAuthScreen('forgot')}
       />
@@ -510,6 +539,7 @@ function App(): React.JSX.Element {
         <ReleaseNotesModal
           initialVersion={releaseNotes.initialVersion}
           installedVersion={releaseNotes.installedVersion}
+          newVersions={releaseNotes.newVersions}
           onClose={releaseNotes.close}
         />
       )}
@@ -535,24 +565,6 @@ function App(): React.JSX.Element {
           <div className="update-dialog">
             <span className="update-dialog-spinner" />
             <p className="update-dialog-status">Parando transmissão...</p>
-          </div>
-        </div>
-      )}
-      {detectableGamesSync.updating && (
-        <div className="modal-backdrop">
-          <div className="update-dialog">
-            <p className="update-dialog-status">Atualizando dependências...</p>
-            <div className="update-dialog-progress-track">
-              <div
-                className="update-dialog-progress-fill"
-                style={{
-                  width: `${Math.min(100, Math.max(0, detectableGamesSync.progress * 100))}%`
-                }}
-              />
-            </div>
-            <p className="update-dialog-progress-label">
-              {Math.min(100, Math.max(0, Math.round(detectableGamesSync.progress * 100)))}%
-            </p>
           </div>
         </div>
       )}

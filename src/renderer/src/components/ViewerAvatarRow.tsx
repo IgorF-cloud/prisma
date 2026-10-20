@@ -19,9 +19,10 @@ import UserAvatar from './UserAvatar'
 // último que cabe inteiro — daí o corte ser um número conhecido, e não
 // uma medição em tempo de execução.
 //
-// O tile acima do rodapé (`.host-chat-bar-viewers`, 2026-09-25) pede 10:
-// lá a largura não é fixa, então o corte é uma escolha de desenho e não
-// uma consequência da caixa.
+// O bloco de espectadores do RODAPÉ (`.footer-viewers`, 2026-09-29 —
+// antes era a pílula `.host-chat-bar-viewers` na linha acima dele) pede
+// 10: lá a largura não é fixa, então o corte é uma escolha de desenho e
+// não uma consequência da caixa.
 const DEFAULT_MAX = 11
 
 interface ViewerAvatarRowProps {

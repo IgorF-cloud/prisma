@@ -6,11 +6,10 @@ import { join } from 'path'
 
 // Como o app roda um script de PowerShell e lê o JSON de volta.
 //
-// Morava em nativeCaptureTargets.ts e saiu de lá em 2026-09-25, quando a
-// enumeração de janelas ganhou um segundo caminho (o helper nativo, ver
-// windowEnumeration.ts) — os dois módulos precisam disto, e deixar num
-// deles faria o outro importar do vizinho por um detalhe de
-// infraestrutura.
+// Sobraram DOIS usos, os dois em nativeCaptureTargets.ts: o HMONITOR de
+// cada tela e o PID raiz do Discord. A enumeração de JANELAS também
+// passava por aqui e saiu em 2026-09-30 — quem lista janela é o Chromium,
+// e o que falta sobre elas vem do helper nativo (windowEnumeration.ts).
 
 // Roda o script via arquivo temporário (`-File`), não `-Command <string>`.
 // O script tem aspas duplas e um bloco `Add-Type @" ... "@` (here-string)
@@ -27,10 +26,9 @@ export function runPowerShell(script: string): Promise<string> {
     // `[Console]::OutputEncoding` do PowerShell 5.1, quando o stdout é
     // redirecionado (nosso caso, via spawn/pipe — não um console de
     // verdade), usa a codepage ANSI do sistema por padrão, não UTF-8 —
-    // qualquer texto com acento que passe por aqui (ex: título de janela
-    // "Configurações" no WINDOW_SCRIPT) sai corrompido do outro lado.
-    // Setar aqui, uma vez só, cobre TODOS os scripts que passam por essa
-    // função (MONITOR_SCRIPT, WINDOW_SCRIPT, DISCORD_PID_SCRIPT).
+    // qualquer texto com acento que passe por aqui sai corrompido do
+    // outro lado. Setar aqui, uma vez só, cobre TODOS os scripts que
+    // passam por essa função (MONITOR_SCRIPT, DISCORD_PID_SCRIPT).
     const scriptWithUtf8Output = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n${script}`
     writeFileSync(scriptPath, scriptWithUtf8Output, 'utf-8')
 
@@ -59,9 +57,9 @@ export function runPowerShell(script: string): Promise<string> {
 }
 
 // `ConvertTo-Json` não escreve nada no stdout quando o que é canalizado
-// pra ele é uma coleção vazia (ex: nenhuma janela com título encontrada)
-// — sem essa checagem, `JSON.parse('')` explodiria de novo, só que por um
-// motivo diferente do bug do escaping do -Command.
+// pra ele é uma coleção vazia (ex: nenhum monitor devolvido) — sem essa
+// checagem, `JSON.parse('')` explodiria de novo, só que por um motivo
+// diferente do bug do escaping do -Command.
 export function parseJsonList<T>(output: string): T[] {
   const trimmed = output.trim()
   if (!trimmed) return []

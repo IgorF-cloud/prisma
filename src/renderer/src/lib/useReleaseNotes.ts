@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { findRelease, RELEASE_NOTES } from './releaseNotes'
+import { findRelease, RELEASE_NOTES, unseenReleases } from './releaseNotes'
 
 // Quando a janela de notas abre SOZINHA (2026-09-25, pedido do usuário).
 //
@@ -48,6 +48,12 @@ export interface ReleaseNotesState {
   // que acabou de ser instalada; no clique do botão, a mais nova que
   // tem nota escrita.
   initialVersion: string
+  // As versões que chegaram desde a última vez que a pessoa viu as notas
+  // (2026-10-19) — a janela destaca todas elas, não só a instalada.
+  // Calculado na abertura automática e guardado pela sessão inteira: o
+  // "já viu" é gravado nesse mesmo instante, então reabrir pelo link da
+  // titlebar ainda mostra o destaque em vez de perdê-lo no primeiro Esc.
+  newVersions: string[]
   open: () => void
   close: () => void
 }
@@ -59,6 +65,7 @@ export function useReleaseNotes(enabled: boolean): ReleaseNotesState {
   const [isOpen, setIsOpen] = useState(false)
   const [initialVersion, setInitialVersion] = useState('')
   const [installedVersion, setInstalledVersion] = useState('')
+  const [newVersions, setNewVersions] = useState<string[]>([])
 
   useEffect(() => {
     if (!enabled) return
@@ -72,13 +79,15 @@ export function useReleaseNotes(enabled: boolean): ReleaseNotesState {
       // ela ainda tem chance de aparecer. Ver o aviso no topo de
       // releaseNotes.ts.
       if (!findRelease(installed)) return
-      if (readSeenVersion() === installed) return
+      const lastSeen = readSeenVersion()
+      if (lastSeen === installed) return
 
       // Gravado ao ABRIR, e não ao fechar: fechar tem vários caminhos
       // (o X, o Esc, o clique fora) e o app pode ser encerrado com a
       // janela aberta. Marcando aqui, "apareceu uma vez" é exatamente o
       // que fica registrado.
       writeSeenVersion(installed)
+      setNewVersions(unseenReleases(lastSeen, installed))
       setInitialVersion(installed)
       setIsOpen(true)
     })
@@ -100,5 +109,5 @@ export function useReleaseNotes(enabled: boolean): ReleaseNotesState {
 
   const close = useCallback(() => setIsOpen(false), [])
 
-  return { isOpen, installedVersion, initialVersion, open, close }
+  return { isOpen, installedVersion, initialVersion, newVersions, open, close }
 }

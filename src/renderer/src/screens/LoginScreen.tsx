@@ -9,12 +9,16 @@ import AccountStatusScreen, { AccountStatus } from './AccountStatusScreen'
 
 interface LoginScreenProps {
   onAuthenticated: (user: AuthUser) => void
+  // Carrega a lista de salas no estado do App (2026-10-19) — ver
+  // `load` em useRooms.ts.
+  onLoadRooms: () => Promise<void>
   onNavigateRegister: () => void
   onNavigateForgotPassword: () => void
 }
 
 function LoginScreen({
   onAuthenticated,
+  onLoadRooms,
   onNavigateRegister,
   onNavigateForgotPassword
 }: LoginScreenProps): React.JSX.Element {
@@ -99,6 +103,15 @@ function LoginScreen({
       // rejeita (ver CONNECT_WAIT_TIMEOUT_MS no main): servidor fora do
       // ar não deve impedir alguém de entrar no app.
       await window.api.rooms.connect()
+
+      // Lista de salas de AGORA, buscada por HTTP antes de liberar a
+      // Home (2026-10-19, pedido do usuário). A conexão acima resolve
+      // quando o WebSocket abre, não quando o primeiro retrato chega —
+      // a Home podia nascer com a lista vazia, e as lives que já estavam
+      // no ar chegavam depois parecendo novas (tocando o som de live
+      // nova no login). O login demora um pouco mais; em troca a Home
+      // já abre com as salas e com o alerta de live nova valendo.
+      await onLoadRooms()
 
       onAuthenticated(user)
     } catch (err) {
