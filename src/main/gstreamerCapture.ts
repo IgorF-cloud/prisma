@@ -95,14 +95,14 @@ function gstreamerRootCandidates(): string[] {
   return [join(app.getAppPath(), 'installer', 'gstreamer')]
 }
 
-function resolveBundledGstreamerRoot(): string | null {
+export function resolveBundledGstreamerRoot(): string | null {
   for (const root of gstreamerRootCandidates()) {
     if (existsSync(join(root, 'bin', 'gst-launch-1.0.exe'))) return root
   }
   return null
 }
 
-function resolveGstLaunchPath(): string {
+export function resolveGstLaunchPath(): string {
   const bundled = resolveBundledGstreamerRoot()
   if (bundled) return join(bundled, 'bin', 'gst-launch-1.0.exe')
 
@@ -137,7 +137,7 @@ function resolveGstLaunchPath(): string {
 // Sem conjunto embarcado (degraus 2 e 3), devolve o ambiente intacto: o
 // GStreamer do sistema já sabe se virar sozinho, e mexer nas variáveis
 // dele só criaria um jeito novo de quebrar.
-function gstreamerEnv(): NodeJS.ProcessEnv {
+export function gstreamerEnv(): NodeJS.ProcessEnv {
   const root = resolveBundledGstreamerRoot()
   if (!root) return process.env
 

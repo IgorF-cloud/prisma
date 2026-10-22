@@ -21,6 +21,10 @@ interface ChatMessage {
 
 interface UserSettings {
   alertForNewLives: boolean
+  // Alerta de novas lives em três níveis (2026-10-22, etapa 8). Opcional:
+  // servidor anterior e o session.json antigo não trazem — aí vale o
+  // `alertForNewLives` (ver newLiveAlertsOf no renderer).
+  newLiveAlerts?: 'all' | 'friends' | 'none'
   // Sobreposição de viewers na tela durante a live (2026-09-10).
   // Nasce DESLIGADA: ela desenha por cima da tela do usuário.
   showViewersOverlay: boolean
@@ -85,6 +89,14 @@ interface DirectoryUser {
   presence: 'available' | 'busy'
 }
 
+// As minhas relações (2026-10-21): amigos, pedidos que recebi e pedidos
+// que mandei — ver src/main/users.ts.
+interface FriendsSnapshot {
+  friends: number[]
+  incoming: number[]
+  outgoing: number[]
+}
+
 interface RoomsSnapshot {
   rooms: RoomInfo[]
   userAvatars: UserAvatars
@@ -95,13 +107,14 @@ interface UpdateInfo {
   version: string
   url: string
   sha256: string
+  minVersion?: string | null
 }
 
 // Mesmo resultado nos dois caminhos — o `check()` que o renderer pede no
 // login e o push que o main manda quando uma versão é publicada. Ver
 // UpdateCheckResult em src/main/update.ts.
 type UpdateCheckResult =
-  | { available: true; info: UpdateInfo; currentVersion: string }
+  | { available: true; info: UpdateInfo; currentVersion: string; required: boolean }
   | { available: false; currentVersion: string }
 
 interface GstreamerPipelineParams {
@@ -195,21 +208,14 @@ interface Api {
     setPresence: (id: number, preference: 'available' | 'busy') => Promise<AuthUser>
     pin: (id: number) => Promise<void>
     unpin: (id: number) => Promise<void>
-    invite: (roomName: string, userId: number) => Promise<void>
-    acceptInvite: (roomName: string) => Promise<void>
-    declineInvite: (roomName: string, reason: 'declined' | 'expired') => Promise<void>
+    friends: () => Promise<FriendsSnapshot>
+    requestFriend: (id: number) => Promise<FriendsSnapshot>
+    acceptFriend: (id: number) => Promise<FriendsSnapshot>
+    // Recusar, cancelar o pedido ou desfazer a amizade.
+    removeFriend: (id: number) => Promise<FriendsSnapshot>
     kick: (roomName: string, username: string) => Promise<void>
-    onInvite: (
-      callback: (invite: { roomName: string; hostName: string | null }) => void
-    ) => () => void
-    onInviteResult: (
-      callback: (result: {
-        roomName: string
-        userId: number
-        userName: string
-        result: 'accepted' | 'declined' | 'expired'
-      }) => void
-    ) => () => void
+    leaveRoom: (roomName: string) => Promise<void>
+    onFriends: (callback: (snapshot: FriendsSnapshot) => void) => () => void
   }
   // Chat temporário da live (2026-09-23) — vive só enquanto a live
   // existe; o servidor guarda as últimas mensagens em memória e joga
@@ -260,8 +266,24 @@ interface Api {
       participantName: string
       private?: boolean
       game?: { kind: 'game' | 'window' | 'screen'; name: string; iconUrl?: string | null } | null
+      // Qual transmissão (2026-10-20, item 26): sem ele é a tela.
+      source?: 'screen' | 'cam'
     }) => Promise<{ url: string; streamKey: string }>
-    deleteIngress: (roomName: string) => Promise<boolean>
+    // `source` (2026-10-20): remove só aquela transmissão. Sem ele, a tela.
+    deleteIngress: (roomName: string, source?: 'screen' | 'cam') => Promise<boolean>
+  }
+  // A transmissão da WEBCAM (2026-10-20, item 26) — ver
+  // src/main/webcamCapture.ts.
+  webcam: {
+    start: (params: {
+      roomCode: string
+      whipUrl: string
+      streamKey: string
+      deviceName: string
+    }) => Promise<{ ok: boolean; error?: string }>
+    stop: () => Promise<{ ok: boolean }>
+    onExited: (callback: (info: { code: number | null; error?: string }) => void) => () => void
+    onPlaying: (callback: (info: { roomCode: string }) => void) => () => void
   }
   gstreamer: {
     start: (params: GstreamerPipelineParams) => Promise<{
@@ -326,8 +348,9 @@ interface Api {
     confirmQuit: () => void
     getVersion: () => Promise<string>
     getApiBaseUrl: () => Promise<string>
-    // Aviso de convite na barra de tarefas (2026-09-13).
-    setInviteFlash: (show: boolean) => void
+    // Destaque laranja do botão na barra de tarefas (2026-09-13; desde a
+    // etapa 8 é dos alertas de live nova e de mensagem no chat).
+    flashTaskbar: () => void
     setTitleBarFocused: (focused: boolean) => void
   }
   games: {

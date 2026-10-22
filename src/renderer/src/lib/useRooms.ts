@@ -29,6 +29,37 @@ export interface RoomInfo {
   // antes de mandar, então receber uma aqui já significa que dá pra
   // entrar.
   private: boolean
+  // Quais transmissões a sala tem (2026-10-20, webcam — item 26): a da
+  // TELA e/ou a da WEBCAM, cada uma com o seu tile pra quem assiste.
+  // Opcional porque servidor anterior à 1.2 não manda — ver `roomSources`.
+  sources?: RoomSources
+}
+
+export interface RoomSources {
+  screen: boolean
+  cam: boolean
+}
+
+export type RoomFeed = keyof RoomSources
+
+// As transmissões de uma sala, com o padrão de antes da webcam (só tela)
+// quando o servidor não diz nada.
+export function roomSources(room: RoomInfo | undefined): RoomSources {
+  return room?.sources ?? { screen: true, cam: false }
+}
+
+// As transmissões que a sala NÃO tem agora (2026-10-20). Entrar numa
+// sala já com elas fechadas é o que impede uma transmissão que o host
+// liga depois de abrir sozinha pra quem já está assistindo — ela aparece
+// na ficha da sala e só abre no "Assistir".
+//
+// Sala desconhecida (convite aceito: privada, ela só chega na lista
+// depois do aceite) não fecha nada — sem saber o que ela transmite,
+// fechar "a webcam" poderia fechar justamente a única transmissão dela.
+export function absentFeeds(room: RoomInfo | undefined): RoomFeed[] {
+  if (!room) return []
+  const sources = roomSources(room)
+  return (['screen', 'cam'] as RoomFeed[]).filter((feed) => !sources[feed])
 }
 
 // userId -> estado. Quem NAO esta no mapa esta offline. Vem junto das

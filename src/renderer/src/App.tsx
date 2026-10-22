@@ -4,11 +4,13 @@ import RegisterScreen from './screens/RegisterScreen'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
 import HomeScreen from './screens/HomeScreen'
 import { useGstreamerTransmission } from './lib/useGstreamerTransmission'
+import { useWebcamTransmission } from './lib/useWebcamTransmission'
+import { currentHostRoom } from './lib/hostRoom'
 import { useHostPreview } from './lib/useHostPreview'
 import { useViewer } from './lib/useViewer'
 import { useLiveChat } from './lib/useLiveChat'
 import { useSnackbar } from './lib/useSnackbar'
-import { useRooms } from './lib/useRooms'
+import { absentFeeds, useRooms } from './lib/useRooms'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useReleaseNotes } from './lib/useReleaseNotes'
 import { useHiddenOwnRoomCode } from './lib/useHiddenOwnRoomCode'
@@ -20,14 +22,14 @@ import UpdateDialog from './components/UpdateDialog'
 import ReleaseNotesModal from './components/ReleaseNotesModal'
 import PopinPlayer from './components/PopinPlayer'
 import TitleBar from './components/TitleBar'
-import InviteToast from './components/InviteToast'
 import SourcePickerDialog from './components/SourcePickerDialog'
+import WebcamPickerDialog from './components/WebcamPickerDialog'
+import TransmitKindSwitch, { TransmitKind } from './components/TransmitKindSwitch'
 
 import iconName from './assets/iconName.png'
 import { AuthUser } from './lib/authUser'
 
 type AuthScreen = 'login' | 'register' | 'forgot'
-type HomeView = 'home' | 'transmission'
 
 // Tempo MÍNIMO que o splash de "carregando sessão" fica na tela (ver o
 // useEffect que chama session.load()). Mexer aqui pra encurtar/alongar.
@@ -37,18 +39,49 @@ function App(): React.JSX.Element {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [checkingSession, setCheckingSession] = useState(true)
   const [authScreen, setAuthScreen] = useState<AuthScreen>('login')
-  const [homeView, setHomeView] = useState<HomeView>('home')
+  // O SELETOR DE FONTE (2026-10-22, pedido do usuário): uma janela só pras
+  // duas transmissões. `active` é a aba aberta (Tela ou Vídeo); `only`
+  // trava nela — é o "Adicionar transmissão de vídeo/tela" do rodapé, com a
+  // outra já no ar. Pelo botão da barra (nada no ar) as duas abas aparecem.
+  // `switched`: a pessoa trocou de aba, então a janela nova entra sem a
+  // animação de abertura (são duas janelas por baixo — ver TransmitKindSwitch).
+  // `isPrivate`: a SALA privada é escolha de uma vez só, valha a aba que
+  // valer — trocar de Tela pra Vídeo não desfaz (2026-10-22).
+  const [picker, setPicker] = useState<{
+    active: TransmitKind
+    only: boolean
+    switched: boolean
+    isPrivate: boolean
+  } | null>(null)
+  const setPickerPrivate = (isPrivate: boolean): void =>
+    setPicker((current) => (current ? { ...current, isPrivate } : current))
 
   const snackbar = useSnackbar()
   const transmission = useGstreamerTransmission((message) =>
     snackbar.show(message, { error: true })
   )
+  // A WEBCAM (2026-10-20, item 26): uma segunda transmissão, independente
+  // da tela, na MESMA sala do host — ver hostRoom.ts.
+  const webcam = useWebcamTransmission((message) => snackbar.show(message, { error: true }))
+  // A sala do host, aberta pela tela, pela webcam ou pelas duas. É ela
+  // que some da minha própria lista e que tem o meu chat.
+  const hostRoomCode = transmission.roomCode ?? webcam.roomCode
+  const anyTransmission = transmission.transmitting || webcam.active
   // Só com a sala criada no servidor (2026-10-16): desde o "start
   // instantâneo" o `roomCode` existe a partir do clique, um instante antes
   // de haver sala onde o preview possa entrar.
   const hostPreview = useHostPreview(
     transmission.roomOpen ? transmission.roomCode : null,
     user?.name ?? null
+  )
+  // A miniatura da webcam no rodapé (2026-10-20, item 26, etapa 4): a
+  // mesma gambiarra do preview da tela, numa conexão própria e sempre
+  // ligada enquanto a webcam estiver no ar. A etapa 0 mostrou que o
+  // preview não pode ser local — a câmera não abre em dois programas.
+  const webcamPreview = useHostPreview(
+    webcam.roomOpen ? webcam.roomCode : null,
+    user?.name ?? null,
+    { feed: 'cam', alwaysOn: true }
   )
   const viewer = useViewer(
     (reason) =>
@@ -69,8 +102,8 @@ function App(): React.JSX.Element {
   // daqui veria.
   const chat = useLiveChat(user?.name ?? null, (message) => snackbar.show(message, { error: true }))
   const chatRoomCodes = useMemo(
-    () => (transmission.roomCode ? [...viewer.roomCodes, transmission.roomCode] : viewer.roomCodes),
-    [viewer.roomCodes, transmission.roomCode]
+    () => (hostRoomCode ? [...viewer.roomCodes, hostRoomCode] : viewer.roomCodes),
+    [viewer.roomCodes, hostRoomCode]
   )
   useEffect(() => {
     chat.syncRooms(chatRoomCodes)
@@ -93,7 +126,7 @@ function App(): React.JSX.Element {
   // de DELETE (ingress/sala) confirmarem sucesso, que podem terminar
   // antes do webhook `room_finished` propagar (ver
   // useHiddenOwnRoomCode.ts pro race condition que isso corrige).
-  const hiddenOwnRoomCode = useHiddenOwnRoomCode(transmission.roomCode, rooms)
+  const hiddenOwnRoomCode = useHiddenOwnRoomCode(hostRoomCode, rooms)
   // Checagem/instalação de atualização — só ativa depois do login, mesmo
   // timing do app Flutter (ver useAppUpdate.ts).
   const appUpdate = useAppUpdate(Boolean(user))
@@ -158,12 +191,6 @@ function App(): React.JSX.Element {
   // e avisa via 'app:before-quit', ver index.ts) — mostra um diálogo
   // bloqueante enquanto isso, em vez do fire-and-forget de antes.
   const [closingApp, setClosingApp] = useState(false)
-  // Convite pra live privada que acabou de chegar pelo WebSocket, ou
-  // null. Um de cada vez: dois convites simultâneos são raros e
-  // empilhar toasts complicaria mais do que resolve — o segundo
-  // substitui o primeiro.
-  const [invite, setInvite] = useState<{ roomName: string; hostName: string | null } | null>(null)
-
   useEffect(() => {
     // `session.load()` é IPC puro (lê um arquivo local), resolve em poucos
     // milissegundos — o splash aparecia e sumia num piscar. Pedido do
@@ -210,25 +237,6 @@ function App(): React.JSX.Element {
 
   useEffect(() => window.api.app.onClosing(() => setClosingApp(true)), [])
 
-  // Convite chegando. Só registra o listener depois do login: antes
-  // disso não há WebSocket nem usuário pra receber nada.
-  useEffect(() => {
-    if (!user) return
-    return window.api.users.onInvite(setInvite)
-  }, [user])
-
-  // Aviso na barra de tarefas (2026-09-13) — acende junto do toast e
-  // apaga junto com ele, seja qual for o desfecho (aceito, recusado ou
-  // expirado).
-  //
-  // Derivado do ESTADO `invite`, e não chamado em cada handler: assim
-  // não existe caminho que feche o toast e esqueça de apagar o aviso —
-  // são três desfechos e bastaria esquecer um pra deixar o botão do app
-  // piscando por um convite que já morreu.
-  useEffect(() => {
-    window.api.app.setInviteFlash(Boolean(invite))
-  }, [invite])
-
   // JWT vencido (30 dias) ou inválido: o main avisa em qualquer 401 e o
   // app volta pra tela de login. Sem isso o usuário ficaria numa Home
   // que não carrega nada, tomando erro em cada ação sem entender por quê.
@@ -262,19 +270,32 @@ function App(): React.JSX.Element {
     await transmission.stop()
   }
 
+  // O mesmo cuidado pra webcam: a miniatura dela cai antes do ingress (e
+  // da sala, se a webcam era a última).
+  async function stopWebcam(): Promise<void> {
+    webcamPreview.disconnect()
+    await webcam.stop()
+  }
+
   useEffect(() => {
     if (!closingApp) return
     ;(async () => {
-      if (transmission.transmitting) {
-        await stopTransmission()
-      }
+      // As duas juntas (2026-10-20): a ordem não importa — a segunda a
+      // sair da sala é quem a derruba (ver hostRoom.ts).
+      await Promise.allSettled([
+        transmission.transmitting ? stopTransmission() : Promise.resolve(),
+        webcam.active ? stopWebcam() : Promise.resolve()
+      ])
       window.api.app.confirmQuit()
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closingApp])
 
   async function handleLogout(): Promise<void> {
-    if (transmission.transmitting) await stopTransmission()
+    await Promise.allSettled([
+      transmission.transmitting ? stopTransmission() : Promise.resolve(),
+      webcam.active ? stopWebcam() : Promise.resolve()
+    ])
     viewer.roomCodes.forEach((code) => viewer.leaveRoom(code, { silent: true }))
     // Fecha o WebSocket e PARA o ciclo de reconexão (2026-09-13) —
     // sem isto ele continuaria tentando com um token recém-apagado,
@@ -289,6 +310,20 @@ function App(): React.JSX.Element {
   // avisado que a live acabou enquanto está na Home) — por isso é
   // renderizado uma vez só, fora do if/else de qual tela mostrar, em vez
   // de duplicado em cada `return` abaixo.
+  // A chave "Tela | Vídeo" no topo do seletor — só quando as duas abas
+  // valem (pelo botão da barra). No "Adicionar…" do rodapé ela some.
+  const kindSwitch =
+    picker && !picker.only ? (
+      <TransmitKindSwitch
+        active={picker.active}
+        onChange={(active) =>
+          setPicker((current) =>
+            current ? { ...current, active, only: false, switched: true } : current
+          )
+        }
+      />
+    ) : null
+
   let screen: React.JSX.Element
 
   if (checkingSession) {
@@ -333,7 +368,7 @@ function App(): React.JSX.Element {
             o tipo do nó e a desmontaria, que é justamente o que esta
             mudança evita. Ele não mexe no layout: `.home-page` é
             `position: fixed`, então não depende do pai pra se posicionar. */}
-        <div inert={homeView === 'transmission'}>
+        <div inert={picker !== null}>
           <HomeScreen
             user={user}
             appVersion={appUpdate.currentVersion}
@@ -353,9 +388,13 @@ function App(): React.JSX.Element {
             viewerRoomCodes={viewer.roomCodes}
             popinRoomCode={popinRoomCode}
             onPopinRoom={(code) => setPopinRoomCode(code)}
-            onJoinRoom={(code, password) => {
+            onJoinRoom={(code, password, hidden) => {
               esquecerPopin(code)
-              return viewer.joinRoom(code, user.name, password)
+              // Sem escolha explícita (clique na sala da barra, entrar por
+              // código), entra no que a sala transmite AGORA — o que o
+              // host ligar depois fica fechado até o "Assistir".
+              const room = rooms.find((r) => r.name === code)
+              return viewer.joinRoom(code, user.name, password, hidden ?? absentFeeds(room))
             }}
             onLeaveRoom={(code) => {
               esquecerPopin(code)
@@ -368,11 +407,29 @@ function App(): React.JSX.Element {
             onSetViewerMuted={viewer.setMuted}
             getViewerStatsFetcher={viewer.getStatsFetcher}
             getViewerBitrateFetcher={viewer.getBitrateFetcher}
-            onNavigateTransmission={() => setHomeView('transmission')}
+            getAttachViewerCamVideo={viewer.getAttachCamVideo}
+            viewerHiddenFeeds={viewer.hiddenFeeds}
+            onSetViewerFeedVisible={viewer.setFeedVisible}
+            onOpenPicker={(only) =>
+              setPicker({
+                active: only ?? 'screen',
+                only: only !== undefined,
+                switched: false,
+                isPrivate: false
+              })
+            }
+            webcamStatus={webcam.status}
+            onStopWebcam={() => void stopWebcam()}
             transmitting={transmission.transmitting}
             launchingTransmission={transmission.launching}
             stoppingTransmission={transmission.stopping}
-            roomCode={transmission.roomCode}
+            // A SALA do host (2026-10-20, etapa 4): aberta pela tela, pela
+            // webcam ou pelas duas — o rodapé, o chat e os espectadores são
+            // dela, não de uma transmissão.
+            roomCode={hostRoomCode}
+            webcamDeviceName={webcam.device?.name ?? null}
+            webcamStartedAt={webcam.startedAt}
+            attachWebcamPreviewVideo={webcamPreview.attachVideo}
             transmissionStartedAt={transmission.startedAt}
             nowPlaying={transmission.nowPlaying}
             transmissionSettings={transmission.settings}
@@ -389,7 +446,7 @@ function App(): React.JSX.Element {
           />
         </div>
 
-        {homeView === 'transmission' && (
+        {picker?.active === 'screen' && (
           // O dialog de iniciar (2026-10-16): a tela cheia virou o mesmo
           // dialog do "atualizar", e o clique em "Compartilhar tela" já é
           // o início. Ele fecha NA HORA — a live aparece pro host no mesmo
@@ -399,18 +456,42 @@ function App(): React.JSX.Element {
           // A qualidade só é lembrada quando a live entrou no ar de
           // verdade (2026-09-25): uma tentativa que falhou não "usou"
           // nada.
+          //
+          // Com a webcam no ar (2026-10-20), a tela entra na sala que ela
+          // abriu: a privacidade é a da sala, e o switch aparece travado.
           <SourcePickerDialog
             mode="start"
-            initialPrivate={false}
-            onClose={() => setHomeView('home')}
+            initialPrivate={currentHostRoom()?.private ?? picker.isPrivate}
+            privateLocked={currentHostRoom() !== null}
+            onPrivateChange={setPickerPrivate}
+            instant={picker.switched}
+            kindSwitch={kindSwitch}
+            onClose={() => setPicker(null)}
             onPick={(settings, source) => {
-              setHomeView('home')
+              setPicker(null)
               void transmission
                 .start(settings, user.name, nowPlayingFromSource(source))
                 .then((started) => {
                   if (started)
                     saveLastQuality({ resolution: settings.resolution, fps: settings.fps })
                 })
+            }}
+          />
+        )}
+
+        {/* A janela da webcam (2026-10-20, item 26). Com a tela no ar, a
+            webcam entra na sala dela, com a privacidade travada. */}
+        {picker?.active === 'cam' && (
+          <WebcamPickerDialog
+            instant={picker.switched}
+            kindSwitch={kindSwitch}
+            lockedPrivate={currentHostRoom()?.private ?? null}
+            initialPrivate={picker.isPrivate}
+            onPrivateChange={setPickerPrivate}
+            onClose={() => setPicker(null)}
+            onPick={(device, isPrivate) => {
+              setPicker(null)
+              void webcam.start(device, user.name, isPrivate)
             }}
           />
         )}
@@ -452,46 +533,6 @@ function App(): React.JSX.Element {
         onNotesClick={releaseNotes.open}
       />
       {screen}
-      {/* Aceitar entra na sala na hora (o servidor libera o acesso e o
-          viewer conecta em seguida) — ver InviteToast.tsx. */}
-      {invite && user && (
-        <InviteToast
-          // `key` pela sala (2026-09-14): se um segundo convite chegar
-          // com o toast ainda na tela, o React reusaria a instância — e
-          // o timer de 30s, que roda com deps `[]`, continuaria valendo o
-          // do PRIMEIRO convite. O convite novo morreria cedo, e a recusa
-          // automática seria mandada pra sala errada. Com a key, convite
-          // novo é componente novo, e a contagem recomeça.
-          key={invite.roomName}
-          hostName={invite.hostName}
-          onAccept={async () => {
-            const { roomName } = invite
-            setInvite(null)
-            try {
-              await window.api.users.acceptInvite(roomName)
-              esquecerPopin(roomName)
-              const result = await viewer.joinRoom(roomName, user.name)
-              if (!result.ok) {
-                snackbar.show(result.error ?? 'Não foi possível entrar na live', {
-                  error: true
-                })
-              }
-            } catch {
-              snackbar.show('Não foi possível entrar na live', { error: true })
-            }
-          }}
-          onDecline={(reason) => {
-            const { roomName } = invite
-            setInvite(null)
-            // Só avisa o host — não muda nada pra mim. Um erro aqui
-            // (servidor fora do ar, por exemplo) não pode virar um
-            // aviso na tela de quem RECUSOU: o convite morreu do
-            // mesmo jeito, e a mensagem só confundiria.
-            void window.api.users.declineInvite(roomName, reason).catch(() => {})
-          }}
-        />
-      )}
-
       {/* A janelinha vive fora de qualquer tela: ela sobrevive a
           navegar pra "iniciar live" e à janela principal ser
           minimizada — que é justamente quando ela mais serve. */}
@@ -551,10 +592,11 @@ function App(): React.JSX.Element {
           progress={appUpdate.progress}
           error={appUpdate.error}
           canDismiss={appUpdate.canDismiss}
+          required={appUpdate.required}
           // Instalar fecha o app, e fechar o app derruba a live — agora
           // que dá pra chamar este diálogo NO MEIO de uma transmissão
           // (pelo botão da titlebar), ele precisa dizer isso antes.
-          transmitting={transmission.transmitting}
+          transmitting={anyTransmission}
           onStart={appUpdate.startUpdate}
           onCancelDownload={appUpdate.cancelDownload}
           onDismiss={appUpdate.dismiss}

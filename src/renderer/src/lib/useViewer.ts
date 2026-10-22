@@ -1,9 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { DisconnectReason, RemoteTrack, Room, RoomEvent, Track } from 'livekit-client'
+import {
+  DisconnectReason,
+  RemoteParticipant,
+  RemoteTrack,
+  RemoteTrackPublication,
+  Room,
+  RoomEvent,
+  Track
+} from 'livekit-client'
 import { RawTrackStats, readVideoReceiverStats } from './useTrackStats'
 import { getErrorMessage } from './errors'
 import { loadLastViewerVolume, saveLastViewerVolume } from './lastViewerVolume'
 import { playSound } from './sounds'
+import { RoomFeed } from './useRooms'
+
+// A webcam do host publica com a identity `<host>-cam` (2026-10-20, item
+// 26 — ver CAM_IDENTITY_SUFFIX no server.js). Nome de usuário não tem
+// hífen, então nenhum espectador tem uma identity assim.
+const CAM_IDENTITY_SUFFIX = '-cam'
+
+function feedOfParticipant(participant: RemoteParticipant): RoomFeed {
+  return participant.identity.endsWith(CAM_IDENTITY_SUFFIX) ? 'cam' : 'screen'
+}
+
+// Quais transmissões de cada sala a pessoa ESCONDEU (fechou o tile). Só
+// as escondidas entram — ausente é visível.
+export type HiddenFeeds = Record<string, Partial<Record<RoomFeed, true>>>
 
 interface ViewerConnection {
   room: Room
@@ -32,6 +54,19 @@ interface ViewerConnection {
   // O `loadeddata` armado no <video> que ainda espera o primeiro quadro —
   // guardado pra não empilhar dois no mesmo elemento. Ver `attachVideo`.
   videoReadyListener: { element: HTMLVideoElement; listener: () => void } | null
+  // A WEBCAM do host (2026-10-20, item 26): um segundo vídeo na MESMA
+  // conexão, no tile próprio dela. Sem áudio — a webcam só publica vídeo.
+  //
+  // Antes disto o hook pegava "o último vídeo que chegou", de qualquer
+  // participante: com tela e webcam na sala, as duas disputariam o mesmo
+  // <video>. Agora quem decide o slot é a identity de quem publica.
+  camTrack: RemoteTrack | null
+  camElement: HTMLVideoElement | null
+  // As transmissões que a pessoa fechou. Fechar um tile deixa de ASSINAR
+  // aquele vídeo (não só esconde), pra não gastar banda com o que ninguém
+  // vê. Guardado aqui pra valer também pras tracks que chegarem depois
+  // (o host troca de fonte e publica tracks novas).
+  hidden: Set<RoomFeed>
 }
 
 export interface ViewerAudioState {
@@ -51,7 +86,10 @@ interface UseViewerResult {
   joinRoom: (
     roomCode: string,
     participantName: string,
-    password?: string
+    password?: string,
+    // Entrar já com uma transmissão fechada (2026-10-20): o "Assistir" de
+    // UMA delas na ficha da sala entra só naquela — ver setFeedVisible.
+    hidden?: RoomFeed[]
   ) => Promise<{ ok: boolean; error?: string }>
   // `silent` é pra saídas em lote que não são "eu saí desta live" (ex:
   // logout derrubando todas as salas de uma vez — tocaria um 'viewerOut'
@@ -76,6 +114,12 @@ interface UseViewerResult {
   // passar pro useTrackStats.ts com identidade estável entre renders.
   getStatsFetcher: (roomCode: string) => () => Promise<RawTrackStats | undefined>
   getBitrateFetcher: (roomCode: string) => () => number
+  // Webcam do host (2026-10-20, item 26): ref callback do <video> do tile
+  // da webcam, no mesmo padrão do `getAttachVideo`.
+  getAttachCamVideo: (roomCode: string) => (element: HTMLVideoElement | null) => void
+  // Fechar/reabrir o tile de UMA transmissão sem sair da sala.
+  hiddenFeeds: HiddenFeeds
+  setFeedVisible: (roomCode: string, feed: RoomFeed, visible: boolean) => void
 }
 
 // onEndedByHost (item 14): chamado quando alguma conexão cai porque o HOST
@@ -112,8 +156,27 @@ export function useViewer(
     new Map()
   )
   const bitrateFetcherCacheRef = useRef<Map<string, () => number>>(new Map())
+  const camCallbacksRef = useRef<Map<string, (element: HTMLVideoElement | null) => void>>(new Map())
   const [roomCodes, setRoomCodes] = useState<string[]>([])
   const [audioSettings, setAudioSettings] = useState<Record<string, ViewerAudioState>>({})
+  const [hiddenFeeds, setHiddenFeeds] = useState<HiddenFeeds>({})
+
+  // O espelho do `connection.hidden` que a UI lê. A fonte de verdade é o
+  // Set da conexão — é ele que os handlers do LiveKit consultam.
+  function publishHidden(roomCode: string, connection: ViewerConnection): void {
+    const entry: Partial<Record<RoomFeed, true>> = {}
+    connection.hidden.forEach((feed) => (entry[feed] = true))
+    setHiddenFeeds((current) => ({ ...current, [roomCode]: entry }))
+  }
+
+  // Liga a track da webcam ao <video> do tile dela. Sem o cuidado de
+  // "primeiro quadro" do vídeo da tela: aquele existe pra segurar o
+  // ÁUDIO, e a webcam não tem áudio.
+  function attachCam(connection: ViewerConnection): void {
+    if (connection.camElement && connection.camTrack) {
+      connection.camTrack.attach(connection.camElement)
+    }
+  }
 
   // Chamado tanto no handler de TrackSubscribed quanto na ref callback do
   // container — qualquer um dos dois pode "chegar por último" (a track
@@ -180,6 +243,10 @@ export function useViewer(
   function leaveRoom(roomCode: string, options?: { silent?: boolean }): void {
     if (!connectionsRef.current.has(roomCode)) return
     teardown(roomCode)
+    // Tira o meu nome da lista da sala na hora (2026-10-20) — sem isto
+    // ele fica lá uns 3-4s, até o webhook do LiveKit chegar no servidor.
+    // Falhar aqui não muda nada pra quem saiu: o webhook acaba tirando.
+    window.api.users.leaveRoom(roomCode).catch(() => {})
     if (!options?.silent) playSound('viewerOut')
   }
 
@@ -189,10 +256,12 @@ export function useViewer(
 
     connection.room.disconnect()
     if (connection.videoElement) connection.videoElement.srcObject = null
+    if (connection.camElement) connection.camElement.srcObject = null
     if (connection.audioContainer) connection.audioContainer.innerHTML = ''
 
     connectionsRef.current.delete(roomCode)
     videoCallbacksRef.current.delete(roomCode)
+    camCallbacksRef.current.delete(roomCode)
     audioCallbacksRef.current.delete(roomCode)
     statsFetcherCacheRef.current.delete(roomCode)
     bitrateFetcherCacheRef.current.delete(roomCode)
@@ -202,11 +271,18 @@ export function useViewer(
       delete next[roomCode]
       return next
     })
+    setHiddenFeeds((current) => {
+      const next = { ...current }
+      delete next[roomCode]
+      return next
+    })
   }
 
   async function joinRoom(
     roomCode: string,
-    participantName: string
+    participantName: string,
+    _password?: string,
+    hidden?: RoomFeed[]
   ): Promise<{ ok: boolean; error?: string }> {
     // Já assistindo essa sala — não faz nada (o botão na lista já mostra
     // "Assistindo" nesse caso, ver HomeScreen.tsx).
@@ -237,10 +313,46 @@ export function useViewer(
         volume: savedVolume.volume,
         muted: savedVolume.muted,
         videoReady: false,
-        videoReadyListener: null
+        videoReadyListener: null,
+        camTrack: null,
+        camElement: null,
+        hidden: new Set(hidden)
       }
 
-      room.on(RoomEvent.TrackSubscribed, (track) => {
+      // Uma transmissão que a pessoa fechou não é assinada nem quando
+      // PUBLICA de novo (troca de fonte do host = tracks novas). O
+      // `TrackPublished` cancela antes de a assinatura automática
+      // acontecer; o `TrackSubscribed` abaixo é a rede de segurança se ela
+      // chegar primeiro.
+      room.on(RoomEvent.TrackPublished, (publication, participant) => {
+        if (connection.hidden.has(feedOfParticipant(participant))) {
+          publication.setSubscribed(false)
+        }
+      })
+
+      // A ESCOLHA DE QUEM ASSISTE NÃO SE DESFAZ SOZINHA (2026-10-20,
+      // pedido do usuário). Uma transmissão fechada continua fechada
+      // quando o host a desliga e liga de novo, e uma que não existia na
+      // entrada (o host liga a tela com a pessoa já vendo a webcam) já
+      // entra fechada — quem chama o joinRoom manda as ausentes em
+      // `hidden`. Ela aparece na ficha da sala, e só abre no "Assistir".
+      // Antes, a webcam reaparecia aberta, e a tela nova abria sozinha.
+
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        const feed = feedOfParticipant(participant)
+        if (connection.hidden.has(feed)) {
+          publication.setSubscribed(false)
+          return
+        }
+        // A webcam vai pro slot DELA (2026-10-20). Áudio da webcam não
+        // existe; se um dia vier, é ignorado — o som da live é o da tela.
+        if (feed === 'cam') {
+          if (track.kind === Track.Kind.Video) {
+            connection.camTrack = track
+            attachCam(connection)
+          }
+          return
+        }
         if (track.kind === Track.Kind.Video) {
           connection.videoTrack = track
           attachVideo(connection)
@@ -266,7 +378,10 @@ export function useViewer(
       // markVideoReady() logo abaixo silenciar até o primeiro frame de
       // verdade chegar.
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        if (track.kind === Track.Kind.Audio && connection.audioTrack === track) {
+        if (connection.camTrack === track) {
+          if (connection.camElement) track.detach(connection.camElement)
+          connection.camTrack = null
+        } else if (track.kind === Track.Kind.Audio && connection.audioTrack === track) {
           if (connection.audioElement) {
             track.detach(connection.audioElement)
             connection.audioElement = null
@@ -301,6 +416,7 @@ export function useViewer(
       await room.connect(wsUrl, token)
 
       connectionsRef.current.set(roomCode, connection)
+      publishHidden(roomCode, connection)
       setRoomCodes((current) => [...current, roomCode])
       setAudioSettings((current) => ({ ...current, [roomCode]: savedVolume }))
       // Pedido do usuário (2026-10-19): como VIEWER, eu também ouço o
@@ -402,6 +518,46 @@ export function useViewer(
     return callback
   }, [])
 
+  const getAttachCamVideo = useCallback((roomCode: string) => {
+    let callback = camCallbacksRef.current.get(roomCode)
+    if (!callback) {
+      callback = (element: HTMLVideoElement | null) => {
+        const connection = connectionsRef.current.get(roomCode)
+        if (!connection) return
+        // Mesmo cuidado do vídeo da tela: o tile desmontando não pode
+        // deixar a track decodificando pra um elemento órfão.
+        if (!element && connection.camElement && connection.camTrack) {
+          connection.camTrack.detach(connection.camElement)
+        }
+        connection.camElement = element
+        attachCam(connection)
+      }
+      camCallbacksRef.current.set(roomCode, callback)
+    }
+    return callback
+  }, [])
+
+  // Fecha (ou reabre) o tile de UMA transmissão da sala — a da tela ou a
+  // da webcam — sem sair da sala. Fechar deixa de assinar as tracks
+  // daquele publisher; reabrir assina de novo, e o TrackSubscribed põe
+  // cada uma no seu lugar como na entrada.
+  //
+  // Quem decide que fechar a ÚLTIMA visível é sair da sala é a tela (ver
+  // HomeScreen), que sabe quais transmissões a sala tem.
+  const setFeedVisible = useCallback((roomCode: string, feed: RoomFeed, visible: boolean) => {
+    const connection = connectionsRef.current.get(roomCode)
+    if (!connection) return
+    if (visible) connection.hidden.delete(feed)
+    else connection.hidden.add(feed)
+    connection.room.remoteParticipants.forEach((participant) => {
+      if (feedOfParticipant(participant) !== feed) return
+      participant.trackPublications.forEach((publication: RemoteTrackPublication) => {
+        publication.setSubscribed(visible)
+      })
+    })
+    publishHidden(roomCode, connection)
+  }, [])
+
   const getStatsFetcher = useCallback((roomCode: string) => {
     let fetcher = statsFetcherCacheRef.current.get(roomCode)
     if (!fetcher) {
@@ -442,6 +598,9 @@ export function useViewer(
     setVolume,
     setMuted,
     getStatsFetcher,
-    getBitrateFetcher
+    getBitrateFetcher,
+    getAttachCamVideo,
+    hiddenFeeds,
+    setFeedVisible
   }
 }

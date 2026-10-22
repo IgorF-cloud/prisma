@@ -19,6 +19,10 @@ export interface UpdateInfo {
   version: string
   url: string
   sha256: string
+  // Versão mínima (2026-10-22, migration 011 no servidor): abaixo dela, a
+  // atualização é obrigatória no login. Ausente em servidor antigo,
+  // `null` quando nenhuma versão é obrigatória.
+  minVersion?: string | null
 }
 
 function parseVersion(version: string): number[] {
@@ -305,8 +309,11 @@ function runInstallerElevated(installerPath: string): Promise<void> {
   })
 }
 
+// `required` é só o FATO de a versão instalada estar abaixo da mínima.
+// Quem decide o que fazer com isso é o renderer (useAppUpdate.ts): o
+// diálogo do login obriga, o aviso que chega com o app aberto não.
 export type UpdateCheckResult =
-  | { available: true; info: UpdateInfo; currentVersion: string }
+  | { available: true; info: UpdateInfo; currentVersion: string; required: boolean }
   | { available: false; currentVersion: string }
 
 // A pergunta "tem atualização?" num lugar só (2026-09-20). Antes ela
@@ -324,7 +331,8 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     const info = await fetchLatestVersionInfo()
     const currentVersion = app.getVersion()
     if (isNewerVersion(currentVersion, info.version)) {
-      return { available: true, info, currentVersion }
+      const required = Boolean(info.minVersion) && isNewerVersion(currentVersion, info.minVersion!)
+      return { available: true, info, currentVersion, required }
     }
     return { available: false, currentVersion }
   } catch {

@@ -3,12 +3,21 @@ import { API_BASE_URL } from './config'
 import { authHeader, notifySessionExpired } from './apiToken'
 import { AvatarRef, UserSettings } from './auth'
 
-// Lista de usuários, presença e convites (2026-09-10) — item 11 do
-// ROADMAP.
+// Lista de usuários, presença e amizades (2026-09-10) — item 11 do
+// ROADMAP. O convite saiu em 2026-10-21 (item 26, etapa 5): a sala
+// privada passou a ser do dono e dos amigos dele.
 //
 // Separado do auth.ts de propósito: aquele cuida da SUA conta (entrar,
 // renomear, trocar senha); este cuida dos OUTROS (quem existe, quem está
-// online, convidar pra uma live privada).
+// online, quem é amigo).
+
+// As minhas relações, em três listas de ids (ver friends.js no
+// servidor): amigos, pedidos que recebi e pedidos que mandei.
+export interface FriendsSnapshot {
+  friends: number[]
+  incoming: number[]
+  outgoing: number[]
+}
 
 export interface DirectoryUser {
   id: number
@@ -56,9 +65,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   if (!response.ok) {
     if (response.status === 401) notifySessionExpired()
-    throw new Error(
-      (data as ApiErrorBody).error ?? 'Erro desconhecido ao falar com o servidor'
-    )
+    throw new Error((data as ApiErrorBody).error ?? 'Erro desconhecido ao falar com o servidor')
   }
 
   return data as T
@@ -100,10 +107,20 @@ export function setupUsersHandlers(): void {
 
   ipcMain.handle('users:unpin', (_event, id: number) => request<void>('DELETE', `/users/${id}/pin`))
 
-  // Convidar alguém pra uma live privada. Falha com 409 se a pessoa
-  // saiu do ar entre a tela listar e o clique acontecer.
-  ipcMain.handle('users:invite', (_event, roomName: string, userId: number) =>
-    request<void>('POST', `/rooms/${roomName}/invite`, { userId })
+  // Amizades (2026-10-21). Toda rota devolve o RETRATO das minhas
+  // relações depois da mudança (o mesmo que desce pelo WebSocket como
+  // type "friends"), então a tela atualiza com a resposta, sem esperar
+  // o aviso. O id é sempre o da OUTRA pessoa.
+  ipcMain.handle('users:friends', () => request<FriendsSnapshot>('GET', '/friends'))
+  ipcMain.handle('users:requestFriend', (_event, id: number) =>
+    request<FriendsSnapshot>('POST', `/friends/${id}/request`)
+  )
+  ipcMain.handle('users:acceptFriend', (_event, id: number) =>
+    request<FriendsSnapshot>('POST', `/friends/${id}/accept`)
+  )
+  // Recusar, cancelar o pedido ou desfazer a amizade — a mesma rota.
+  ipcMain.handle('users:removeFriend', (_event, id: number) =>
+    request<FriendsSnapshot>('DELETE', `/friends/${id}`)
   )
 
   // Expulsar alguém da MINHA live (2026-09-13). Por NOME e não por
@@ -119,21 +136,10 @@ export function setupUsersHandlers(): void {
     request<void>('POST', `/rooms/${roomName}/kick`, { username })
   )
 
-  // Aceitar. A partir daqui o servidor passa a mandar essa sala nos
-  // broadcasts pra este usuário, e o /token deixa ele entrar.
-  ipcMain.handle('users:acceptInvite', (_event, roomName: string) =>
-    request<void>('POST', `/rooms/${roomName}/invite/accept`)
-  )
-
-  // Recusar (2026-09-14). Não muda permissão nenhuma — quem não
-  // aceitou nunca entrou na lista —, serve pra AVISAR o host: é o que
-  // destrava o botão de convidar do lado dele.
-  //
-  // `reason` separa o "não quero" do "não vi": o host vê textos
-  // diferentes, porque as duas coisas dizem coisas diferentes.
-  ipcMain.handle(
-    'users:declineInvite',
-    (_event, roomName: string, reason: 'declined' | 'expired') =>
-      request<void>('POST', `/rooms/${roomName}/invite/decline`, { reason })
+  // "Saí desta live" (2026-10-20): tira o meu nome da lista de quem está
+  // assistindo NA HORA, sem esperar o webhook do LiveKit (3-4s). Servidor
+  // anterior a isto responde 404 — quem chama ignora o erro.
+  ipcMain.handle('users:leaveRoom', (_event, roomName: string) =>
+    request<void>('POST', `/rooms/${roomName}/leave`)
   )
 }

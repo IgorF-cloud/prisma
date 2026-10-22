@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity } from 'lucide-react'
+import { Activity, Expand, Shrink } from 'lucide-react'
 import { RawTrackStats, useTrackStats } from '../lib/useTrackStats'
 import StatsPanel from './StatsPanel'
 
@@ -10,6 +10,9 @@ interface HostPreviewTileProps {
   // Item 32 do roadmap ("Modo foco") — mesmo mecanismo do ViewerTile.tsx.
   focused: boolean
   onToggleFocus: () => void
+  // Destaque (2026-10-22) — mesmo mecanismo do ViewerTile.tsx.
+  featured?: boolean
+  onSelect?: () => void
 }
 
 // Item 15 do roadmap: preview da própria live pro HOST (via
@@ -25,7 +28,9 @@ function HostPreviewTile({
   fetchStats,
   getBitrate,
   focused,
-  onToggleFocus
+  onToggleFocus,
+  featured = false,
+  onSelect
 }: HostPreviewTileProps): React.JSX.Element {
   const [statsOpen, setStatsOpen] = useState(false)
   // Mesmo "Aguardando transmissão" do ViewerTile.tsx — o preview também
@@ -33,18 +38,19 @@ function HostPreviewTile({
   const [hasVideo, setHasVideo] = useState(false)
   const stats = useTrackStats(statsOpen, 'H264', fetchStats, getBitrate)
 
-  // Item 32 do roadmap: mesma ideia do ViewerTile.tsx, mas aqui o único
-  // controle flutuante é o botão de estatísticas — marcado `tile-control`
-  // pra ficar de fora do toggle, igual lá.
+  // Mesma ideia do ViewerTile.tsx: o clique no vídeo é o destaque, e os
+  // botões (marcados `tile-control`) ficam de fora dele.
   function handleFrameClick(event: React.MouseEvent<HTMLDivElement>): void {
     if ((event.target as HTMLElement).closest('.tile-control')) return
-    onToggleFocus()
+    onSelect?.()
   }
 
   return (
-    <div className={`watch-tile watch-tile-self${focused ? ' watch-tile-focused' : ''}`}>
+    <div
+      className={`watch-tile watch-tile-self${focused ? ' watch-tile-focused' : ''}${featured ? ' watch-tile-featured' : ''}`}
+    >
       <div
-        className={`watch-video-frame${!hasVideo ? ' watch-video-frame-loading' : ''}`}
+        className={`watch-video-frame${!hasVideo ? ' watch-video-frame-loading' : ''}${onSelect ? ' watch-video-frame-selectable' : ''}`}
         onClick={handleFrameClick}
       >
         {/* muted: o áudio dessa track é o mesmo som do host com o atraso
@@ -68,17 +74,18 @@ function HostPreviewTile({
 
         {hasVideo && (
           <>
-            <span className="watch-tile-label">Sua transmissão</span>
+            <span className="tile-chip tile-chip-label tile-chip-tl">
+              <span className="tile-chip-live-dot" />
+              Sua transmissão
+            </span>
 
             {/* Mesmo padrão do ViewerTile.tsx — abre e fecha no clique
-                desde 2026-10-16. `stats-toggle-solo` porque aqui é o
-                ÚNICO botão do chip (precisa de raio nos 4 cantos, não só
-                nos 2 de uma ponta como no ViewerTile). */}
-            <div className="tile-top-right-actions">
+                desde 2026-10-16. */}
+            <div className="tile-chip tile-chip-tr">
               <div className="stats-toggle-wrapper">
                 <button
                   type="button"
-                  className={`stats-toggle stats-toggle-solo tile-control${statsOpen ? ' stats-toggle-active' : ''}`}
+                  className={`tile-chip-button tile-control${statsOpen ? ' tile-chip-button-active' : ''}`}
                   onClick={() => setStatsOpen((open) => !open)}
                   aria-label={statsOpen ? 'Fechar estatísticas' : 'Ver estatísticas'}
                   aria-expanded={statsOpen}
@@ -91,6 +98,17 @@ function HostPreviewTile({
                   <StatsPanel stats={stats} />
                 </div>
               </div>
+            </div>
+
+            <div className="tile-chip tile-chip-br tile-control">
+              <button
+                type="button"
+                className={`tile-chip-button tile-control${focused ? ' tile-chip-button-active' : ''}`}
+                onClick={onToggleFocus}
+                aria-label={focused ? 'Sair do modo foco' : 'Modo foco'}
+              >
+                {focused ? <Shrink size={14} /> : <Expand size={14} />}
+              </button>
             </div>
           </>
         )}

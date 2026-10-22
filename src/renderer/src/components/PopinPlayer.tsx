@@ -309,44 +309,50 @@ function PopinPlayer({
           chips, então é o mesmo estado. */}
           <div className="popin-dim" />
 
+          {/* Os mesmos chips do tile (`.tile-chip`, 2026-10-22), só que
+              menores — o `.popin` encolhe as variáveis deles no CSS. */}
           <div className="popin-top-left">
-            <button
-              type="button"
-              className="popin-button tile-control"
-              onClick={onExpand}
-              aria-label="Voltar pro app"
-            >
-              <Minimize2 size={14} />
-            </button>
-            <span className="popin-host tile-control">
-              <span className="popin-host-dot" />
-              {hostName}
+            <div className="tile-chip tile-control">
+              <button
+                type="button"
+                className="tile-chip-button"
+                onClick={onExpand}
+                aria-label="Voltar pro app"
+              >
+                <Minimize2 size={13} />
+              </button>
+            </div>
+            <span className="tile-chip tile-chip-label tile-control">
+              <span className="tile-chip-live-dot" />
+              <span className="popin-host-name">{hostName}</span>
             </span>
           </div>
 
           <div className="popin-top-right">
-            <span className="popin-viewers tile-control">
-              <Users size={12} />
-              {participants.length}
-            </span>
-            <button
-              type="button"
-              className="popin-button popin-button-leave tile-control"
-              onClick={onLeave}
-              aria-label="Sair da live"
-            >
-              <X size={14} />
-            </button>
+            <div className="tile-chip tile-control">
+              <span className="tile-chip-stat">
+                <Users size={12} />
+                {participants.length}
+              </span>
+              <button
+                type="button"
+                className="tile-chip-button tile-chip-button-danger"
+                onClick={onLeave}
+                aria-label="Sair da live"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
-          <div className="popin-volume tile-control">
+          <div className="popin-volume tile-chip tile-chip-volume tile-control">
             <button
               type="button"
-              className="volume-mute-button"
+              className="tile-chip-button"
               onClick={() => onSetMuted(!muted)}
               aria-label={muted ? 'Ativar som' : 'Mutar'}
             >
-              {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              {muted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
             <input
               type="range"
@@ -356,7 +362,7 @@ function PopinPlayer({
               value={Math.round((muted ? 0 : volume) * 100)}
               onChange={(e) => onSetVolume(Number(e.target.value) / 100)}
               style={{
-                background: `linear-gradient(to right, #a78bfa ${(muted ? 0 : volume) * 100}%, var(--ev-c-gray-2) ${(muted ? 0 : volume) * 100}%)`
+                background: `linear-gradient(to right, #a78bfa ${(muted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.18) ${(muted ? 0 : volume) * 100}%)`
               }}
               aria-label="Volume"
             />

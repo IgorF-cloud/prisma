@@ -163,8 +163,7 @@ function ReleaseNotesModal({
   // ela, a da primeira atualização.
   const groupDate = (item: ReleaseGroup): string =>
     item.base?.date ?? item.patches[item.patches.length - 1]?.date ?? ''
-  const isInstalledGroup = (item: ReleaseGroup): boolean =>
-    item.key === majorOf(installedVersion)
+  const isInstalledGroup = (item: ReleaseGroup): boolean => item.key === majorOf(installedVersion)
 
   // As atualizações na ordem em que SAÍRAM (a lista guarda da mais nova
   // pra mais antiga): é como a faixa de cima e as seções de baixo leem,

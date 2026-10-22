@@ -11,8 +11,9 @@ import { destroyPopin, popinOpenHandler, setupPopinHandlers } from './popin'
 import { setupScreenCapture } from './screenCapture'
 import { setupLivekitHandlers } from './livekit'
 import { setupRoomsHandlers } from './rooms'
-import { setInviteFlash } from './taskbarFlash'
+import { flashTaskbar } from './taskbarFlash'
 import { setupGstreamerHandlers, stopForAppQuit, isTransmitting } from './gstreamerCapture'
+import { setupWebcamHandlers, stopWebcamForAppQuit, isWebcamTransmitting } from './webcamCapture'
 import { setupUpdateHandlers } from './update'
 import { setupGameDetectableCacheHandlers } from './gameDetectableCache'
 import { API_BASE_URL } from './config'
@@ -128,13 +129,12 @@ app.whenReady().then(() => {
   // por env var pro processo do renderer.
   ipcMain.handle('app:getApiBaseUrl', () => API_BASE_URL)
 
-  // Aviso de convite na barra de tarefas (2026-09-13). Quem decide é o
-  // RENDERER, e não o main que recebe o convite pelo WebSocket: é ele
-  // que sabe quando o toast aparece E quando some (aceito, recusado ou
-  // expirado). Com o main decidindo, o botão ficaria aceso depois de a
-  // pessoa já ter respondido.
-  ipcMain.on('app:setInviteFlash', (_event, show: boolean) => {
-    setInviteFlash(mainWindow, Boolean(show))
+  // Destaque na barra de tarefas (2026-09-13; dos alertas desde a etapa 8,
+  // 2026-10-22). Quem decide é o RENDERER, e não o main que recebe as
+  // salas e o chat pelo WebSocket: é ele que conhece a preferência da
+  // conta, os amigos e quais chats estão abertos.
+  ipcMain.on('app:flashTaskbar', () => {
+    flashTaskbar(mainWindow)
   })
 
   setupAuthHandlers()
@@ -148,6 +148,7 @@ app.whenReady().then(() => {
   const mainWindow = createWindow()
   setupRoomsHandlers(mainWindow)
   setupGstreamerHandlers(mainWindow)
+  setupWebcamHandlers(mainWindow)
   setupUpdateHandlers(mainWindow)
   setupPopinHandlers(mainWindow)
   setupGameDetectableCacheHandlers(mainWindow)
@@ -180,7 +181,9 @@ app.whenReady().then(() => {
   let closeSafetyTimeout: ReturnType<typeof setTimeout> | null = null
 
   mainWindow.on('close', (event) => {
-    if (closeConfirmed || !isTransmitting()) return
+    // A webcam conta como transmissão também (2026-10-20, item 26): uma
+    // sala aberta só por ela precisa ser derrubada do mesmo jeito.
+    if (closeConfirmed || (!isTransmitting() && !isWebcamTransmitting())) return
     event.preventDefault()
     mainWindow.webContents.send('app:before-quit')
 
@@ -208,7 +211,7 @@ app.whenReady().then(() => {
       if (closeConfirmed) return
       closeConfirmed = true
       const forceCloseTimeout = setTimeout(() => mainWindow.close(), 12000)
-      stopForAppQuit().finally(() => {
+      Promise.allSettled([stopForAppQuit(), stopWebcamForAppQuit()]).finally(() => {
         clearTimeout(forceCloseTimeout)
         mainWindow.close()
       })

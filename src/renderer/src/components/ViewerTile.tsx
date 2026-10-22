@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Activity,
+  Expand,
   Maximize2,
   Minimize2,
+  Monitor,
   PictureInPicture2,
+  Shrink,
   Users,
   Volume2,
   VolumeX,
@@ -38,10 +41,21 @@ interface ViewerTileProps {
   // focada por vez, entre N tiles).
   focused: boolean
   onToggleFocus: () => void
+  // Destaque (2026-10-22): o clique no vídeo, que era o foco, agora leva
+  // esta live pra linha de cima da grade. `onSelect` vem `undefined`
+  // quando não dá pra destacar (uma live só, ou o foco aberto) — aí o
+  // clique não faz nada.
+  featured?: boolean
+  onSelect?: () => void
   // Mini player (2026-09-20, pedido do usuário): manda ESTA live pra uma
   // janelinha sempre-no-topo. Quem controla é a HomeScreen — só uma live
   // por vez pode estar lá, e o tile da que está some da grade.
   onPopin: () => void
+  // A sala TAMBÉM tem webcam (2026-10-20, item 26): o chip ganha a
+  // etiqueta "Tela", pra os dois tiles da mesma live não se confundirem,
+  // e o X deixa de ser "sair da live" — ele fecha só a tela, e a webcam
+  // continua.
+  hasCam?: boolean
 }
 
 // Extraído da HomeScreen porque item 26 (estatísticas) precisa de um
@@ -63,8 +77,12 @@ function ViewerTile({
   getBitrate,
   focused,
   onToggleFocus,
-  onPopin
+  featured = false,
+  onSelect,
+  onPopin,
+  hasCam = false
 }: ViewerTileProps): React.JSX.Element {
+  const leaveLabel = hasCam ? 'Fechar tela' : 'Sair da live'
   const [statsOpen, setStatsOpen] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   // Item novo: "Aguardando transmissão" enquanto o <video> ainda não tem
@@ -97,19 +115,21 @@ function ViewerTile({
     }
   }
 
-  // Item 32 do roadmap: qualquer canto do vídeo é clicável pra
-  // entrar/sair do modo foco, EXCETO os controles flutuantes — todos já
-  // levam a classe `tile-control` (reaproveitada do auto-hide acima), daí
-  // o mesmo `.closest()` resolver os dois casos.
+  // Qualquer canto do vídeo é clicável pro destaque (era o modo foco até
+  // 2026-10-22), EXCETO os controles flutuantes — todos já levam a classe
+  // `tile-control` (reaproveitada do auto-hide acima), daí o mesmo
+  // `.closest()` resolver os dois casos.
   function handleFrameClick(event: React.MouseEvent<HTMLDivElement>): void {
     if ((event.target as HTMLElement).closest('.tile-control')) return
-    onToggleFocus()
+    onSelect?.()
   }
 
   return (
-    <div className={`watch-tile${focused ? ' watch-tile-focused' : ''}`}>
+    <div
+      className={`watch-tile${focused ? ' watch-tile-focused' : ''}${featured ? ' watch-tile-featured' : ''}`}
+    >
       <div
-        className={`watch-video-frame${!hasVideo ? ' watch-video-frame-loading' : ''}`}
+        className={`watch-video-frame${!hasVideo ? ' watch-video-frame-loading' : ''}${onSelect ? ' watch-video-frame-selectable' : ''}`}
         ref={frameRef}
         onClick={handleFrameClick}
       >
@@ -129,19 +149,21 @@ function ViewerTile({
                 aparecem depois do primeiro frame (`hasVideo`) — sem isso,
                 se travar aqui (o host nunca chegou a publicar de
                 verdade, por exemplo), o viewer ficava sem jeito nenhum
-                de sair da sala. Mesmo onLeave do leave-toggle normal, só
+                de sair da sala. Mesmo onLeave do X normal, só
                 que sempre visível nesse estado (não depende do
                 auto-hide). Só na live ASSISTIDA — a própria transmissão
                 do host (HostPreviewTile.tsx) já tem o botão do olho no
                 footer pra isso. */}
-            <button
-              type="button"
-              className="leave-toggle-loading tile-control"
-              onClick={onLeave}
-              aria-label="Sair da live"
-            >
-              <X size={14} />
-            </button>
+            <div className="tile-chip tile-chip-tr tile-chip-loading">
+              <button
+                type="button"
+                className="tile-chip-button tile-chip-button-danger tile-control"
+                onClick={onLeave}
+                aria-label={leaveLabel}
+              >
+                <X size={15} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -154,18 +176,30 @@ function ViewerTile({
             onMouseMove={overlay.onMouseMove}
             onMouseLeave={overlay.onMouseLeave}
           >
-            <span className="watch-tile-label tile-control">
-              <span className="watch-tile-label-dot" />
-              Live de {hostName}
+            {/* Os chips seguem o padrão único `.tile-chip` (2026-10-22) —
+                ver o bloco "CHIPS DA LIVE" no main.css. */}
+            <span className="tile-chip tile-chip-label tile-chip-tl tile-control">
+              <span className="tile-chip-live-dot" />
+              {hasCam ? (
+                <>
+                  {hostName}
+                  <span className="tile-chip-tag">
+                    <Monitor size={11} />
+                    Tela
+                  </span>
+                </>
+              ) : (
+                <>Live de {hostName}</>
+              )}
             </span>
 
-            <div className="tile-top-right-actions">
+            <div className="tile-chip tile-chip-tr">
               {/* Pedido do usuário (2026-09-03): removido o hover/lista de
                   espectadores daqui (era o mesmo padrão do "quem está
                   assistindo MINHA live" do footer) — vira só a contagem,
                   sem interação nenhuma (a lista de nomes por sala já
                   aparece embaixo do tile na sidebar, ver HomeScreen.tsx). */}
-              <span className="viewers-toggle tile-control">
+              <span className="tile-chip-stat tile-control">
                 <Users size={13} />
                 {participants.length}
               </span>
@@ -175,7 +209,7 @@ function ViewerTile({
               <div className="stats-toggle-wrapper">
                 <button
                   type="button"
-                  className={`stats-toggle tile-control${statsOpen ? ' stats-toggle-active' : ''}`}
+                  className={`tile-chip-button tile-control${statsOpen ? ' tile-chip-button-active' : ''}`}
                   onClick={() => setStatsOpen((open) => !open)}
                   aria-label={statsOpen ? 'Fechar estatísticas' : 'Ver estatísticas'}
                   aria-expanded={statsOpen}
@@ -190,22 +224,22 @@ function ViewerTile({
               </div>
               <button
                 type="button"
-                className="leave-toggle tile-control"
+                className="tile-chip-button tile-chip-button-danger tile-control"
                 onClick={onLeave}
-                aria-label="Sair da live"
+                aria-label={leaveLabel}
               >
-                <X size={14} />
+                <X size={15} />
               </button>
             </div>
 
-            <div className="volume-chip tile-control">
+            <div className="tile-chip tile-chip-volume tile-chip-bl tile-control">
               <button
                 type="button"
-                className="volume-mute-button"
+                className="tile-chip-button"
                 onClick={() => onSetMuted(!muted)}
                 aria-label={muted ? 'Ativar som' : 'Mutar'}
               >
-                {displayedVolume === 0 ? <VolumeX size={22} /> : <Volume2 size={22} />}
+                {displayedVolume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
               <input
                 type="range"
@@ -215,25 +249,24 @@ function ViewerTile({
                 value={Math.round(displayedVolume * 100)}
                 onChange={(e) => onSetVolume(Number(e.target.value) / 100)}
                 style={{
-                  background: `linear-gradient(to right, #a78bfa ${displayedVolume * 100}%, var(--ev-c-gray-2) ${displayedVolume * 100}%)`
+                  background: `linear-gradient(to right, #a78bfa ${displayedVolume * 100}%, rgba(255, 255, 255, 0.18) ${displayedVolume * 100}%)`
                 }}
                 aria-label="Volume"
               />
             </div>
 
-            {/* Mini player (2026-09-20, pedido do usuário) — ao lado do
-                botão de tela cheia, que é o controle de "onde esta live
-                aparece" mais parecido com ele.
+            {/* Os botões de "onde esta live aparece" — mini player, modo
+                foco e tela cheia — num chip só, no canto de baixo.
 
                 Sem rótulo e sem tooltip (pedido do usuário, 2026-09-21):
-                os dois já tiveram um texto que abria no hover e depois um
-                balão, e os dois saíram. Ficam só os ícones e o hover que
-                clareia o fundo. O `aria-label` continua, que é o que
-                responde por eles em leitor de tela. */}
-            <div className="tile-corner-controls tile-control">
+                ficam só os ícones e o hover que clareia o fundo. O
+                `aria-label` continua, que é o que responde por eles em
+                leitor de tela. O foco ganhou botão aqui em 2026-10-22,
+                quando o clique no vídeo virou o destaque. */}
+            <div className="tile-chip tile-chip-br tile-control">
               <button
                 type="button"
-                className="popin-toggle tile-control"
+                className="tile-chip-button tile-control"
                 onClick={onPopin}
                 aria-label="Abrir em mini player"
               >
@@ -242,7 +275,16 @@ function ViewerTile({
 
               <button
                 type="button"
-                className="fullscreen-toggle tile-control"
+                className={`tile-chip-button tile-control${focused ? ' tile-chip-button-active' : ''}`}
+                onClick={onToggleFocus}
+                aria-label={focused ? 'Sair do modo foco' : 'Modo foco'}
+              >
+                {focused ? <Shrink size={14} /> : <Expand size={14} />}
+              </button>
+
+              <button
+                type="button"
+                className="tile-chip-button tile-control"
                 onClick={toggleFullscreen}
                 aria-label={fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
               >

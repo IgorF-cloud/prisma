@@ -125,18 +125,27 @@ function TitleBar({
           `-webkit-app-region: no-drag` no CSS é o que o torna clicável —
           a faixa inteira é área de arrastar a janela, e sem isso o
           clique viraria um arrasto. */}
+      {/* O lado DIREITO da faixa (2026-10-21) num grupo só, encostado nos
+          botões de janela: hoje só o "atualizar" (o botão de Notificações
+          que viria na etapa 8 saiu do plano em 2026-10-22 — os alertas não
+          têm lista). O de Membros morou aqui até 2026-10-21, quando foi
+          pra barra da esquerda, abaixo da Lista de amigos. Num grupo porque o
+          `margin-left: auto` empurra UM item — com dois itens soltos, o
+          espaço livre se dividiria entre eles. */}
       {showContent && updateVersion && (
-        <Tooltip label={`v${updateVersion}`} placement="bottom" delayMs={0}>
-          <button
-            type="button"
-            className="app-titlebar-update"
-            onClick={onUpdateClick}
-            aria-label={`Atualizar o Prisma para a versão ${updateVersion}`}
-          >
-            <Sparkles size={13} />
-            Nova versão disponível
-          </button>
-        </Tooltip>
+        <div className="app-titlebar-actions">
+          <Tooltip label={`v${updateVersion}`} placement="bottom" delayMs={0}>
+            <button
+              type="button"
+              className="app-titlebar-update"
+              onClick={onUpdateClick}
+              aria-label={`Atualizar o Prisma para a versão ${updateVersion}`}
+            >
+              <Sparkles size={13} />
+              Nova versão disponível
+            </button>
+          </Tooltip>
+        </div>
       )}
     </div>
   )

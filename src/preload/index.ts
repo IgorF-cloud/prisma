@@ -7,8 +7,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 type UpdateCheckResult =
   | {
       available: true
-      info: { version: string; url: string; sha256: string }
+      info: { version: string; url: string; sha256: string; minVersion?: string | null }
       currentVersion: string
+      required: boolean
     }
   | { available: false; currentVersion: string }
 
@@ -114,44 +115,29 @@ const api = {
     // disso pelo token.
     pin: (id: number) => ipcRenderer.invoke('users:pin', id),
     unpin: (id: number) => ipcRenderer.invoke('users:unpin', id),
-    invite: (roomName: string, userId: number) =>
-      ipcRenderer.invoke('users:invite', roomName, userId),
-    acceptInvite: (roomName: string) => ipcRenderer.invoke('users:acceptInvite', roomName),
-    // Recusa (botão) ou expiração (timer de 30s do toast) — ver
-    // src/main/users.ts.
-    declineInvite: (roomName: string, reason: 'declined' | 'expired') =>
-      ipcRenderer.invoke('users:declineInvite', roomName, reason),
+    // Amizades (2026-10-21) — ver src/main/users.ts. Todas devolvem o
+    // retrato das minhas relações depois da mudança.
+    friends: () => ipcRenderer.invoke('users:friends'),
+    requestFriend: (id: number) => ipcRenderer.invoke('users:requestFriend', id),
+    acceptFriend: (id: number) => ipcRenderer.invoke('users:acceptFriend', id),
+    removeFriend: (id: number) => ipcRenderer.invoke('users:removeFriend', id),
     // Expulsar da minha live (2026-09-13). Ver src/main/users.ts pro
     // porquê de ser por nome.
     kick: (roomName: string, username: string) =>
       ipcRenderer.invoke('users:kick', roomName, username),
-    // Convite CHEGANDO pelo WebSocket de salas (ver rooms.ts no main).
-    onInvite: (callback: (invite: { roomName: string; hostName: string | null }) => void) => {
-      const listener = (_e: unknown, invite: { roomName: string; hostName: string | null }): void =>
-        callback(invite)
-      ipcRenderer.on('rooms:invite', listener)
-      return () => ipcRenderer.removeListener('rooms:invite', listener)
-    },
-    // O que aconteceu com um convite que EU mandei (2026-09-14).
-    onInviteResult: (
-      callback: (result: {
-        roomName: string
-        userId: number
-        userName: string
-        result: 'accepted' | 'declined' | 'expired'
-      }) => void
+    // Avisar que saí de uma live (2026-10-20) — ver src/main/users.ts.
+    leaveRoom: (roomName: string) => ipcRenderer.invoke('users:leaveRoom', roomName),
+    // O retrato das minhas amizades, chegando pelo WebSocket de salas no
+    // connect e a cada mudança (ver rooms.ts no main).
+    onFriends: (
+      callback: (snapshot: { friends: number[]; incoming: number[]; outgoing: number[] }) => void
     ) => {
       const listener = (
         _e: unknown,
-        payload: {
-          roomName: string
-          userId: number
-          userName: string
-          result: 'accepted' | 'declined' | 'expired'
-        }
-      ): void => callback(payload)
-      ipcRenderer.on('rooms:inviteResult', listener)
-      return () => ipcRenderer.removeListener('rooms:inviteResult', listener)
+        snapshot: { friends: number[]; incoming: number[]; outgoing: number[] }
+      ): void => callback(snapshot)
+      ipcRenderer.on('rooms:friends', listener)
+      return () => ipcRenderer.removeListener('rooms:friends', listener)
     }
   },
   // Chat temporário da live (2026-09-23). MANDAR é HTTP (ver
@@ -216,8 +202,32 @@ const api = {
       participantName: string
       private?: boolean
       game?: { kind: 'game' | 'window' | 'screen'; name: string; iconUrl?: string | null } | null
+      // Qual transmissão (2026-10-20, item 26): sem ele é a tela.
+      source?: 'screen' | 'cam'
     }) => ipcRenderer.invoke('livekit:createIngress', params),
-    deleteIngress: (roomName: string) => ipcRenderer.invoke('livekit:deleteIngress', roomName)
+    deleteIngress: (roomName: string, source?: 'screen' | 'cam') =>
+      ipcRenderer.invoke('livekit:deleteIngress', roomName, source)
+  },
+  // A transmissão da WEBCAM (2026-10-20, item 26) — processo próprio, ao
+  // lado do da tela. Ver src/main/webcamCapture.ts.
+  webcam: {
+    start: (params: { roomCode: string; whipUrl: string; streamKey: string; deviceName: string }) =>
+      ipcRenderer.invoke('webcam:start', params),
+    stop: () => ipcRenderer.invoke('webcam:stop'),
+    onExited: (callback: (info: { code: number | null; error?: string }) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        info: { code: number | null; error?: string }
+      ): void => callback(info)
+      ipcRenderer.on('webcam:exited', listener)
+      return () => ipcRenderer.removeListener('webcam:exited', listener)
+    },
+    onPlaying: (callback: (info: { roomCode: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, info: { roomCode: string }): void =>
+        callback(info)
+      ipcRenderer.on('webcam:playing', listener)
+      return () => ipcRenderer.removeListener('webcam:playing', listener)
+    }
   },
   gstreamer: {
     start: (params: {
@@ -357,9 +367,9 @@ const api = {
     // Pedido do usuário (2026-09-03): "Modo foco" (item 32) troca a
     // titleBarOverlay de transparente pra opaca (cor de fundo da Home)
     // — ver HomeScreen.tsx/main/index.ts.
-    // Aviso de convite na barra de tarefas (2026-09-13): o botão do app
-    // pisca no laranja do Windows. Ver src/main/taskbarFlash.ts.
-    setInviteFlash: (show: boolean) => ipcRenderer.send('app:setInviteFlash', show),
+    // O botão do app na barra de tarefas pisca no laranja do Windows
+    // (live nova, mensagem no chat). Ver src/main/taskbarFlash.ts.
+    flashTaskbar: () => ipcRenderer.send('app:flashTaskbar'),
     setTitleBarFocused: (focused: boolean) => ipcRenderer.send('app:setTitleBarFocused', focused)
   },
   games: {

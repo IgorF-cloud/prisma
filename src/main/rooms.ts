@@ -170,19 +170,17 @@ function connect(mainWindow: BrowserWindow): void {
         rooms: RoomInfo[]
         userAvatars?: UserAvatars
         presence?: PresenceMap
-        // Só na mensagem type: "invite" (ver abaixo).
+        // Só nas mensagens type: "chat" / "chatMuted" (ver abaixo).
         roomName?: string
-        hostName?: string | null
-        // Só na mensagem type: "inviteResult" (ver abaixo).
-        userId?: number
-        userName?: string
-        result?: 'accepted' | 'declined' | 'expired'
+        // Só na mensagem type: "friends" (ver abaixo).
+        friends?: number[]
+        incoming?: number[]
+        outgoing?: number[]
         // Só na mensagem type: "version" (ver abaixo).
         version?: string
         // Só na mensagem type: "chat" / "chatMuted" (ver abaixo).
         message?: ChatMessage
-        // Quem foi silenciado/liberado. Note o "n" minúsculo: é um campo
-        // diferente do "userName" do inviteResult logo acima.
+        // Quem foi silenciado/liberado.
         username?: string
         muted?: boolean
       }
@@ -236,35 +234,16 @@ function connect(mainWindow: BrowserWindow): void {
         return
       }
 
-      // Convite pra uma live privada: chega por este mesmo socket, num
-      // tipo próprio, e é repassado inteiro pro renderer mostrar o
-      // aviso. Não muda nada do estado de salas.
-      if (parsed.type === 'invite') {
-        logEvent('rooms', `convite recebido: sala ${parsed.roomName}`)
+      // Amizades (2026-10-21): o RETRATO completo das minhas relações —
+      // amigos, pedidos recebidos e enviados —, que o servidor manda no
+      // connect e a cada mudança dos dois lados. Repassado inteiro: quem
+      // guarda o estado é o renderer (useFriends).
+      if (parsed.type === 'friends') {
         if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('rooms:invite', {
-            roomName: parsed.roomName ?? '',
-            hostName: parsed.hostName ?? null
-          })
-        }
-        return
-      }
-
-      // O que aconteceu com um convite que EU mandei (2026-09-14):
-      // aceito, recusado ou o tempo do convidado acabou. Repassado
-      // inteiro pro renderer, que é quem sabe qual botão destravar —
-      // aqui não existe estado de convite nenhum.
-      if (parsed.type === 'inviteResult') {
-        logEvent(
-          'rooms',
-          `resultado de convite: ${parsed.userName} ${parsed.result} (sala ${parsed.roomName})`
-        )
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('rooms:inviteResult', {
-            roomName: parsed.roomName ?? '',
-            userId: parsed.userId ?? 0,
-            userName: parsed.userName ?? '',
-            result: parsed.result ?? 'declined'
+          mainWindow.webContents.send('rooms:friends', {
+            friends: parsed.friends ?? [],
+            incoming: parsed.incoming ?? [],
+            outgoing: parsed.outgoing ?? []
           })
         }
         return

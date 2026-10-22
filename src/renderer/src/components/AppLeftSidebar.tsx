@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Cast, Eye, Plus, RefreshCw, Tv, Users } from 'lucide-react'
+import { Cast, Eye, HeartHandshake, RefreshCw, Tv } from 'lucide-react'
+import UserGroupIcon from './UserGroupIcon'
+import { WebcamStatus } from '../lib/useWebcamTransmission'
 import { RoomInfo } from '../lib/useRooms'
 import { AvatarRef } from '../lib/avatar'
 import { AuthUser } from '../lib/authUser'
@@ -28,31 +30,32 @@ interface AppLeftSidebarProps {
   // painel de detalhes aberto: dá pra assistir sem o painel aberto e
   // vice-versa.
   watchingRoomCodes: string[]
-  // Tile fixo do topo: abre a sub-barra com os usuários do app.
+  // Tile fixo do topo: abre a LISTA DE AMIGOS (era a de usuários até
+  // 2026-10-21 — todo mundo agora está nos Membros, na titlebar).
   onUsersClick: () => void
   usersActive: boolean
+  // Pedidos de amizade RECEBIDOS esperando resposta — o selo do tile.
+  incomingRequests: number
+  // MEMBROS (2026-10-21): o tile logo abaixo, que abre o painel da
+  // direita com todo mundo do app. Morou na titlebar até o mesmo dia.
+  onMembersClick: () => void
+  membersActive: boolean
   // Recarrega a lista de salas por HTTP, num caminho separado do
   // WebSocket de tempo real (ver useRooms.ts/rooms.ts) — é a rede de
   // segurança pra quando o tempo real está com problema. Veio da
   // sidebar antiga, que era onde este botão morava.
   refreshingRooms: boolean
   onRefreshRooms: () => void
-  // Item 9: abre o modal de entrar por código.
-  onJoinByCode: () => void
-  // "Transmitir" (2026-09-13): era um pill com texto no canto direito
-  // do rodapé; virou este tile circular, logo acima do avatar. Mesma
-  // função, só mudou de lugar e ganhou destaque.
-  onNavigateTransmission: () => void
-  // Chamado quando o ponteiro ENCOSTA no botão de transmitir, antes de
-  // qualquer clique (2026-10-13). Quem recebe usa isso pra adiantar o
-  // trabalho da tela que vem — ver `onPrepareTransmission` em
-  // HomeScreen.tsx. Daqui não se sabe o que é esse trabalho, e é de
-  // propósito: a barra lateral não tem assunto com captura de tela.
+  // O BOTÃO DE TRANSMITIR (um só desde 2026-10-22, pedido do usuário):
+  // abre o seletor de fonte (Tela ou Vídeo, ver TransmitKindSwitch). Com
+  // qualquer transmissão no ar ele SOME — quem controla é o rodapé.
+  onOpenPicker: () => void
+  // Chamado quando o ponteiro ENCOSTA no botão, antes de qualquer clique
+  // (2026-10-13): quem recebe adianta o trabalho do seletor — ver
+  // `onPrepareTransmission` em HomeScreen.tsx.
   onPrepareTransmission: () => void
-  // Some enquanto há live no ar — aí o rodapé mostra os controles de
-  // parar/atualizar, e um atalho pra "começar" no meio disso só
-  // confundiria. Mesmo comportamento do botão antigo.
-  transmitting: boolean
+  screenStatus: WebcamStatus
+  webcamStatus: WebcamStatus
   onOpenSettings: () => void
   onUserUpdate: (user: AuthUser) => void
   onLogout: () => void
@@ -63,14 +66,6 @@ interface AppLeftSidebarProps {
   onOpenProfile: () => void
 }
 
-// Item 5 do roadmap, 1ª parte (2026-09-09) — a barra vertical fina da
-// esquerda ("SALAS AO VIVO"): só os avatares redondos dos hosts que estão
-// transmitindo, e o avatar do usuário logado fixo no rodapé.
-//
-// Substituiu a `.rooms-sidebar` de 285px, removida em 2026-09-09. Ela
-// conviveu com esta barra por um tempo (o usuário pediu pra montar o
-// layout novo primeiro e só depois remover), e nesse período o popover
-// de perfil existiu nos dois lugares — hoje o único é o daqui.
 function AppLeftSidebar({
   rooms,
   userAvatars,
@@ -81,12 +76,15 @@ function AppLeftSidebar({
   watchingRoomCodes,
   onUsersClick,
   usersActive,
+  incomingRequests,
+  onMembersClick,
+  membersActive,
   refreshingRooms,
   onRefreshRooms,
-  onJoinByCode,
-  onNavigateTransmission,
+  onOpenPicker,
   onPrepareTransmission,
-  transmitting,
+  screenStatus,
+  webcamStatus,
   onOpenSettings,
   onUserUpdate,
   onLogout,
@@ -115,17 +113,40 @@ function AppLeftSidebar({
       {/* Fixo no topo, fora da lista rolável abaixo. Usa a mesma classe
           dos tiles de sala pra herdar a barrinha branca de hover/seleção
           e as medidas — o que muda é o miolo do círculo. */}
-      <Tooltip label="Usuários" placement="right" delayMs={0}>
+      <Tooltip label="Lista de amigos" placement="right" delayMs={0}>
         <button
           type="button"
-          className={`app-left-sidebar-live${
-            usersActive ? ' app-left-sidebar-live-active' : ''
-          }`}
+          className={`app-left-sidebar-live${usersActive ? ' app-left-sidebar-live-active' : ''}`}
           onClick={onUsersClick}
-          aria-label="Usuários"
+          aria-label={
+            incomingRequests > 0
+              ? `Lista de amigos — ${incomingRequests} pedido(s) de amizade`
+              : 'Lista de amigos'
+          }
         >
           <span className="app-left-sidebar-users-icon">
-            <Users size={20} />
+            <HeartHandshake size={20} />
+          </span>
+          {incomingRequests > 0 && (
+            <span className="app-left-sidebar-badge" aria-hidden="true">
+              {incomingRequests > 9 ? '9+' : incomingRequests}
+            </span>
+          )}
+        </button>
+      </Tooltip>
+
+      {/* MEMBROS (2026-10-21, pedido do usuário) — logo abaixo da Lista de
+          amigos, com o mesmo tile. Abre o painel da DIREITA. */}
+      <Tooltip label="Membros" placement="right" delayMs={0}>
+        <button
+          type="button"
+          className={`app-left-sidebar-live${membersActive ? ' app-left-sidebar-live-active' : ''}`}
+          onClick={onMembersClick}
+          aria-label="Membros"
+          aria-pressed={membersActive}
+        >
+          <span className="app-left-sidebar-users-icon">
+            <UserGroupIcon size={20} />
           </span>
         </button>
       </Tooltip>
@@ -189,25 +210,10 @@ function AppLeftSidebar({
         })}
       </div>
 
-      {/* Rodapé: entrar com código, atualizar a lista e o perfil. Os dois
-          primeiros ficam ACIMA do avatar porque o avatar é a âncora do
+      {/* Rodapé: atualizar a lista e o perfil (o "entrar com código" saiu
+          em 2026-10-21). O atualizar fica ACIMA do avatar porque o avatar é a âncora do
           popover de perfil — um irmão embaixo dele empurraria o cálculo
           de posição. */}
-      <Tooltip label="Entrar com código" placement="right" delayMs={0}>
-        <button
-          type="button"
-          className="app-left-sidebar-plain"
-          onClick={onJoinByCode}
-          aria-label="Entrar com código"
-        >
-          <span className="app-left-sidebar-users-icon">
-            <span className="app-left-sidebar-add-badge">
-              <Plus size={12} strokeWidth={3.5} />
-            </span>
-          </span>
-        </button>
-      </Tooltip>
-
       <Tooltip label="Atualizar lista de salas" placement="right" delayMs={0}>
         <button
           type="button"
@@ -222,14 +228,17 @@ function AppLeftSidebar({
         </button>
       </Tooltip>
 
-      {!transmitting && (
+      {/* O BOTÃO DE TRANSMITIR — um só desde 2026-10-22 (pedido do
+          usuário; eram dois, tela e webcam). Abre o seletor de fonte. Com
+          a live no ar ele SOME (o rodapé é quem controla), e com ele o
+          anel girando, a barrinha lateral e o card do hover que teve por
+          um dia. */}
+      {screenStatus === 'idle' && webcamStatus === 'idle' && (
         <Tooltip label="Transmitir" placement="right" delayMs={0}>
           <button
             type="button"
             className="app-left-sidebar-cast"
-            onClick={onNavigateTransmission}
-            // Os dois eventos, não só o do mouse: `onFocus` é o mesmo
-            // aviso pra quem chega no botão pelo teclado.
+            onClick={onOpenPicker}
             onPointerEnter={onPrepareTransmission}
             onFocus={onPrepareTransmission}
             aria-label="Transmitir"
@@ -259,6 +268,11 @@ function AppLeftSidebar({
                 user.presence === 'busy' ? 'busy' : 'online'
               }`}
             />
+            {/* EU AO VIVO (2026-10-22, pedido do usuário): o mesmo selo AO VIVO
+                dos tiles de sala, com a tela ou o vídeo no ar. */}
+            {(screenStatus !== 'idle' || webcamStatus !== 'idle') && (
+              <span className="app-left-sidebar-live-pill">LIVE</span>
+            )}
           </button>
         </Tooltip>
 

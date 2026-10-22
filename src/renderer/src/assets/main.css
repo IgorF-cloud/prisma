@@ -103,8 +103,7 @@
      ver comentário em cima do @font-face do Poppins em base.css — sem
      o arquivo da fonte, não dá pra @font-face ela); cai pro Consolas
      (sempre presente no Windows) se não estiver instalada. */
-  --mono-font:
-    'gg mono', Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  --mono-font: 'gg mono', Consolas, 'Cascadia Mono', 'Courier New', monospace;
 }
 
 /* TESTE (2026-09-03, pedido do usuário) — titlebar customizada, ver
@@ -300,6 +299,58 @@ body.app-dialog-open .app-titlebar {
    na versão. */
 .app-titlebar > .tooltip-anchor {
   margin-left: auto;
+}
+
+/* O grupo da direita (2026-10-21): o "atualizar" e os botões de ícone
+   (Membros; Notificações na etapa 8). Ele é quem encosta na direita
+   agora — o seletor acima ficou pro caso de um Tooltip solto na faixa. */
+.app-titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  /* Mesma folga que o "atualizar" tinha sozinho: colado no "minimizar",
+     o botão parece parte dele. */
+  margin-right: 8px;
+}
+
+.app-titlebar-actions .app-titlebar-update {
+  margin-right: 4px;
+}
+
+/* Botão de ícone da titlebar — o tamanho de um botão de janela do
+   Windows na altura (24 de 32), mais estreito. Desenho do usuário
+   (2026-10-21): só o ÍCONE muda — cinza em repouso, branco no hover (o
+   fundo não clareia) e roxo com o painel aberto. */
+.app-titlebar-icon {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  border: none;
+  border-radius: 7px;
+  background-color: transparent;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.app-titlebar-icon:hover {
+  color: #fff;
+}
+
+.app-titlebar-icon-active,
+.app-titlebar-icon-active:hover {
+  color: var(--accent);
+}
+
+.app-titlebar-icon:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 1px;
 }
 
 .app-titlebar-update {
@@ -817,7 +868,10 @@ code {
   color: var(--ev-c-text-1);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .auth-form input::placeholder {
@@ -1467,6 +1521,303 @@ code {
   opacity: 0.6;
 }
 
+/* ------------------------------ janela da webcam (2026-10-20, item 26)
+
+   Mesma família do dialog de fontes — fundo, halo roxo, cabeçalho e
+   rodapé —, mas menor: aqui a escolha é uma câmera numa lista curta, e o
+   protagonista é o PREVIEW. Preview grande à esquerda, câmeras à
+   direita. */
+.webcam-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 92vw);
+  max-height: 86vh;
+  border-radius: 18px;
+  border: 1px solid var(--ev-c-gray-3);
+  background:
+    radial-gradient(120% 60% at 50% -20%, rgba(139, 92, 246, 0.12), transparent 60%),
+    var(--color-background);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  overflow: hidden;
+  animation: source-picker-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+.webcam-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.webcam-picker-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 18px;
+  padding: 18px;
+  min-height: 0;
+}
+
+/* O preview: 16:9, cantos generosos, um anel roxo bem leve — é a moldura
+   de "isto é o que vai pro ar". */
+.webcam-picker-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(80% 80% at 50% 40%, rgba(139, 92, 246, 0.08), transparent 70%), #07060c;
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.18),
+    0 12px 32px -18px rgba(124, 58, 237, 0.6);
+}
+
+/* Espelhado, como em qualquer chamada de vídeo: é assim que a pessoa
+   espera se ver. Só aqui — quem assiste recebe a imagem como a câmera
+   manda. */
+.webcam-picker-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.webcam-picker-video-ready {
+  opacity: 1;
+}
+
+.webcam-picker-preview-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.webcam-picker-preview-state p {
+  margin: 0;
+  max-width: 320px;
+  line-height: 1.45;
+}
+
+.webcam-picker-preview-error {
+  color: var(--ev-c-text-2);
+  font-weight: 500;
+}
+
+.webcam-picker-preview-error > svg {
+  color: var(--color-danger);
+}
+
+.webcam-picker-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--app-chrome-border);
+  border-radius: 10px;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-button-alt-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.webcam-picker-retry:hover {
+  border-color: rgba(167, 139, 250, 0.45);
+}
+
+/* "Prévia" no canto: deixa claro que isto ainda NÃO está no ar. Ponto
+   roxo, e não o verde de "ao vivo", de propósito. */
+.webcam-picker-preview-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background-color: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.webcam-picker-preview-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background-color: var(--accent);
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.9);
+}
+
+.webcam-picker-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.webcam-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.webcam-picker-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background-color: var(--ev-button-alt-bg);
+  color: var(--ev-button-alt-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.webcam-picker-device:hover {
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.webcam-picker-device-active {
+  border-color: rgba(167, 139, 250, 0.55);
+  background-color: rgba(139, 92, 246, 0.14);
+}
+
+.webcam-picker-device-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+}
+
+.webcam-picker-device-active .webcam-picker-device-icon {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.webcam-picker-device-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webcam-picker-device-check {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.webcam-picker-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--app-chrome-border);
+  border-radius: 12px;
+  color: var(--ev-c-text-2);
+  font-size: 12px;
+}
+
+.webcam-picker-hint {
+  margin: auto 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ev-c-text-3);
+}
+
+/* Privacidade à esquerda, a ação à direita. */
+.webcam-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--ev-c-gray-3);
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+.webcam-picker-footer .private-switch {
+  margin-left: 0;
+}
+
+.webcam-picker-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent-gradient);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    0 6px 18px -6px rgba(124, 58, 237, 0.7),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.webcam-picker-start:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 24px -8px rgba(124, 58, 237, 0.85),
+    0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+.webcam-picker-start:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .webcam-picker-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* --- O tile --------------------------------------------------------- */
 
 /* O TILE INTEIRO é o botão — miniatura e nome (2026-10-16, ajuste do
@@ -1690,7 +2041,6 @@ code {
   }
 }
 
-
 .modal-panel {
   display: flex;
   flex-direction: column;
@@ -1702,39 +2052,95 @@ code {
   overflow: hidden;
 }
 
-/* Diálogo de auto-atualização (ver UpdateDialog.tsx/useAppUpdate.ts) —
-   card estreito e centralizado, mesma linguagem visual do resto do app
-   (ícone circular com --accent-gradient, igual .auth-card-icon). */
+/* Diálogo de auto-atualização (ver UpdateDialog.tsx/useAppUpdate.ts).
+
+   Refeito em 2026-10-22 (pedido do usuário) na linguagem dos dialogs
+   mais novos — o SourcePickerDialog: fundo desfocado, cartão com halo
+   roxo no topo, sombra funda e a mesma entrada com um leve salto. O
+   ícone-em-pill com --accent-gradient continua (é o mesmo do
+   .auth-card-icon), agora com um anel de luz em volta.
+
+   `.update-dialog` também é usado pelo "Parando transmissão..." do
+   App.tsx (spinner + status), por isso o `-status` e o spinner solto
+   continuam existindo. */
+.update-dialog-backdrop {
+  background-color: rgba(6, 5, 12, 0.62);
+  backdrop-filter: blur(6px);
+  animation: source-picker-fade 0.18s ease-out;
+}
+
 .update-dialog {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  width: min(360px, 90vw);
-  padding: 28px;
-  border-radius: 16px;
+  width: min(400px, 90vw);
+  padding: 34px 30px 26px;
+  border-radius: 20px;
   border: 1px solid var(--ev-c-gray-3);
-  background-color: var(--color-background);
+  background:
+    radial-gradient(130% 70% at 50% -25%, rgba(139, 92, 246, 0.2), transparent 62%),
+    var(--color-background);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
   text-align: center;
+  animation: source-picker-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+/* Obrigatória: o halo puxa pro âmbar, o mesmo tom do selo lá em cima. É
+   o único lugar onde o diálogo sai do roxo — o botão de ação continua
+   sendo o do app, porque a ação é a mesma. */
+.update-dialog-required {
+  background:
+    radial-gradient(130% 70% at 50% -25%, rgba(224, 163, 62, 0.18), transparent 62%),
+    var(--color-background);
+}
+
+.update-dialog-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(224, 163, 62, 0.32);
+  background-color: rgba(224, 163, 62, 0.12);
+  color: var(--color-warning);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .update-dialog-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: 999px;
   background: var(--accent-gradient);
-  box-shadow: var(--accent-glow);
+  /* O anel é o que destaca a pill do halo de fundo, que é da mesma cor. */
+  box-shadow:
+    var(--accent-glow),
+    0 0 0 6px rgba(139, 92, 246, 0.1);
   color: #fff;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+.update-dialog-icon-error {
+  background: rgba(248, 113, 113, 0.14);
+  box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.06);
+  color: var(--color-danger);
 }
 
 .update-dialog-title {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--ev-c-text-1);
 }
 
@@ -1746,8 +2152,10 @@ code {
 }
 
 .update-dialog-subtitle {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
+  max-width: 320px;
   font-size: 13px;
+  line-height: 1.5;
   color: var(--ev-c-text-2);
 }
 
@@ -1755,34 +2163,109 @@ code {
   color: var(--accent);
 }
 
+/* Atual → nova, lado a lado. A nova ganha a borda e o texto roxos: é
+   pra onde o olho tem que ir. */
+.update-dialog-versions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.update-dialog-version {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 100px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--ev-c-gray-3);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.update-dialog-version-new {
+  border-color: rgba(139, 92, 246, 0.45);
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+.update-dialog-version-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-3);
+}
+
+.update-dialog-version-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-c-text-1);
+}
+
+.update-dialog-version-new .update-dialog-version-value {
+  color: var(--accent);
+}
+
+.update-dialog-versions-arrow {
+  flex-shrink: 0;
+  color: var(--ev-c-text-3);
+}
+
+/* Botões do mesmo tamanho, dividindo a largura: com um botão só (a
+   obrigatória), ele ocupa tudo. */
 .update-dialog-actions {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
+  width: 100%;
+  margin-top: 22px;
+}
+
+.update-dialog .update-dialog-actions .pill-button {
+  flex: 1;
+  justify-content: center;
+}
+
+.update-dialog-footnote {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: var(--ev-c-text-3);
+}
+
+.update-dialog-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
   margin-top: 18px;
 }
 
 .update-dialog-progress-track {
-  width: 100%;
+  flex: 1;
   height: 8px;
   border-radius: 999px;
   background-color: var(--ev-c-black-mute);
   overflow: hidden;
-  margin-top: 14px;
 }
 
 .update-dialog-progress-fill {
   height: 100%;
   border-radius: 999px;
   background: var(--accent-gradient);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
   transition: width 0.15s ease;
 }
 
 .update-dialog-progress-label {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--ev-c-text-2);
+  min-width: 38px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ev-c-text-1);
 }
 
 .update-dialog-spinner {
@@ -1795,9 +2278,14 @@ code {
   margin-bottom: 8px;
 }
 
-.update-dialog-error-icon {
-  color: var(--color-danger);
-  margin-bottom: 4px;
+/* O spinner DENTRO da pill (estágio "instalando"): branco sobre o
+   gradiente, sem a margem de quando ele aparece solto. */
+.update-dialog-icon-spinning .update-dialog-spinner {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
 }
 
 .modal-close {
@@ -2076,7 +2564,10 @@ code {
   font-size: 13px;
   width: 120px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .user-chip-edit-form input:focus {
@@ -2098,7 +2589,10 @@ code {
   border-radius: 999px;
   border: none;
   cursor: pointer;
-  transition: filter 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .user-chip-edit-form button[type='submit'] {
@@ -2126,195 +2620,249 @@ code {
   cursor: default;
 }
 
-/* `min-height` (não `height` fixo) desde o item 42 — o `.live-tile` do
-   canto esquerdo (título + subtítulo + botão de espectadores, 3 linhas
-   empilhadas) pode ficar mais alto que os `--footer-height` originais
-   (pensados só pra uma linha de botões); com `min-height` o footer cresce
-   pra caber, mas continua no tamanho compacto de sempre fora desse
-   estado (parado, ou só o botão "Transmitir"). */
-/* `flex-shrink: 0` (2026-09-05): o footer tem tamanho fixo na coluna —
-   quem cede espaço é a `.watch-area` (ver `min-height: 0` lá embaixo).
-   Sem isso, com a coluna apertada o footer seria espremido junto (o
-   `min-height` acima é só um piso pro CONTEÚDO, não impede o flex de
-   encolher a caixa). */
-.home-footer {
+/* (O RODAPÉ da live — `.home-footer*`, `.live-footer-top`, `.footer-viewers*`
+   e `.live-room-chip*` — saiu em 2026-10-21, etapa 7: o conteúdo dele
+   virou a aba da minha live, MyLiveSidebar.tsx. Os cartões das
+   transmissões abaixo continuam, agora no pé da aba.) */
+
+/* A fila de cartões. Largura FIXA em cada um (pedido do usuário): o
+   rodapé não dança quando o nome do jogo muda ou a outra transmissão
+   liga — e a vaga de uma transmissão desligada é do mesmo tamanho, como
+   cartão tracejado. */
+.live-cards {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  /* `height` fixo em vez de `min-height` (2026-09-05): com `min-height`,
-     o `.live-tile` da live ligada (título + subtítulo empilhados)
-     empurrava o footer de 66 pra 67px. O motivo original era casar com o
-     "profile tile" da sidebar antiga, que ficava ao lado — esse tile não
-     existe mais (2026-09-09), mas o `height` fixo continua valendo por
-     si: é ele que impede o footer de crescer 1px quando a live liga. O
-     conteúdo cabe nos 42px internos (66 - 12 - 12) — ver o `line-height`
-     do subtítulo mais abaixo. */
-  /* 76px fixos desde 2026-10-13 (eram 66). A ficha da live passou a ter
-     duas linhas de verdade — selo + nome em cima, dados da sala embaixo
-     — e a arte cresceu junto, de 42 pra 50px. (Voltou pros 42px em
-     2026-10-16, igual ao painel de detalhes; a altura ficou, porque
-     quem pede os 76px agora são as duas linhas de texto.)
-
-     Era `var(--profile-tile-height)` até 2026-09-09: a variável existia
-     pra casar esta altura com a do "profile tile" da sidebar de salas,
-     que ficava ao lado — a sidebar saiu e a variável foi junto, porque
-     não sincronizava mais nada. */
-  height: 76px;
-  flex-shrink: 0;
-
-  padding: 13px 16px;
-  border-top: 1px solid var(--ev-c-gray-3);
-}
-
-/* Pedido do usuário (2026-09-05): o fundo (mesmo tom do "profile tile"
-   da sidebar) só aparece com a live ON — parado, o footer volta a ser
-   transparente, deixando ver o `--color-background` da `.home-page`.
-   Só a COR é condicional: tamanho, margem e raio ficam na regra base
-   acima, então nada se mexe ao ligar/desligar a transmissão. */
-.home-footer-live {
-  background-color: var(--ev-c-black-mute);
-}
-
-/* SEM `flex: 1` de propósito (removido, 2026-09-02) — tentativa anterior
-   pra dar mais espaço ao subtítulo, mas causava um bug real: a CAIXA
-   ficava esticada até o `.home-footer-right`, e como os filhos (avatar +
-   `.live-tile`) não preenchiam esse espaço todo, sobrava uma área vazia
-   dentro da própria caixa que ainda disparava o hover (pedido do
-   usuário: hover só deve ir até o NOME quando a live está OFF, ou até o
-   TIMER quando está ON — nunca até o limite disponível do footer). Sem
-   `flex: 1`, a caixa volta a ter exatamente o tamanho do próprio
-   conteúdo (a ficha da live tem largura de conteúdo e teto próprio, ver
-   `.live-tile-info` — então o conteúdo já é bem dimensionado sozinho,
-   não precisava do `flex: 1` pra isso).
-   Hover vermelho + padding (2026-09-02, pedido do usuário) — o tile
-   inteiro (avatar + informações) fica com esse hover, sinalizando que é
-   clicável (ainda sem função nenhuma ligada, preparado pra um futuro
-   uso). */
-/* Pedido do usuário (2026-09-04): virou só as infos da MINHA
-   transmissão (AO VIVO/PIN/timer + jogo/janela) — nada clicável, sem
-   hover, sem card. O "USER INFO" que morava aqui virou o "profile tile"
-   da sidebar de salas, e em 2026-09-09, com a sidebar removida, virou o
-   avatar do rodapé da `.app-left-sidebar`. */
-/* Desde 2026-09-29 ele segura DOIS blocos, separados por uma divisória:
-   o tile da live e a fila de quem está assistindo (ver
-   `.footer-section-divider` e `.footer-viewers`). O `gap` é a folga de
-   cada lado da linha divisória. */
-.home-footer-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  /* Toma todo o espaço que sobra (2026-09-14, pedido do usuário). O
-     `gap` do `.home-footer` é o que garante a folga até os botões da
-     direita — daí não precisar de margem aqui. */
-  flex: 1;
+  align-items: stretch;
+  gap: 10px;
   min-width: 0;
 }
 
-/* A LINHA VERTICAL entre o tile da live e a fila de espectadores
-   (2026-09-29, desenho do usuário).
-
-   Traço fino e discreto, alto o bastante pra cobrir as duas linhas da
-   ficha: ele separa dois BLOCOS, e não pedaços de uma linha. Dentro da
-   ficha não há mais divisória nenhuma desde 2026-10-13 — o que separa um
-   dado do outro lá é o ícone de cada um (ver `.live-meta-item`). */
-.footer-section-divider {
-  width: 1px;
-  height: 30px;
+.live-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 58px;
+  padding: 7px 8px 7px 7px;
   flex-shrink: 0;
-  background-color: var(--ev-c-gray-2);
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1px solid var(--app-chrome-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-/* O BLOCO de quem está assistindo: título em cima, fila de avatares
-   embaixo. Sem fundo e sem borda (pedido do usuário) — o rodapé já é a
-   caixa, e o que separa este bloco do tile da live é a divisória.
+.live-card-screen {
+  width: 376px;
+}
 
-   `flex-shrink: 0` porque quem cede numa janela estreita é o tile da
-   live: lá o nome do jogo trunca com reticências e nada se perde de
-   verdade, enquanto aqui encolher significaria cortar avatares pelo
-   meio — a fila tem um corte próprio (o "…" depois do décimo), e ele
-   não pode competir com um segundo corte vindo da caixa. */
-.footer-viewers {
+/* A webcam com o tom roxo que ela tem em todo o resto (tile de quem
+   assiste, cartão dos detalhes da sala). */
+.live-card-cam {
+  /* Largura MÁXIMA, não fixa (2026-10-20, pedido do usuário): 340px
+     quando cabe, e encolhe até o espaço que a janela tem — o nome da
+     câmera trunca com reticências. A tela continua fixa. */
+  flex: 0 1 340px;
+  max-width: 340px;
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.14), rgba(139, 92, 246, 0.04));
+  border-color: rgba(167, 139, 250, 0.22);
+}
+
+/* Sem arte (nada detectado ainda): o monitor no quadrado de 42px. Os
+   10px de raio são os do `.room-feed-icon`. */
+.live-card-icon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+}
+
+.live-card .live-tile-art {
+  border-radius: 10px;
+}
+
+/* A coluna do texto: o tipo (com o estado e o tempo) em cima, o nome
+   embaixo — a mesma ordem do `.room-feed-text`. `flex: 1` + `min-width:
+   0` é o que dá ao marquee uma largura de verdade pra medir. */
+.live-card-info {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  flex-shrink: 0;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
-/* "Assistindo 7". Rótulo de seção, no mesmo tom e no mesmo tratamento
-   dos títulos de grupo da lista de usuários — maiúsculas pequenas com
-   espaçamento, pra ler como uma camada acima do conteúdo em vez de
-   competir com ele.
+/* O `.live-tile-subtitle` tem `flex: 1` pra crescer na LINHA; aqui ele
+   está numa coluna, e crescer seria esticar pra baixo. */
+.live-card-info .live-tile-subtitle {
+  flex: 0 0 auto;
+}
 
-   `line-height: 1` porque o rodapé tem 42px úteis (66 menos os 12+12 de
-   padding) e a fila embaixo já come 26 deles: o que sobra pro título é
-   exatamente a altura da letra. */
-.footer-viewers-title {
+.live-card-kind {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ev-c-text-2);
-  user-select: none;
+  white-space: nowrap;
 }
 
-/* O número mais claro que a palavra, ao contrário do contador da lista
-   de usuários: lá a categoria é a informação e a contagem é o detalhe;
-   aqui é o contrário — "Assistindo" é sempre a mesma palavra, e o número
-   é o que muda durante a live. É ele que a fila cortada em 10 não
-   consegue dizer sozinha. */
-.footer-viewers-count {
-  font-weight: 700;
+/* O estado de CADA transmissão: verde no ar, cinza pulsando subindo. */
+.live-card-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+}
+
+.live-card-dot-connecting {
+  background-color: var(--ev-c-text-3);
+  box-shadow: none;
+  animation: live-badge-pulse 1.1s ease-in-out infinite;
+}
+
+.live-card-sep {
+  width: 3px;
+  height: 3px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background-color: var(--ev-c-text-3);
+}
+
+/* Tempo no ar — o verde e a mono do timer de sempre, sem as maiúsculas
+   do rótulo (números não têm caixa, mas o espaçamento atrapalharia). */
+.live-card-timer {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--color-live);
   font-variant-numeric: tabular-nums;
+}
+
+/* O nome (jogo/janela na tela, a câmera na webcam). As duas classes no
+   marquee porque `.marquee-text` vem antes com 11px/400. */
+.live-card-name,
+.marquee-text.live-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
   color: var(--ev-c-text-1);
 }
 
-/* A borda de cada avatar é da cor do FUNDO pra abrir o sulco entre um
-   chip e o vizinho (ver `.viewer-avatar-chip`) — então ela tem que
-   acompanhar o fundo de onde a fila está. Aqui o fundo é o do rodapé com
-   a live ligada (`.home-footer-live`), e não o `--color-background` da
-   área de lives que o chip usa por padrão.
-
-   Sem isto, cada avatar ficaria com um anel mais escuro que o rodapé em
-   volta — visível justamente na sobreposição, que é o lugar em que a
-   borda existe pra ser vista. */
-.footer-viewers .viewer-avatar-chip,
-.footer-viewers .viewer-avatar-more {
-  border-color: var(--ev-c-black-mute);
+/* Só no nome SEM marquee (a câmera). No da tela o `overflow: hidden`
+   recortava o próprio texto que o marquee desliza: a caixa encolhia pra
+   largura do cartão, o texto era cortado nela, e a animação empurrava a
+   caixa inteira pra fora — o nome sumia em vez de rolar. Quem recorta lá
+   é o `.marquee-container`. */
+.live-card-name:not(.marquee-text) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* No hover/ativo o anel acende, como nos outros dois lugares onde a fila
-   aparece — a regra genérica perde pra específica acima, então ela
-   precisa ser repetida aqui. */
-.footer-viewers .viewer-avatar-chip:hover,
-.footer-viewers .viewer-avatar-chip-active {
-  border-color: var(--ev-c-text-2);
-}
-
-/* O anel de "silenciado" continua vermelho: ele é o único lugar em que o
-   host vê de quem tirou a voz, e as duas regras acima o apagariam.
-
-   DEPOIS delas de propósito: as três têm a mesma especificidade, então
-   quem vem por último é quem vale — e o vermelho tem que sobreviver
-   inclusive ao hover. */
-.footer-viewers .viewer-avatar-chip-muted,
-.footer-viewers .viewer-avatar-chip-muted:hover {
-  border-color: var(--color-danger);
-}
-
-.home-footer-right {
+/* Os controles do cartão: botões quadrados de cantos redondos, mais
+   leves que o `.icon-button` redondo — dentro de um cartão, um círculo
+   cheio pesava mais que o próprio conteúdo. */
+.live-card-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  /* Com o lado esquerdo em `flex: 1`, sem isto os botões seriam os
-     primeiros a encolher numa janela estreita — eles têm tamanho
-     fixo e é o TEXTO da esquerda que deve truncar. */
+  gap: 4px;
   flex-shrink: 0;
+}
+
+.live-card-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.live-card-button:hover {
+  color: var(--ev-c-text-1);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Preview ligado: o botão fica aceso no acento. */
+.live-card-button-on {
+  color: var(--accent);
+  background-color: rgba(139, 92, 246, 0.16);
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.live-card-button-stop {
+  color: var(--color-danger);
+  background-color: rgba(248, 113, 113, 0.1);
+}
+
+.live-card-button-stop:hover {
+  color: #fff;
+  background-color: var(--color-danger);
+}
+
+/* A MINIATURA DA WEBCAM: 16:9 na altura da arte (42px). `cover` porque a
+   câmera pode ser 4:3 — recorta em vez de deixar tarja. Espelhada, como a
+   prévia da janela de escolha (ver WebcamLiveCard.tsx). */
+.live-card-thumb {
+  position: relative;
+  width: 75px;
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.25);
+  color: var(--accent);
+}
+
+.live-card-thumb video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.live-card-thumb-waiting svg {
+  position: relative;
+  animation: live-badge-pulse 1.1s ease-in-out infinite;
+}
+
+/* Parando: o cartão fica, do mesmo tamanho, só com o indicador no
+   centro — o rodapé não pode pular enquanto a pessoa olha pra ele. */
+.live-card-stopping {
+  justify-content: center;
+  gap: 8px;
 }
 
 /* A ABA E O PAINEL DE ESPECTADORES DO RODAPÉ SAÍRAM (2026-09-23, pedido
@@ -2704,21 +3252,6 @@ code {
   font-family: var(--mono-font);
 }
 
-/* Codigo da sala (2026-09-13, pedido do usuario).
-
-   Branco, e o unico branco da linha de baixo: e o unico dado dali que a
-   pessoa precisa LER e ditar pra alguem. Mesma fonte mono do timer —
-   numero ditado em voz alta se le melhor com digitos de largura fixa, e
-   o 0 da mono nao se confunde com o O. */
-.live-tile-code {
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
-  font-family: var(--mono-font);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-}
-
 /* "Privada" continua ROXO (era um chip roxo antes de virar item desta
    linha): e informacao de ESCOPO, nao de estado, e o roxo e o que a
    impede de ser lida como um segundo "ao vivo". */
@@ -2784,175 +3317,6 @@ code {
   border-top-left-radius: 12px;
   pointer-events: none;
   z-index: 5;
-}
-
-/* ---------------------------------------------------------------------
-   Convite pra live privada (2026-09-10) — InviteToast.tsx
-
-   Canto superior DIREITO, por pedido do usuario. Longe do `.snackbar`
-   generico, que vive embaixo: os dois podem estar na tela ao mesmo
-   tempo e no mesmo canto um cobriria o outro.
-
-   Fica ABAIXO da faixa de 32px da titlebar (top: 44px) pra nao cobrir os
-   botoes de minimizar/fechar do Windows — a titlebar e area arrastavel e
-   um card por cima dela roubaria o arrasto.
-   --------------------------------------------------------------------- */
-.invite-toast {
-  position: fixed;
-  top: 44px;
-  right: 16px;
-  z-index: 1200;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: min(320px, calc(100vw - 32px));
-  padding: 14px 14px 17px;
-  border-radius: 14px;
-  /* Fundo em duas camadas: um brilho roxo no canto superior esquerdo
-     (mesma linguagem do popover de perfil) por cima da cor base. */
-  background:
-    radial-gradient(120% 90% at 0% 0%, rgba(167, 139, 250, 0.18), transparent 70%), #26262c;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 18px 50px -10px rgba(0, 0, 0, 0.6),
-    0 4px 14px rgba(0, 0, 0, 0.35);
-  /* `overflow: hidden` prende a barra de timeout nos cantos
-     arredondados — sem ele ela vaza pelo canto de baixo. */
-  overflow: hidden;
-  animation:
-    invite-toast-in 0.42s cubic-bezier(0.22, 1.2, 0.36, 1),
-    invite-toast-glow 2.4s ease-in-out 0.42s infinite;
-}
-
-/* Entra deslizando da direita (de onde ele "vem"), com um leve
-   afundamento e escala — as tres juntas dao o efeito de "chegou",
-   enquanto so o deslize pareceria um empurrao. A curva passa um pouco
-   do lugar e volta, que e o que tira a sensacao mecanica. */
-@keyframes invite-toast-in {
-  from {
-    opacity: 0;
-    transform: translate(28px, -8px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate(0, 0) scale(1);
-  }
-}
-
-/* Respiracao lenta na sombra roxa depois que ele assenta. Chama a
-   atencao sem piscar nem se mexer — o convite tem 10s de vida e nao
-   pode passar despercebido, mas tambem nao pode incomodar. */
-@keyframes invite-toast-glow {
-  0%,
-  100% {
-    box-shadow:
-      0 18px 50px -10px rgba(0, 0, 0, 0.6),
-      0 4px 14px rgba(0, 0, 0, 0.35),
-      0 0 0 1px rgba(167, 139, 250, 0.08);
-  }
-  50% {
-    box-shadow:
-      0 18px 50px -10px rgba(0, 0, 0, 0.6),
-      0 4px 14px rgba(0, 0, 0, 0.35),
-      0 0 22px 2px rgba(167, 139, 250, 0.22);
-  }
-}
-
-/* Barra de tempo restante (10s), colada na base do card. A largura e
-   animada por CSS, nao por state: um contador em React
-   re-renderizaria o componente centenas de vezes em 10s pra desenhar o
-   que a GPU faz sozinha.
-
-   O tempo aqui e SO visual — quem de fato recusa o convite e o
-   setTimeout do InviteToast.tsx. Os dois precisam do mesmo valor: se
-   mudar um, mudar o outro (INVITE_TIMEOUT_MS la). */
-.invite-toast-timeout {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 3px;
-  width: 100%;
-  transform-origin: left center;
-  background: var(--accent-gradient);
-  /* 30s desde 2026-09-13 — TEM que bater com INVITE_TIMEOUT_MS em
-     InviteToast.tsx. */
-  animation: invite-timeout 30s linear forwards;
-}
-
-/* `scaleX` e nao `width`: escala roda na composicao, largura obriga o
-   navegador a refazer layout a cada quadro. */
-@keyframes invite-timeout {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
-}
-
-.invite-toast-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.invite-toast-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--accent-gradient);
-  color: #fff;
-  box-shadow: var(--accent-glow);
-}
-
-.invite-toast-text {
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--ev-c-text-1);
-}
-
-.invite-toast-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.invite-toast-accept,
-.invite-toast-decline {
-  padding: 7px 14px;
-  border-radius: 8px;
-  border: none;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    filter 0.15s ease,
-    background-color 0.15s ease;
-}
-
-/* So o "Aceitar" tem cor: duas acoes com o mesmo peso fariam a pessoa
-   ter que ler as duas pra decidir qual e a principal. */
-.invite-toast-accept {
-  background: var(--accent-gradient);
-  color: #fff;
-}
-
-.invite-toast-accept:hover {
-  filter: brightness(1.1);
-}
-
-.invite-toast-decline {
-  background: none;
-  color: var(--ev-c-text-2);
-}
-
-.invite-toast-decline:hover {
-  background-color: var(--ev-button-alt-hover-bg);
-  color: var(--ev-c-text-1);
 }
 
 /* ---------------------------------------------------------------------
@@ -3418,8 +3782,8 @@ code {
   height: min(560px, 86vh);
   border-radius: 16px;
   border: 1px solid var(--ev-c-gray-3);
-  /* O mesmo brilho roxo do alto que os outros cartoes do app usam (ver
-     .join-code-modal): diz "isto e do Prisma" sem precisar de mais
+  /* O mesmo brilho roxo do alto que os outros cartoes do app usam (era o
+     da janela de entrar com codigo, que saiu): diz "isto e do Prisma" sem precisar de mais
      nenhum enfeite. */
   background:
     radial-gradient(120% 60% at 50% 0%, rgba(167, 139, 250, 0.12), transparent 70%),
@@ -3735,8 +4099,7 @@ code {
   border-radius: 12px;
   border: 1px solid rgba(74, 222, 128, 0.18);
   background:
-    linear-gradient(100deg, rgba(74, 222, 128, 0.07), transparent 65%),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(100deg, rgba(74, 222, 128, 0.07), transparent 65%), rgba(255, 255, 255, 0.02);
   overflow: hidden;
   animation: release-notes-catchup-in 0.3s ease-out both;
 }
@@ -3911,8 +4274,7 @@ code {
   border-radius: 12px;
   border: 1px solid rgba(74, 222, 128, 0.18);
   background:
-    linear-gradient(100deg, rgba(74, 222, 128, 0.07), transparent 70%),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(100deg, rgba(74, 222, 128, 0.07), transparent 70%), rgba(255, 255, 255, 0.02);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -4244,82 +4606,6 @@ code {
   color: var(--ev-c-text-2);
 }
 
-/* ---------------------------------------------------------------------
-   Entrar com codigo (2026-09-10) — JoinByCodeModal.tsx
-   --------------------------------------------------------------------- */
-.join-code-modal {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: min(360px, 90vw);
-  padding: 28px;
-  border-radius: 16px;
-  background:
-    radial-gradient(110% 70% at 50% 0%, rgba(167, 139, 250, 0.14), transparent 70%),
-    var(--ev-c-black-mute);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
-}
-
-.join-code-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-}
-
-.join-code-title {
-  margin: 8px 0 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--ev-c-text-1);
-}
-
-.join-code-subtitle {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--ev-c-text-2);
-  text-align: center;
-}
-
-.join-code-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-}
-
-/* Fonte mono e `letter-spacing` largo: o codigo e um numero pra CONFERIR
-   digito a digito, nao um texto pra ler corrido — a mesma razao da fonte
-   mono nos timers do app. */
-.join-code-input {
-  width: 100%;
-  padding: 14px;
-  border-radius: 10px;
-  border: 1px solid var(--app-chrome-border);
-  background-color: rgba(0, 0, 0, 0.25);
-  color: var(--ev-c-text-1);
-  font-family: var(--mono-font);
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: 0.35em;
-  text-align: center;
-  /* Compensa o letter-spacing, que tambem entra DEPOIS do ultimo digito
-     e desloca o texto pra esquerda. */
-  text-indent: 0.35em;
-  transition: border-color 0.15s ease;
-}
-
-.join-code-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.join-code-input::placeholder {
-  color: var(--ev-c-gray-2);
-}
-
 /* A janela da sobreposição carrega o MESMO CSS da janela principal, e o
    `body`/`#root` de lá têm fundo opaco, altura de tela cheia e
    centralização — o que pintaria um retângulo escuro cobrindo tudo e
@@ -4458,19 +4744,6 @@ body.overlay-window #root {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.55);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-}
-
-/* Aviso do modo Borderless na tela de configurações. Amarelo de atenção,
-   não vermelho: não é erro, é uma condição do ambiente. */
-.settings-row-note {
-  margin-top: 6px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border-left: 2px solid #fbbf24;
-  background-color: rgba(251, 191, 36, 0.08);
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--ev-c-text-2);
 }
 
 /* Tooltip generico do app (2026-09-09, pedido do usuario) — ver
@@ -4751,22 +5024,6 @@ body.overlay-window #root {
   color: var(--color-live);
 }
 
-.room-details-now-playing {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  min-height: 44px;
-}
-
-.room-details-now-playing-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
 .room-details-label {
   display: flex;
   align-items: center;
@@ -4784,12 +5041,6 @@ body.overlay-window #root {
   background-color: var(--ev-c-gray-3);
   font-size: 10px;
   letter-spacing: 0;
-  color: var(--ev-c-text-1);
-}
-
-.room-details-game {
-  font-size: 13px;
-  font-weight: 500;
   color: var(--ev-c-text-1);
 }
 
@@ -4840,8 +5091,8 @@ body.overlay-window #root {
    Um botão desabilitado comunicava "não dá pra clicar" quando a mensagem
    real é outra: "você já está aqui, e pode sair".
 
-   O visual é o mesmo dos chips que flutuam sobre a live (ver
-   `.watch-tile-label` e `.tile-top-right-actions`): mesmo fundo, mesmo
+   O visual nasceu do dos chips que flutuavam sobre a live (hoje
+   `.tile-chip`, o padrão dos chips da live): mesmo fundo, mesmo
    raio de 12px, sem borda, e a saída ocupando a ponta direita inteira —
    mais uma sombra, que é o que o diferencia deles. Lá o chip flutua
    sobre o vídeo e se destaca sozinho; aqui ele está sobre o fundo da
@@ -4877,7 +5128,7 @@ body.overlay-window #root {
   flex-shrink: 0;
 }
 
-/* Mesma saída do chip da live (`.leave-toggle`): sem fundo até o mouse
+/* Mesma saída do chip da live (`.tile-chip-button-danger`): sem fundo até o mouse
    chegar, e então o vermelho apagado de sempre — preenchendo o canto
    inteiro, com o mesmo raio do chip do lado de fora. */
 .room-details-leave {
@@ -5216,30 +5467,6 @@ body.overlay-window #root {
   cursor: default;
 }
 
-/* Circulo branco menor DENTRO do tile, com o "+" vazado na cor do fundo
-   do proprio tile (pedido do usuario, 2026-09-09).
-
-   O "+" nao tem cor propria: ele acompanha o fundo do tile, e o tile
-   troca de cinza pra roxo no hover — por isso a regra de hover abaixo
-   muda o `color` daqui junto. Se as duas saissem de sincronia, o "+"
-   deixaria de parecer recortado e viraria um simbolo colado por cima. */
-.app-left-sidebar-add-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background-color: #fff;
-  color: var(--ev-c-gray-3);
-  transition: color 0.18s ease;
-}
-
-.app-left-sidebar-plain:hover:not(:disabled) .app-left-sidebar-add-badge,
-.app-left-sidebar-plain:focus-visible .app-left-sidebar-add-badge {
-  color: var(--accent);
-}
-
 /* Nenhuma sala ao vivo: circulo tracejado, so pra diferenciar "ninguem
    transmitindo" de "a lista nao carregou". */
 .app-left-sidebar-empty {
@@ -5409,6 +5636,169 @@ body.overlay-window #root {
   100% {
     transform: scale(1.45);
     opacity: 0;
+  }
+}
+
+/* OS BOTÕES DE TRANSMITIR (tela e webcam) na barra da esquerda (2026-10-20, item 26).
+
+   O MESMO botão roxo do "Compartilhar tela" (`.app-left-sidebar-cast`,
+   pedido do usuário): gradiente, brilho, o crescer no hover e o anel que
+   pulsa. Daqui pra baixo só o que muda com a webcam LIGADA — ele não
+   some como o da tela, porque é ele que para:
+
+   - o anel que pulsa vira um anel VERDE parado, colado no botão: é o "no
+     ar" lido de longe;
+   - o selo verde no canto, com um halo que respira;
+   - no hover, o gradiente vira o vermelho de parar e a filmadora dá lugar
+     ao quadrado — o clique faz exatamente isso. */
+.app-left-sidebar-tx {
+  /* A filmadora e o quadrado de parar ocupam o mesmo lugar e trocam por
+     opacidade — sem pulo de layout. */
+  isolation: isolate;
+}
+
+.app-left-sidebar-tx:disabled {
+  cursor: default;
+  opacity: 0.6;
+  transform: none;
+}
+
+.app-left-sidebar-tx-glyph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.18s ease,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.app-left-sidebar-tx-stop {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+/* LIGADA (subindo ou no ar): sem o pulso de convite — ele já foi aceito. */
+.app-left-sidebar-tx-starting::after,
+.app-left-sidebar-tx-live::after {
+  inset: -4px;
+  border: 2px solid rgba(74, 222, 128, 0.55);
+  animation: none;
+  opacity: 1;
+  transform: none;
+  transition:
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+/* Subindo: o anel ainda roxo e respirando, até a câmera chegar no ar. */
+.app-left-sidebar-tx-starting::after {
+  border-color: rgba(167, 139, 250, 0.6);
+  animation: webcam-ring-breathe 1.4s ease-in-out infinite;
+}
+
+.app-left-sidebar-tx-live {
+  box-shadow:
+    0 4px 16px rgba(124, 58, 237, 0.45),
+    0 0 18px rgba(74, 222, 128, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* HOVER LIGADA = parar. */
+.app-left-sidebar-tx-starting:hover:not(:disabled),
+.app-left-sidebar-tx-live:hover:not(:disabled) {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+  box-shadow:
+    0 6px 20px rgba(220, 38, 38, 0.5),
+    0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+.app-left-sidebar-tx-starting:hover:not(:disabled)::after,
+.app-left-sidebar-tx-live:hover:not(:disabled)::after {
+  animation: none;
+  opacity: 1;
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.app-left-sidebar-tx-starting:hover:not(:disabled) .app-left-sidebar-tx-glyph,
+.app-left-sidebar-tx-live:hover:not(:disabled) .app-left-sidebar-tx-glyph {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.app-left-sidebar-tx-starting:hover:not(:disabled) .app-left-sidebar-tx-stop,
+.app-left-sidebar-tx-live:hover:not(:disabled) .app-left-sidebar-tx-stop {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* O SELO "NO AR": ponto verde no canto de cima, com o sulco da cor do
+   fundo da barra (o botão parece "furado" ali) e um halo que respira por
+   trás. */
+.app-left-sidebar-tx-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  z-index: 1;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2.5px solid var(--color-background);
+  background: radial-gradient(circle at 35% 35%, #86efac, var(--color-live) 60%);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.app-left-sidebar-tx-badge::before {
+  content: '';
+  position: absolute;
+  inset: -2.5px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.55);
+  z-index: -1;
+  animation: webcam-badge-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Subindo: o selo é roxo e pisca, sem halo. */
+.app-left-sidebar-tx-starting .app-left-sidebar-tx-badge {
+  background: var(--accent);
+  animation: webcam-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.app-left-sidebar-tx-starting .app-left-sidebar-tx-badge::before {
+  display: none;
+}
+
+@keyframes webcam-badge-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  75%,
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+@keyframes webcam-ring-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes webcam-dot-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-left-sidebar-tx-starting::after,
+  .app-left-sidebar-tx-badge,
+  .app-left-sidebar-tx-badge::before {
+    animation: none;
   }
 }
 
@@ -5589,13 +5979,18 @@ body.overlay-window #root {
   left: -6px;
   padding: 6px 4px;
   border-radius: 999px;
-  background-color: #ef4444;
+  /* Verde desde 2026-10-22 (pedido do usuário; era vermelho), o mesmo
+     verde das tags LIVE do resto do app. Um tom
+     abaixo do `--color-live`: texto branco de 7px sobre o verde claro
+     não se lia. */
+  background-color: #16a34a;
   border: 2px solid var(--color-background);
   color: #fff;
   font-size: 7px;
   line-height: 0.2;
   font-weight: 800;
   letter-spacing: 0.04em;
+  white-space: nowrap;
   pointer-events: none;
 }
 
@@ -5872,7 +6267,7 @@ body.overlay-window #root {
      arquivo; com o `:not()` esta aqui nem se aplica lá — e é o mesmo
      seletor que carrega o `container-type: size`, sem o qual `cqw`/
      `cqh` não teriam a que se referir. */
-  .watch-grid:not(.watch-grid-has-focus) .watch-tile {
+  .watch-grid:not(.watch-grid-has-focus):not(.watch-grid-featured) .watch-tile {
     flex: 0 0 auto;
     width: min(var(--tile-w), var(--tile-h) * 16 / 9);
     height: auto;
@@ -5898,7 +6293,7 @@ body.overlay-window #root {
      linhas). `grid` com duas colunas `auto` fixa o número de colunas
      independentemente do tamanho da janela, e as colunas continuam
      sendo do tamanho exato do conteúdo — sem folga entre elas. */
-  .watch-grid:has(.watch-tile:nth-child(3)) {
+  .watch-grid:not(.watch-grid-featured):has(.watch-tile:nth-child(3)) {
     display: grid;
     grid-template-columns: repeat(2, auto);
     justify-content: center;
@@ -5908,7 +6303,8 @@ body.overlay-window #root {
   /* Quantidade ímpar: o último tile fica sozinho na linha de baixo e
      ocupa as duas colunas, pra se centralizar na GRADE inteira em vez
      de encostar na coluna da esquerda. */
-  .watch-grid:has(.watch-tile:nth-child(3)) .watch-tile:last-child:nth-child(odd) {
+  .watch-grid:not(.watch-grid-featured):has(.watch-tile:nth-child(3))
+    .watch-tile:last-child:nth-child(odd) {
     grid-column: span 2;
     justify-self: center;
   }
@@ -5962,12 +6358,107 @@ body.overlay-window #root {
 
      O empilhamento em coluna (@media acima) fica intacto, como pedido:
      lá o tile já tem altura natural e não sobra nada dentro dele. */
-  .watch-grid:not(.watch-grid-has-focus) .watch-tile {
+  .watch-grid:not(.watch-grid-has-focus):not(.watch-grid-featured) .watch-tile {
     flex: 0 0 auto;
     width: min(var(--tile-w), var(--tile-h) * 16 / 9);
     height: auto;
     aspect-ratio: 16 / 9;
   }
+}
+
+/* DESTAQUE (2026-10-22, pedido do usuário).
+   ------------------------------------------------------------------
+   Uma live clicada vai pra linha de cima, grande, e as outras viram uma
+   fileira CENTRALIZADA embaixo. Vale igual pra janela larga e pra alta —
+   as regras de linha/coluna dos dois @media acima são só da grade, e
+   cada uma delas exclui `.watch-grid-featured`.
+
+   Os tiles continuam filhos diretos da grade, na ordem de sempre (o
+   React não remonta nada, então nenhum vídeo pisca ao trocar): quem põe
+   o destacado em cima é o `order`, e quem quebra a linha logo depois
+   dele é o `::before` de largura 100% — sem ele, numa janela larga, as
+   lives da fileira caberiam do lado do destacado.
+
+   Conta da fileira: cada tile tem no máximo `--strip-h` de altura (24%
+   da grade), mas encolhe se não couberem todos lado a lado
+   (`--strip-fit`, a largura dividida pela quantidade, menos os gaps). O
+   destacado fica com a maior caixa 16:9 que cabe no que sobra da altura
+   — mesma conta das células da grade. */
+.watch-grid.watch-grid-featured {
+  container-type: size;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  column-gap: 12px;
+  row-gap: 0;
+  --strip-h: calc((100cqh - 16px) * 0.24);
+  --strip-fit: 100cqw;
+  --strip-w: min(var(--strip-h) * 16 / 9, var(--strip-fit));
+}
+
+/* A quebra de linha entre o destacado e a fileira. */
+.watch-grid-featured::before {
+  content: '';
+  order: -1;
+  flex-basis: 100%;
+  height: 0;
+}
+
+/* `nth-child(k)` = k tiles no total, ou seja k-1 na fileira e k-2 gaps
+   de 12px entre eles. Degraus literais pelo mesmo motivo dos de cima. */
+.watch-grid-featured:has(.watch-tile:nth-child(3)) {
+  --strip-fit: calc((100cqw - 12px) / 2);
+}
+
+.watch-grid-featured:has(.watch-tile:nth-child(4)) {
+  --strip-fit: calc((100cqw - 24px) / 3);
+}
+
+.watch-grid-featured:has(.watch-tile:nth-child(5)) {
+  --strip-fit: calc((100cqw - 36px) / 4);
+}
+
+.watch-grid-featured:has(.watch-tile:nth-child(6)) {
+  --strip-fit: calc((100cqw - 48px) / 5);
+}
+
+.watch-grid-featured:has(.watch-tile:nth-child(7)) {
+  --strip-fit: calc((100cqw - 60px) / 6);
+}
+
+.watch-grid-featured:has(.watch-tile:nth-child(8)) {
+  --strip-fit: calc((100cqw - 72px) / 7);
+}
+
+.watch-grid-featured .watch-tile {
+  flex: 0 0 auto;
+  width: var(--strip-w);
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.watch-grid-featured .watch-tile-featured {
+  order: -2;
+  width: min(100cqw, (100cqh - 16px - var(--strip-w) * 9 / 16) * 16 / 9);
+  margin-bottom: 16px;
+}
+
+/* As lives da fileira respondem ao mouse — é o convite pro clique que
+   troca o destaque. O anel é `box-shadow` por dentro pra não mexer no
+   tamanho do tile (o host já tem a borda roxa dele). */
+.watch-grid-featured .watch-tile:not(.watch-tile-featured) .watch-video-frame {
+  transition: box-shadow 0.18s ease;
+}
+
+.watch-grid-featured .watch-tile:not(.watch-tile-featured) .watch-video-frame:hover {
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.7);
+}
+
+/* Só dá pra clicar (destacar) com mais de uma live na grade e fora do
+   foco — sem isso o cursor de mãozinha prometia algo que não acontece. */
+.watch-video-frame-selectable {
+  cursor: pointer;
 }
 
 .watch-tile-self .watch-video-frame {
@@ -6094,74 +6585,239 @@ body.overlay-window #root {
   pointer-events: auto;
 }
 
-/* Pedido do usuário (2026-09-03): unifica com o padrão dos botões de
-   controle da live (footer, `.icon-button`) e do botão de viewers da
-   MINHA live (`.participants-tab`) — sem o vidro fosco preto+borda roxa
-   de antes, mesma cor neutra "um pouco mais clara que o fundo" usada em
-   todo canto flutuante agora. Sem hover aqui de propósito — é só uma
-   etiqueta informativa, não um botão. */
-.watch-tile-label {
-  position: absolute;
-  top: 10px;
-  left: 10px;
+/* =====================================================================
+   CHIPS DA LIVE (2026-10-22, pedido do usuário: "crie um padrão")
+   =====================================================================
+
+   Tudo que flutua por cima de uma live — o nome de quem transmite, a
+   contagem, os botões, o volume — é um `.tile-chip`: uma pílula de vidro
+   escuro com borda clara de 1px, e os botões dentro dela são quadrados
+   arredondados que acendem no hover (o mesmo desenho dos botões de
+   ícone do rodapé da minha live, `.ml-tile-icon-button`). Os três tiles
+   e o mini player usam as mesmas classes.
+
+   O tamanho sai de variáveis com default aqui: o mini player (`.popin`)
+   só as encolhe, e o desenho continua o mesmo.
+
+   Sem `overflow: hidden` no chip de propósito: o painel de estatísticas
+   (`.stats-panel-anchor`) fica pendurado embaixo dele. Por isso os botões
+   têm o próprio raio (o do chip menos o respiro), em vez de o chip
+   recortar os cantos — que era como o segmento antigo fazia. */
+.tile-chip {
+  --chip-btn: calc(var(--chip-h, 36px) - 2 * var(--chip-pad, 3px) - 2px);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 12px;
-  background-color: var(--ev-button-alt-bg);
-  color: var(--ev-button-alt-text);
-  font-size: 11px;
-  font-weight: 700;
+  gap: 2px;
+  box-sizing: border-box;
+  height: var(--chip-h, 36px);
+  padding: var(--chip-pad, 3px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--chip-radius, 12px);
+  background: linear-gradient(180deg, rgba(32, 32, 42, 0.78), rgba(14, 14, 20, 0.78));
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow:
+    0 10px 28px -12px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: var(--chip-font, 12px);
+  font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
 }
 
-.watch-tile-label-dot {
-  display: inline-block;
+/* Os quatro cantos da live. */
+.tile-chip-tl,
+.tile-chip-tr,
+.tile-chip-bl,
+.tile-chip-br {
+  position: absolute;
+}
+
+.tile-chip-tl {
+  top: var(--chip-inset, 12px);
+  left: var(--chip-inset, 12px);
+}
+
+.tile-chip-tr {
+  top: var(--chip-inset, 12px);
+  right: var(--chip-inset, 12px);
+}
+
+.tile-chip-bl {
+  bottom: var(--chip-inset, 12px);
+  left: var(--chip-inset, 12px);
+}
+
+.tile-chip-br {
+  bottom: var(--chip-inset, 12px);
+  right: var(--chip-inset, 12px);
+}
+
+/* O chip do NOME: o ponto de "no ar" e o texto, sem botão. A etiqueta
+   da transmissão (Tela/Webcam), quando existe, encosta na borda direita
+   como um chip dentro do chip. */
+.tile-chip-label {
+  gap: 8px;
+  max-width: calc(100% - 2 * var(--chip-inset, 12px));
+  padding: 0 14px 0 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+}
+
+.tile-chip-label:has(.tile-chip-tag) {
+  padding-right: var(--chip-pad, 3px);
+}
+
+/* O ponto verde de "no ar", com um anel que respira devagar. */
+.tile-chip-live-dot {
   width: 7px;
   height: 7px;
+  flex-shrink: 0;
   border-radius: 999px;
   background-color: var(--color-live);
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
-  flex-shrink: 0;
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55);
+  animation: tile-chip-live-pulse 2s ease-out infinite;
 }
 
-/* Item 28 do roadmap + item 26 + botão de sair: canto superior direito
-   de cada live assistida — os 3 viram um ÚNICO chip (fundo/cor
-   unificados, mesmo padrão do resto). SEM `overflow: hidden` aqui —
-   o painel de estatísticas (ver `.stats-panel-anchor` abaixo) precisa
-   poder "vazar" pra baixo do chip; em vez de recortar os cantos dos
-   botões via overflow, cada botão de ponta arredonda o próprio canto
-   (ver `.viewers-toggle`/`.leave-toggle` abaixo — o do meio,
-   `.stats-toggle`, fica reto mesmo, é o miolo do segmento). Continua
-   sendo reaproveitado pelo HostPreviewTile (só com o botão de
-   estatísticas dentro — esse usa `.stats-toggle-solo`, que arredonda os
-   4 cantos por ser o único botão do chip). */
-.tile-top-right-actions {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  align-items: stretch;
-  height: 30px;
-  border-radius: 12px;
-  background-color: var(--ev-button-alt-bg);
+@keyframes tile-chip-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px rgba(74, 222, 128, 0);
+  }
 }
 
-/* Item 28 do roadmap: contagem de quem mais está assistindo essa live.
-   Pedido do usuário (2026-09-03): virou só informativo — sem hover, sem
-   painel/lista de nomes (removidos; a lista de espectadores por sala já
-   aparece embaixo do tile na sidebar, ver HomeScreen.tsx). */
-.viewers-toggle {
+@media (prefers-reduced-motion: reduce) {
+  .tile-chip-live-dot {
+    animation: none;
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+  }
+}
+
+/* Item 26 (2026-10-20): o que separa os dois tiles da mesma live —
+   "Tela" num, "Webcam" no outro. Em versalete pequeno, como o tipo da
+   transmissão no rodapé (`.ml-tile-kind`). A da webcam é roxa (a cor de
+   destaque do app): é o tile que mais facilmente seria confundido com
+   uma live à parte. */
+.tile-chip-tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 10px;
-  border-radius: 12px 0 0 12px;
-  color: #fff;
-  font-size: 12px;
+  height: var(--chip-btn);
+  padding: 0 8px;
+  border-radius: calc(var(--chip-radius, 12px) - var(--chip-pad, 3px));
+  background-color: rgba(255, 255, 255, 0.09);
+  color: var(--ev-c-text-2);
+  font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tile-chip-tag-accent {
+  background: var(--accent-gradient);
+  box-shadow: 0 2px 10px -3px rgba(124, 58, 237, 0.7);
+  color: #fff;
+}
+
+/* Os botões de dentro do chip. */
+.tile-chip-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--chip-btn);
+  height: var(--chip-btn);
+  padding: 0;
+  border: none;
+  border-radius: calc(var(--chip-radius, 12px) - var(--chip-pad, 3px));
+  background: none;
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.tile-chip-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.tile-chip-button:active {
+  transform: scale(0.92);
+}
+
+/* Ligado (estatísticas abertas, modo foco): o roxo do app. */
+.tile-chip-button-active,
+.tile-chip-button-active:hover {
+  background-color: rgba(139, 92, 246, 0.38);
+  color: #ede9fe;
+}
+
+/* Sair/fechar: a única ação destrutiva do chip, em vermelho. */
+.tile-chip-button-danger {
+  color: var(--color-danger);
+}
+
+.tile-chip-button-danger:hover {
+  background-color: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+/* Item 28 do roadmap: a contagem de quem mais está assistindo — só
+   informativa, sem hover (a lista de nomes fica na sidebar). Um fio
+   separa ela dos botões ao lado. */
+.tile-chip-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--chip-btn);
+  padding: 0 9px 0 8px;
+  margin-right: 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Volume: o botão de mudo e o slider, num chip só. */
+.tile-chip-volume {
+  gap: 6px;
+  padding-right: 12px;
+}
+
+/* O X de "Aguardando transmissão" (item 34): o mesmo chip, mas furando o
+   `pointer-events: none` do `.watch-loading` em volta. */
+.tile-chip-loading {
+  pointer-events: auto;
+}
+
+/* Escurece as bordas de cima e de baixo junto com os chips — contraste
+   pra eles contra uma cena clara da live, como o mini player já fazia. */
+.tile-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.38),
+    transparent 24%,
+    transparent 76%,
+    rgba(0, 0, 0, 0.38)
+  );
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tile-overlay-visible::before {
+  opacity: 1;
 }
 
 .stats-toggle-wrapper {
@@ -6210,89 +6866,142 @@ body.overlay-window #root {
   background-color: rgba(255, 255, 255, 0.04);
 }
 
-/* Item 26 do roadmap: botão de estatísticas — sem borda/fundo próprios,
-   fica dentro do chip único do .tile-top-right-actions acima. Reto (sem
-   border-radius) de propósito — no ViewerTile.tsx é o botão do MEIO do
-   segmento (viewers/estatísticas/sair), só as pontas arredondam (ver
-   `.viewers-toggle`/`.leave-toggle`). No HostPreviewTile.tsx (único
-   botão do chip) usa `.stats-toggle-solo` também, que arredonda os 4
-   cantos. */
-.stats-toggle {
+/* --------------------------------- webcam de quem transmite (2026-10-20)
+
+   Item 26: a webcam é um tile PRÓPRIO, ao lado do da tela ("como se
+   fosse outra live"), sem áudio e sem os detalhes da live. A etiqueta
+   "Tela"/"Webcam" no chip do nome é o `.tile-chip-tag`, lá em cima. */
+
+/* "Aguardando webcam": o ícone da câmera pulsando no lugar do spinner —
+   o mesmo roxo, mas diz DE QUEM se está esperando. */
+.watch-loading-cam {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background-color: rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: var(--accent);
+  animation: watch-loading-cam-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes watch-loading-cam-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(167, 139, 250, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watch-loading-cam {
+    animation: none;
+  }
+}
+
+/* Detalhes da sala: UM CARTÃO POR TRANSMISSÃO (2026-10-20, pedido do
+   usuário) — a tela em cima, a webcam embaixo, cada uma com o próprio
+   Assistir/Sair (ver RoomDetailsSidebar.tsx).
+
+   O botão de dentro é o mesmo `.room-details-watch` / chip
+   `.room-details-watching` de sempre, com a mesma altura (40px) nos dois
+   estados — entrar ou sair não faz o cartão pular. */
+.room-feeds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   flex-shrink: 0;
-  border: none;
-  background: none;
-  color: #fff;
-  cursor: pointer;
 }
 
-.stats-toggle-solo {
-  border-radius: 12px;
+/* Sem borda, padding nem fundo (2026-10-22, pedido do usuário): o cartão
+   virou só o agrupamento — ícone + nome em cima, o botão embaixo, rente
+   às bordas da sidebar. O fundo saiu junto porque, sem padding, o
+   gradiente encostava no conteúdo. */
+.room-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.stats-toggle:hover,
-.stats-toggle-active {
-  background-color: var(--ev-button-alt-hover-bg);
-}
-
-/* Botão de sair da live assistida — mesma lógica dos outros dois (sem
-   borda/fundo próprios), só o ícone fica vermelho (única ação
-   destrutiva do grupo) — hover continua com o tingimento vermelho
-   próprio, não o neutro dos outros dois (é a única ação destrutiva). */
-.leave-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 0 12px 12px 0;
-  background: none;
-  color: var(--color-danger);
-  cursor: pointer;
-}
-
-.leave-toggle:hover {
-  background-color: rgba(248, 113, 113, 0.15);
-}
-
-/* Chip de volume/mute — canto inferior esquerdo. Pedido do usuário
-   (2026-09-03): mesma cor neutra dos outros floating buttons, sem
-   borda roxa e SEM hover nenhum (nem no botão de mudo, que antes trocava
-   de cor no hover) — tamanho do chip/ícones mantidos como estavam. */
-.volume-chip {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
+.room-feed-info {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px 3px 6px;
-  border-radius: 12px;
-  background-color: var(--ev-button-alt-bg);
+  gap: 10px;
+  min-width: 0;
 }
 
-.volume-mute-button {
-  display: inline-flex;
+/* Sem arte (webcam, ou tela sem jogo detectado): o ícone num quadrado
+   do mesmo 42x42 da `.live-tile-art`. */
+.room-feed-icon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  border: none;
-  background: none;
-  color: #fff;
-  cursor: pointer;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
 }
 
+.room-feed-cam .room-feed-icon {
+  background-color: rgba(139, 92, 246, 0.18);
+  color: var(--accent);
+}
+
+/* `flex: 1` + `min-width: 0` é o par que deixa o marquee funcionar —
+   mesma explicação do `.live-tile-subtitle`: sem ele o item flex nunca
+   encolhe abaixo do texto, e o MarqueeText concluiria que sempre cabe. */
+.room-feed-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.room-feed-kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-2);
+}
+
+/* O pontinho de "no ar", o mesmo verde do chip do tile. */
+.room-feed-live {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+}
+
+/* A fonte de sempre do nome na ficha (13px/500, pedido do usuário — sem
+   o negrito do rodapé), só que dentro do marquee. As DUAS classes porque
+   `.marquee-text` vem antes neste arquivo com 11px/400, e com uma classe
+   só aqui a ordem decidiria quem ganha. Sem `overflow`: quem recorta é o
+   `.marquee-container`. */
+.marquee-text.room-feed-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ev-c-text-1);
+}
+
+/* O slider do chip de volume (`.tile-chip-volume`). */
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 56px;
+  width: 64px;
   height: 4px;
   border-radius: 999px;
   cursor: pointer;
@@ -6308,11 +7017,17 @@ body.overlay-window #root {
   height: 12px;
   border-radius: 999px;
   background-color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.volume-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
 }
 
 /* Reveal via opacity+translateY, "caindo de cima pra baixo" no clique do
-   `.stats-toggle` (ver ViewerTile.tsx/HostPreviewTile.tsx) —
+   botão de estatísticas (ver ViewerTile.tsx/HostPreviewTile.tsx) —
    posicionado relativo ao próprio wrapper, funciona igual nos dois
    lugares que reaproveitam essa classe. */
 .stats-panel-anchor {
@@ -6334,11 +7049,16 @@ body.overlay-window #root {
   pointer-events: auto;
 }
 
+/* O mesmo vidro dos chips (`.tile-chip`), já que sai de um deles. */
 .stats-panel {
-  min-width: 160px;
-  padding: 10px;
+  min-width: 170px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
-  background-color: var(--ev-button-alt-bg);
+  background: linear-gradient(180deg, rgba(32, 32, 42, 0.88), rgba(14, 14, 20, 0.88));
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: 0 14px 32px -12px rgba(0, 0, 0, 0.85);
   color: #fff;
 }
 
@@ -6379,8 +7099,9 @@ body.overlay-window #root {
   border-radius: 10px;
   background-color: var(--ev-c-black-mute);
   overflow: hidden;
-  /* Item 32 do roadmap: o frame inteiro é clicável (modo foco). */
-  cursor: pointer;
+  /* O cursor de clique fica com `.watch-video-frame-selectable` desde
+     2026-10-22 (o clique virou o destaque, que nem sempre está
+     disponível). */
 }
 
 /* Pedido do usuário (2026-08-31): enquanto "Aguardando transmissão"
@@ -6432,34 +7153,6 @@ body.overlay-window #root {
   height: 100%;
 }
 
-/* Item 34 do roadmap: botão de sair, só durante "Aguardando
-   transmissão" (sem os outros controles flutuantes, que só aparecem com
-   `hasVideo`) — mesmo visual do .leave-toggle normal (ícone vermelho),
-   mas em pé sozinho (não faz parte do chip de ações). `pointer-events:
-   auto` de propósito: o `.watch-loading` (pai) é `pointer-events: none`
-   pra nunca atrapalhar nada, esse botão precisa furar essa regra. */
-.leave-toggle-loading {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 12px;
-  border: 0px;
-  background-color: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(8px);
-  color: #ffffff;
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.leave-toggle-loading:hover {
-  background-color: rgba(248, 113, 113, 0.15);
-}
-
 .watch-loading-spinner {
   width: 26px;
   height: 26px;
@@ -6503,51 +7196,6 @@ body.overlay-window #root {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-}
-
-/* Mini player (2026-09-20, pedido do usuário) — ao lado do botão de tela
-   cheia, com o mesmo corpo: os dois respondem à mesma pergunta ("onde
-   esta live aparece"), então pareciam pertencer ao mesmo par.
-
-   Num contêiner flex ancorado pelo canto, e não cada um no seu `right:`
-   fixo: assim a posição de um não depende da largura do outro escrita à
-   mão. O que o texto de cada botão diz fica com o Tooltip (ver
-   ViewerTile.tsx) — aqui embaixo já houve um rótulo que abria no hover,
-   removido a pedido do usuário em favor do balão padrão do app. */
-.tile-corner-controls {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Item 25 do roadmap: canto inferior direito (os outros 3 já são
-   ocupados — label do host, chip de volume, ações do canto superior
-   direito) — mesmo padrão de design do .viewers-toggle (item 28):
-   ícone branco, fundo preto com opacidade, borda branca fina,
-   arredondado. */
-/* Pedido do usuário (2026-09-03): mesma cor/hover dos demais botões
-   flutuantes agora — tamanho/raio mantidos como estavam. */
-.popin-toggle,
-.fullscreen-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 12px;
-  background-color: var(--ev-button-alt-bg);
-  color: #fff;
-  cursor: pointer;
-  transition: background-color 160ms ease;
-}
-
-.popin-toggle:hover,
-.fullscreen-toggle:hover {
-  background-color: var(--ev-button-alt-hover-bg);
 }
 
 .watch-empty {
@@ -6773,7 +7421,6 @@ body.overlay-window #root {
   color: #fff;
   opacity: 0;
   transition: opacity 0.2s ease;
-  
 }
 
 .profile-popover-avatar:hover .profile-avatar-overlay {
@@ -6842,18 +7489,25 @@ body.overlay-window #root {
    título/subtítulo, corpo como LISTA de linhas — a segunda preferência
    entra como mais uma `.settings-row`, sem redesenho.
    --------------------------------------------------------------------- */
+/* Redesenho (2026-10-22, pedido do usuário): mais largo e com letra
+   maior pra as explicações lerem de primeira; seções com rótulo
+   (Notificações, Transmissão); a mesma moldura do WebcamPickerDialog —
+   brilho roxo no topo, sombra funda e a entrada `source-picker-in`. */
 .settings-modal {
   display: flex;
   flex-direction: column;
-  /* Alargado de 440px (2026-09-23, pedido do usuario): as descricoes das
-     preferencias quebravam em varias linhas e cada linha ficava alta
-     demais ao lado do switch. */
-  width: min(560px, 92vw);
-  max-height: 80vh;
-  border-radius: 16px;
+  width: min(680px, 92vw);
+  max-height: 86vh;
+  border-radius: 18px;
   border: 1px solid var(--ev-c-gray-3);
-  background-color: var(--color-background);
+  background:
+    radial-gradient(120% 60% at 50% -20%, rgba(139, 92, 246, 0.12), transparent 60%),
+    var(--color-background);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
   overflow: hidden;
+  animation: source-picker-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 
 .settings-modal-header {
@@ -6861,14 +7515,14 @@ body.overlay-window #root {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 18px 14px;
+  padding: 20px 22px;
   border-bottom: 1px solid var(--ev-c-gray-3);
 }
 
 .settings-modal-heading {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -6878,105 +7532,161 @@ body.overlay-window #root {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
   color: #fff;
 }
 
 .settings-modal-titles {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
 .settings-modal-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: var(--ev-c-text-1);
 }
 
 .settings-modal-subtitle {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ev-c-text-2);
 }
 
 .settings-modal-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px;
+  gap: 22px;
+  padding: 22px;
   overflow-y: auto;
 }
 
-/* Cada preferência: ícone + (título/descrição) + controle à direita.
-   `min-width: 0` na coluna de texto pra descrição longa quebrar dentro
-   da linha em vez de empurrar o switch pra fora. */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-section-label {
+  margin: 0 0 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-3);
+}
+
+/* Cada preferência é um cartão: cabeça (ícone + título/descrição +
+   controle à direita) e, embaixo, o que mais ela precisar (as opções,
+   o aviso). `min-width: 0` na coluna de texto pra descrição longa
+   quebrar dentro da linha em vez de empurrar o switch pra fora. */
 .settings-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 10px;
-  background-color: var(--ev-c-black-mute);
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+}
+
+.settings-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
 }
 
 .settings-row-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
-  border-radius: 8px;
-  background-color: var(--ev-button-alt-bg);
+  border-radius: 11px;
+  background-color: rgba(139, 92, 246, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.2);
   color: var(--accent);
 }
 
 .settings-row-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
   flex: 1;
+  padding-top: 1px;
 }
 
 .settings-row-title {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--ev-c-text-1);
 }
 
 .settings-row-description {
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--ev-c-text-2);
 }
 
+/* Aviso do modo Borderless. Âmbar de atenção, não vermelho: não é erro,
+   é uma condição do ambiente. */
+.settings-row-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: rgba(251, 191, 36, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.18);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ev-c-text-2);
+}
+
+.settings-row-note > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #fbbf24;
+}
+
+.settings-row-note strong {
+  color: var(--ev-c-text-1);
+  font-weight: 600;
+}
+
 /* Switch: trilho + bolinha. É um <button role="switch">, não um
-   <input type="checkbox"> escondido — ver o comentário em
-   SettingsModal.tsx. Largura/altura fixas pra a bolinha ter um curso
-   previsível (o `translateX` do estado ligado é calculado a partir
-   delas: 44 - 20 - 2*2 = 20px). */
+   <input type="checkbox"> escondido. Largura/altura fixas pra a bolinha
+   ter um curso previsível (o `translateX` do estado ligado é calculado a
+   partir delas: 48 - 22 - 2*3 = 20px). */
 .settings-switch {
   position: relative;
-  width: 44px;
-  height: 24px;
+  width: 48px;
+  height: 28px;
   flex-shrink: 0;
+  align-self: center;
   padding: 0;
   border: none;
   border-radius: 999px;
   background-color: var(--ev-c-gray-3);
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .settings-switch-on {
-  background-color: var(--accent);
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
 }
 
 .settings-switch:disabled {
@@ -6986,17 +7696,179 @@ body.overlay-window #root {
 
 .settings-switch-thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background-color: #fff;
-  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 
 .settings-switch-on .settings-switch-thumb {
   transform: translateX(20px);
+}
+
+/* A escolha do alerta de novas lives: três cartões lado a lado, cada um
+   com a própria explicação. O marcado acende no acento, como o
+   `.webcam-picker-device-active`. */
+.settings-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-choice-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background-color: rgba(0, 0, 0, 0.2);
+  color: var(--ev-c-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.settings-choice-option:hover:not(.settings-choice-option-on):not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.settings-choice-option-on {
+  border-color: rgba(167, 139, 250, 0.55);
+  background-color: rgba(139, 92, 246, 0.14);
+  box-shadow: 0 6px 18px -8px rgba(124, 58, 237, 0.5);
+}
+
+.settings-choice-option:disabled {
+  cursor: default;
+}
+
+.settings-choice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.settings-choice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.settings-choice-option-on .settings-choice-icon {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.settings-choice-radio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.settings-choice-option-on .settings-choice-radio {
+  background: var(--accent-gradient);
+  box-shadow: none;
+}
+
+.settings-choice-label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.settings-choice-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ev-c-text-3);
+}
+
+.settings-choice-option-on .settings-choice-hint {
+  color: var(--ev-c-text-2);
+}
+
+/* Rodapé: o estado do salvamento à esquerda (não tem "Salvar" — tudo é
+   salvo na hora) e o "Concluir" à direita. */
+.settings-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--ev-c-gray-3);
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+.settings-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ev-c-text-3);
+}
+
+.settings-save-state-busy {
+  color: var(--ev-c-text-2);
+}
+
+.settings-save-spin {
+  animation: watch-loading-spin 0.9s linear infinite;
+}
+
+.settings-done {
+  height: 36px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent-gradient);
+  box-shadow: var(--accent-glow);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.settings-done:hover {
+  filter: brightness(1.1);
+}
+
+@media (max-width: 600px) {
+  .settings-choice {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-modal,
+  .settings-save-spin {
+    animation: none;
+  }
 }
 
 /* Seletor de presenca no popover de perfil (item 11, 2026-09-10). Duas
@@ -7262,36 +8134,31 @@ body.overlay-window #root {
 /* --------------------------------------------------------------- ficha */
 
 /* `fixed` porque o componente e um portal no <body> (ver
-   UserCardPopover.tsx): as tres listas rolam por dentro de paineis com
+   UserCardPopover.tsx): as listas rolam por dentro de paineis com
    `overflow`, que recortariam qualquer caixa posicionada la dentro.
 
    `top`/`left` NAO aparecem aqui: sao escritos pelo proprio componente
-   depois de medir a caixa. */
+   depois de medir a caixa.
+
+   O MINI PERFIL (redesenho de 2026-10-21, pedido do usuario): o desenho
+   da janela de Perfil em miniatura — capa em degrade com a foto borrada,
+   o avatar meio dentro dela, as acoes em botoes de vidro no canto e, se
+   a pessoa estiver ao vivo, um tile da live com "Ver". */
 .user-card {
   position: fixed;
   z-index: 960;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  width: 204px;
-  padding: 20px 16px 16px;
-  /* Mesmo raio da caixa de perfil (ver .profile-popover): sao duas
-     caixas irmas, uma mostra voce e a outra mostra os outros. */
-  border-radius: 11px;
-  /* Sem borda desde 2026-09-13 (pedido do usuario): a sombra ja faz a
-     separacao do fundo, e o fio claro em volta dava a esta caixa
-     pequena um contorno duro que ela nao precisa. */
-  /* Mesmo brilho roxo do cabecalho do box de perfil, so que centrado
-     no topo em vez do canto: aqui a caixa e simetrica e o avatar fica
-     no meio, entao o brilho nasce atras dele. */
-  background:
-    radial-gradient(120% 85% at 50% 0%, rgba(167, 139, 250, 0.22), transparent 70%),
-    var(--ev-c-black-mute);
+  width: 272px;
+  border-radius: 16px;
+  border: 1px solid var(--app-chrome-border);
+  background-color: var(--ev-c-black-mute);
   box-shadow:
-    0 20px 50px -10px rgba(0, 0, 0, 0.7),
-    0 4px 14px rgba(0, 0, 0, 0.35);
+    0 24px 60px -12px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(167, 139, 250, 0.06);
+  overflow: hidden;
   cursor: default;
-  animation: user-card-in 0.14s ease-out;
+  animation: user-card-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes user-card-in {
@@ -7305,46 +8172,394 @@ body.overlay-window #root {
   }
 }
 
+/* A capa: o mesmo degrade da janela de Perfil, mais baixo. */
+.user-card-cover {
+  position: relative;
+  height: 76px;
+  flex-shrink: 0;
+  background:
+    radial-gradient(70% 140% at 0% 0%, rgba(139, 92, 246, 0.7), transparent 62%),
+    radial-gradient(60% 140% at 100% 10%, rgba(79, 70, 229, 0.6), transparent 60%),
+    linear-gradient(135deg, #2a1f4d, #17142a);
+  overflow: hidden;
+}
+
+/* Pontilhado fino + o degrade pro fundo do card no pe, que "assenta" o
+   avatar que fica metade dentro, metade fora. */
+.user-card-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 35%, rgba(40, 40, 40, 0.9)),
+    radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px) 0 0 / 12px 12px;
+  pointer-events: none;
+}
+
+/* A propria foto da pessoa, borrada — a capa muda de cor com o avatar. */
+.user-card-cover-photo {
+  position: absolute;
+  inset: -30px;
+  width: calc(100% + 60px);
+  height: calc(100% + 60px);
+  object-fit: cover;
+  filter: blur(22px) saturate(1.4);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+}
+
+/* As acoes no canto superior direito: botoes redondos com fundo PRETO
+   translucido (pedido do usuario, 2026-10-21) — sobre a capa, que muda
+   de cor com o avatar da pessoa, o vidro claro de antes sumia em fotos
+   claras. O preto destaca em qualquer capa; a cor de cada acao vai no
+   icone (preenchido) e na borda. */
+.user-card-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.user-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: rgba(8, 6, 14, 0.72);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.user-card-action:hover:not(:disabled) {
+  background-color: rgba(8, 6, 14, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.user-card-action:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.user-card-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.user-card-action:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.7);
+  outline-offset: 1px;
+}
+
+/* Fixado: o alfinete roxo, com a borda roxa. */
+.user-card-action-on,
+.user-card-action-on:hover:not(:disabled) {
+  border-color: rgba(167, 139, 250, 0.7);
+  color: var(--accent);
+}
+
+/* Adicionar amigo: o roxo claro do app no icone e na borda. */
+.user-card-action-add {
+  border-color: rgba(167, 139, 250, 0.55);
+  color: #c4b5fd;
+}
+
+.user-card-action-add:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: #ede9fe;
+}
+
+/* Pedido enviado: o relogio ambar; no hover avisa que o clique cancela. */
+.user-card-action-pending {
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fbbf24;
+}
+
+.user-card-action-pending:hover:not(:disabled) {
+  border-color: rgba(248, 113, 113, 0.7);
+  color: var(--color-danger);
+}
+
+/* Ja e amigo: o "remover" em vermelho, como o usuario pediu. */
+.user-card-action-remove {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: var(--color-danger);
+}
+
+.user-card-action-remove:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  color: #fca5a5;
+}
+
+/* A identidade: o avatar sobe pra dentro da capa. */
+.user-card-identity {
+  position: relative;
+  z-index: 1;
+  padding: 0 16px;
+  margin-top: -40px;
+}
+
 .user-card-avatar-wrapper {
   position: relative;
   display: inline-block;
-  /* Sem isto o inline-block herda a folga da linha de texto e o dot
-     fica desalinhado do canto do circulo. */
   line-height: 0;
 }
 
-/* 64px — um degrau acima dos 56 do box de perfil, que e o maior avatar
-   do app ate aqui. O pedido era "um pouco maior", e esta caixa nao
-   divide a linha com texto nenhum: o avatar E o conteudo. */
+/* Borda na cor do FUNDO do card (o recorte) e, por fora, o anel roxo
+   com o brilho — o avatar da janela de Perfil em miniatura. */
 .user-card-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 76px;
+  height: 76px;
   border-radius: 999px;
+  border: 4px solid var(--ev-c-black-mute);
+  background-color: var(--ev-c-black-mute);
+  box-shadow:
+    0 0 0 2px rgba(167, 139, 250, 0.7),
+    0 10px 26px -8px rgba(124, 58, 237, 0.6);
   overflow: hidden;
-  /* Anel roxo fino. `box-shadow` e nao `border`: borda entraria no
-     tamanho da caixa e espremeria a foto pra dentro. */
-  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.28);
 }
 
-/* A cor da borda e a do FUNDO DA CAIXA, nao a da tela — e o contraste
-   com o fundo imediato que da o efeito de recorte. Mesma razao do dot
-   do box de perfil. */
+.user-card-avatar .user-avatar-photo,
+.user-card-avatar .user-avatar-fallback {
+  border-radius: 999px;
+}
+
 .user-card-status-dot {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
   right: 2px;
   bottom: 2px;
   border-width: 3px;
   border-color: var(--ev-c-black-mute);
 }
 
+.user-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px 16px;
+}
+
 .user-card-name {
-  margin-top: 12px;
   max-width: 100%;
-  font-size: 14.5px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-card-presence {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ev-c-text-2);
+}
+
+.user-card-presence-online {
+  color: var(--color-live);
+}
+
+.user-card-presence-busy {
+  color: #fbbf24;
+}
+
+.user-card-chip {
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.07);
+  color: var(--ev-c-text-2);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+}
+
+.user-card-chip-friend {
+  background-color: rgba(167, 139, 250, 0.16);
+  color: #ddd6fe;
+}
+
+.user-card-chip-incoming {
+  background-color: rgba(251, 191, 36, 0.14);
+  color: #fbbf24;
+}
+
+/* Pedido recebido: a resposta, com texto, no corpo. */
+.user-card-request {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background-color: rgba(251, 191, 36, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.16);
+}
+
+.user-card-request-text {
+  font-size: 11.5px;
+  color: var(--ev-c-text-2);
+}
+
+.user-card-request-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.user-card-request-accept,
+.user-card-request-decline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 1;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.user-card-request-accept {
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  color: #fff;
+}
+
+.user-card-request-accept:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.user-card-request-decline {
+  background-color: rgba(255, 255, 255, 0.07);
+  color: var(--ev-c-text-1);
+}
+
+.user-card-request-decline:hover:not(:disabled) {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: var(--color-danger);
+}
+
+.user-card-request-accept:active:not(:disabled),
+.user-card-request-decline:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.user-card-request-accept:disabled,
+.user-card-request-decline:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A LIVE da pessoa: um tile com a arte do jogo, o selo AO VIVO, o nome do
+   que esta passando, quantos assistem e o "Ver". Fundo com um brilho
+   verde do "ao vivo" vindo da esquerda, borda fina verde. */
+.user-card-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 140% at 0% 50%, rgba(74, 222, 128, 0.12), transparent 60%),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.22);
+}
+
+/* A arte do jogo (NowPlayingArt) no tamanho do tile. */
+.user-card-live > :first-child {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.user-card-live-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(74, 222, 128, 0.12);
+  color: var(--color-live);
+}
+
+.user-card-live-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Pílula com a cobrinha desde 2026-10-22 (pedido do usuário), a mesma
+   tag LIVE da lista de amigos — ver `.users-list-live-tag` e
+   `.live-snake-ring`. Antes era só o texto verde, sem pílula. */
+.user-card-live-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.1);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--color-live);
+}
+
+.user-card-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+  animation: user-card-live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes user-card-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(74, 222, 128, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+}
+
+.user-card-live-title {
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ev-c-text-1);
   overflow: hidden;
@@ -7352,10 +8567,46 @@ body.overlay-window #root {
   text-overflow: ellipsis;
 }
 
-.user-card-status {
-  margin-top: 2px;
-  font-size: 12px;
+.user-card-live-viewers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
   color: var(--ev-c-text-2);
+}
+
+/* O "Ver": a pilula verde do ao vivo, com brilho. */
+.user-card-live-button {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4ade80, #22c55e);
+  color: #0d1f13;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -6px rgba(34, 197, 94, 0.8);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.user-card-live-button:hover {
+  filter: brightness(1.08);
+}
+
+.user-card-live-button:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-card,
+  .user-card-live-dot {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------- menu direito */
@@ -7782,6 +9033,11 @@ body.overlay-window #root {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  /* Os chips são os do tile (`.tile-chip`), só um pouco menores
+     (2026-10-22, pedido do usuário). */
+  --chip-h: 30px;
+  --chip-radius: 10px;
+  --chip-font: 11px;
 }
 
 .popin-video {
@@ -7845,83 +9101,23 @@ body.overlay-window #root {
 .popin-volume {
   bottom: 10px;
   left: 10px;
-  gap: 8px;
-  padding: 4px 10px 4px 6px;
-  border-radius: 999px;
-  background-color: rgba(28, 28, 32, 0.82);
-  backdrop-filter: blur(6px);
 }
 
-.popin-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background-color: rgba(28, 28, 32, 0.82);
-  backdrop-filter: blur(6px);
-  color: var(--ev-c-text-1);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.popin-button:hover {
-  background-color: rgba(48, 48, 56, 0.92);
-}
-
-/* Sair da SALA fica vermelho no hover — é a única ação da janelinha que
-   desfaz algo de verdade (as outras só mudam onde a live aparece). */
-.popin-button-leave:hover {
-  background-color: rgba(248, 113, 113, 0.9);
-  color: #fff;
-}
-
-.popin-host,
-.popin-viewers {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background-color: rgba(28, 28, 32, 0.82);
-  backdrop-filter: blur(6px);
-  color: var(--ev-c-text-1);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
+/* O nome de quem transmite trunca antes de empurrar o chip de sair pra
+   fora da janelinha (que pode ter só 356px). */
+.popin-top-left .tile-chip-label {
   max-width: 45vw;
+}
+
+.popin-host-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.popin-host-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background-color: var(--color-live);
-  flex-shrink: 0;
-}
-
-/* O slider é o mesmo do tile (`.volume-slider`), só mais curto: a
-   janelinha pode ter 356px de largura e o chip não pode comer metade
-   dela. */
+/* O slider é o mesmo do tile (`.volume-slider`), só mais curto. */
 .popin-volume .volume-slider {
-  width: 64px;
-}
-
-.popin-volume .volume-mute-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--ev-c-text-1);
-  cursor: pointer;
+  width: 56px;
 }
 
 /* =====================================================================
@@ -8408,296 +9604,10 @@ body.overlay-window #root {
   }
 }
 
-/* --- 3. Casca do HOST, fechada: linha acima do rodapé ----------------- */
-
-/* A LINHA (2026-09-25, desenho do usuário): o tile de espectadores e, à
-   direita dele, o botão que abre o chat.
-
-   Ela é irmã do RODAPÉ dentro da `.watch-column`, e não irmã da grade
-   dentro da `.watch-row` como era a lingueta vertical que ela
-   substituiu. É a mesma regra de sempre vista pelo outro eixo: a casca
-   fechada ocupa espaço RESERVADO e nenhuma live fica por baixo dela — só
-   que agora o que ela reserva é ALTURA, então ela tem que morar na
-   coluna, entre a linha de conteúdo e o rodapé.
-
-   `flex-shrink: 0` é o que garante esse espaço: sem isso, a `.watch-row`
-   (que é `flex: 1`) espremeria a linha até sumir numa janela baixa, e o
-   botão do chat seria a primeira coisa a desaparecer justamente quando a
-   tela está mais apertada.
-
-   Os 16px embaixo são o pedido do usuário. Em cima, 8px de folga pro que
-   TRANSBORDA da linha: a badge do tile sobe 5px além da borda dele e o
-   avatar sobe 2px no hover — a `.watch-column` recorta (`overflow:
-   hidden`), então essa folga é o que impede os dois de serem cortados. */
-.host-chat-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-  /* 16px à direita e embaixo (2026-09-25, pedido do usuário): a linha é o
-     único conteúdo da `.watch-column` que não encosta numa borda própria,
-     então sem esse recuo o botão fica grudado na borda da janela.
-
-     Em cima, 8px de folga pro anel de "tem mensagem nova": ele cresce
-     até 1.5x os 36px do botão, ou seja ~9px pra fora de cada lado, e a
-     `.watch-column` recorta (`overflow: hidden`). Os mesmos 8px cobriam
-     também o transbordo do tile de espectadores que ficava aqui até
-     2026-09-29. */
-  padding: 8px 16px 16px 0;
-}
-
-/* Nada aqui encolhe. Vale pro tile e pro `<span class="tooltip-anchor">`
-   que o Tooltip põe em volta do botão (ver Tooltip.tsx) — é ELE o item
-   flex desta linha, não o botão, então o `flex-shrink` do botão sozinho
-   não seguraria nada. */
-.host-chat-bar > * {
-  flex-shrink: 0;
-}
-
-/* O TILE DOS ESPECTADORES SAIU DAQUI (2026-09-29, pedido do usuário).
-
-   Aqui viviam `.host-chat-bar-viewers` (a pílula com a fila de avatares)
-   e `.host-chat-bar-count` (a badge de quantos, pendurada na quina).
-
-   A fila desceu pro RODAPÉ, ao lado das informações da live, e a
-   contagem virou o título do bloco de lá — ver `.footer-viewers`. Esta
-   linha ficou só com o botão do chat, que é o que ela sempre foi de
-   fato. */
-
-/* O BOTÃO que abre o chat. Herda a FORMA do `.icon-button` do rodapé (o
-   par de controles logo abaixo dele) mas não a classe: ele precisa de
-   `position: relative` pro anel de não lidas e de uma borda igual à do
-   tile ao lado, e pendurar isso no `.icon-button` mexeria em todos os
-   outros do app. */
-.host-chat-bar-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  padding: 0;
-  border: 1px solid var(--ev-c-gray-3);
-  border-radius: 999px;
-  background-color: var(--ev-c-black-mute);
-  color: var(--ev-c-text-2);
-  cursor: pointer;
-  transition:
-    background-color 0.14s ease,
-    color 0.14s ease;
-}
-
-/* O hover NÃO vale quando há mensagem nova (2026-09-29, defeito relatado
-   pelo usuário): com `:hover` genérico, pôr o cursor sobre o botão em
-   destaque pintava o fundo neutro por cima do laranja e o aviso sumia
-   justo quando a pessoa ia clicar — o retorno do cursor apagando a
-   informação que ele estava indo buscar.
-
-   A exclusão fica aqui, no seletor do hover, e não numa regra
-   `-unread:hover` que desfizesse depois: o aviso é um estado do botão,
-   e um estado não deve precisar se redesenhar toda vez que um efeito de
-   cursor passa por cima. Em destaque, o cursor só vira `pointer`. */
-.host-chat-bar-button:not(.host-chat-bar-button-unread):hover {
-  background-color: var(--ev-button-alt-hover-bg);
-  color: var(--ev-c-text-1);
-}
-
-.host-chat-bar-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* TEM MENSAGEM NOVA (2026-09-25, pedido do usuário): o botão inteiro
-   acende e apaga em laranja, e um anel pulsa por trás dele.
-
-   Substituiu o ponto vermelho que a lingueta vertical pendurava no canto
-   (`.host-chat-rail-dot`). A troca é de um marcador que ficava ao LADO do
-   alvo por um estado do PRÓPRIO alvo: o botão é pequeno e está sozinho
-   num canto largo, e um ponto de 8px ali era fácil de não ver — o botão
-   inteiro respirando não é.
-
-   Continua sem número, pelo mesmo motivo de antes: fechado, o que muda a
-   decisão do host é "tem gente falando", não quantas mensagens são. O
-   número exato está a um clique. */
-.host-chat-bar-button-unread {
-  animation: host-chat-bar-glow 2.4s ease-in-out infinite;
-}
-
-/* O respiro do botão. Ele passa pelo estado APAGADO nas duas pontas
-   (0% e 100%) e acende no meio — assim a volta é tão suave quanto a ida,
-   sem o solavanco que um ciclo terminando aceso daria ao recomeçar.
-
-   O laranja do pico é fraco de propósito (16% de alfa no fundo): o que
-   chama atenção aqui é o MOVIMENTO, e um laranja forte pulsando no canto
-   de uma tela com vídeo seria a coisa mais ruidosa da interface. */
-@keyframes host-chat-bar-glow {
-  0%,
-  100% {
-    border-color: var(--ev-c-gray-3);
-    background-color: var(--ev-c-black-mute);
-    color: var(--ev-c-text-2);
-    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0);
-  }
-  50% {
-    border-color: rgba(251, 146, 60, 0.55);
-    background-color: rgba(251, 146, 60, 0.16);
-    color: var(--color-unread);
-    box-shadow: 0 0 14px 0 rgba(251, 146, 60, 0.3);
-  }
-}
-
-/* O anel que cresce e some por trás do botão — mesmo recurso do botão de
-   transmitir (`.app-left-sidebar-cast::after`), na cor daqui.
-
-   Num pseudo-elemento, e não no botão: o anel cresce PRA FORA dos 36px,
-   e animar o `transform` do próprio botão empurraria o espaço que a
-   linha reservou pra ele. `pointer-events: none` porque, crescido, ele
-   cobriria a área em volta e roubaria o clique perto da borda. */
-.host-chat-bar-button-unread::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 999px;
-  border: 1.5px solid rgba(251, 146, 60, 0.6);
-  pointer-events: none;
-  animation: host-chat-bar-ring 2.4s ease-out infinite;
-}
-
-@keyframes host-chat-bar-ring {
-  0% {
-    transform: scale(1);
-    opacity: 0.7;
-  }
-  70%,
-  100% {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-}
-
-/* O AVISO NÃO PARA MAIS NO HOVER (2026-09-29, pedido do usuário). Até
-   2026-09-25 ele parava, pra não brigar com o fundo que o hover pintava;
-   agora o hover é quem sai do caminho (ver a regra dele acima), então o
-   pulso e o anel seguem inteiros com o cursor em cima.
-
-   É o que o estado pede: o botão continua dizendo "tem mensagem nova"
-   até a mensagem ser lida, e não até o mouse chegar perto. */
-
-/* Quem pediu menos movimento fica com o botão PARADO E ACESO: o laranja
-   sozinho continua dizendo "tem mensagem nova", que é a informação. Aqui
-   não dá pra simplesmente desligar a animação como no anel do botão de
-   transmitir — lá o movimento era enfeite, aqui ele é o aviso, e apagar
-   os dois juntos esconderia um estado de quem pediu menos animação. */
-@media (prefers-reduced-motion: reduce) {
-  .host-chat-bar-button-unread {
-    animation: none;
-    border-color: rgba(251, 146, 60, 0.55);
-    background-color: rgba(251, 146, 60, 0.16);
-    color: var(--color-unread);
-  }
-
-  .host-chat-bar-button-unread::after {
-    animation: none;
-    opacity: 0;
-  }
-}
-
-/* --- 4. Casca do HOST, aberta: barra lateral DIREITA ------------------ */
-
-/* Abrir a aba (2026-09-23, pedido do usuário) põe o chat aqui: uma
-   coluna encostada na direita da janela, do topo da área de conteúdo até
-   a borda de cima do rodapé.
-
-   Ela é irmã da grade de lives dentro da `.watch-row`, e não uma caixa
-   flutuante: a grade CEDE largura pra ela, do mesmo jeito que já cede pra
-   barra de detalhes da sala do outro lado. Nenhuma live fica coberta.
-
-   A largura é a mesma da barra da esquerda (280px) de propósito — com as
-   duas abertas, elas emolduram a grade simetricamente. Ela é uma
-   variável porque a aba de espectadores precisa do mesmo número pra sair
-   da frente. */
-.host-chat-dock {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: var(--host-chat-dock-width);
-  flex-shrink: 0;
-  min-height: 0;
-  /* Sem folga embaixo: o corpo do chat termina na caixa de escrever, e um
-     respiro ali deixaria a barra parecendo curta em relação ao rodapé. */
-  padding: 14px 14px 12px;
-  /* `--ev-c-gray-3`, a MESMA cor e espessura da borda de cima do rodapé
-     (`.home-footer`) — as duas se encontram no canto, e uma linha mais
-     clara que a outra denunciaria que são peças diferentes. */
-  border-left: 1px solid var(--ev-c-gray-3);
-  /* Mesmo tom do rodapé com a live no ar: a barra é a mesma peça de
-     antes, mudou de lugar, não de identidade. */
-  background-color: var(--ev-c-black-mute);
-  /* A MESMA entrada da barra de detalhes da sala (`side-panel-in`), e
-     por pedido do usuário: as duas são a mesma peça em lados opostos da
-     grade, então entram do mesmo jeito. Ver o keyframe abaixo. */
-  animation: host-chat-dock-in 0.16s ease-out;
-}
-
-/* Entra da direita, o espelho exato do `side-panel-in` da barra de
-   detalhes da sala — mesmos 8px, mesmo fade, mesma duração, só o sinal do
-   `translateX` trocado porque esta nasce do outro lado.
-
-   ⚠️ Foram 280px (`translateX(100%)`) até 2026-09-23: uma travessia da
-   largura inteira, que o usuário leu como "chicotada" em qualquer curva
-   que se tentasse. O problema nunca foi a curva, era a DISTÂNCIA — a
-   barra aparece junto com a grade encolhendo, e esses dois movimentos
-   grandes ao mesmo tempo não têm como ler como uma coisa só. Com 8px o
-   deslocamento vira o que sempre foi na barra da esquerda: uma dica de
-   direção, não uma viagem.
-
-   Sem animar `width` de propósito: isso re-layouta a grade de lives a
-   cada quadro (e a grade tem vídeo dentro), enquanto o `translateX` roda
-   só na composição. */
-@keyframes host-chat-dock-in {
-  from {
-    opacity: 0;
-    transform: translateX(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* A linha de cima da barra: o título do chat à esquerda, o ">" que
-   recolhe à direita.
-
-   Até 2026-09-29 ela era outra coisa — "Assistindo" + contador —, e o
-   título do chat vinha depois, embaixo da fila de avatares. A fila desceu
-   pro rodapé (ver `.footer-viewers`), a barra ficou com um assunto só, e
-   as duas linhas viraram uma. */
-.host-chat-dock-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-/* O título do chat. Sem linha divisória embaixo (2026-09-23, pedido do
-   usuário): o espaço em branco e o peso do título já separam o cabeçalho
-   das mensagens.
-
-   Sem `margin-top` desde 2026-09-29: ela existia pra afastá-lo da fila
-   de avatares que ficava acima, e agora ele é o primeiro elemento da
-   barra — a folga viraria um recuo do topo. */
-.host-chat-dock-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ev-c-text-1);
-}
+/* (As cascas do chat do HOST — a linha acima do rodapé, `.host-chat-bar*`,
+   e a barra lateral direita, `.host-chat-dock*` — saíram em 2026-10-21,
+   etapa 7: o chat do host mora na aba da minha live, com a mesma casca
+   `.room-chat` do chat de uma live assistida.) */
 
 /* --- Barra de rolagem da lista de mensagens --------------------------- */
 
@@ -8779,7 +9689,9 @@ body.overlay-window #root {
 .profile-popover-open-chevron {
   flex-shrink: 0;
   color: var(--ev-c-text-3);
-  transition: transform 0.15s ease, color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
 }
 
 .profile-popover-open:hover .profile-popover-open-chevron {
@@ -8914,7 +9826,9 @@ body.overlay-window #root {
   overflow: hidden;
   cursor: pointer;
   font: inherit;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .profile-window-avatar:hover:not(:disabled) {
@@ -9045,7 +9959,9 @@ body.overlay-window #root {
 
 .profile-field-clickable {
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .profile-field-clickable:hover:not(:disabled) {
@@ -9126,7 +10042,9 @@ body.overlay-window #root {
   flex-shrink: 0;
   border-radius: 999px;
   color: var(--ev-c-text-2);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .profile-field-clickable:hover:not(:disabled) .profile-field-action {
@@ -9204,8 +10122,7 @@ body.overlay-window #root {
 
 .profile-field-security {
   background:
-    linear-gradient(90deg, rgba(167, 139, 250, 0.07), transparent 60%),
-    var(--ev-c-black-mute);
+    linear-gradient(90deg, rgba(167, 139, 250, 0.07), transparent 60%), var(--ev-c-black-mute);
 }
 
 .profile-password-button {
@@ -9468,7 +10385,9 @@ body.overlay-window #root {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .password-dialog-cancel:hover:not(:disabled) {
@@ -9560,6 +10479,1652 @@ body.overlay-window #root {
   .confirm-dialog,
   .confirm-dialog-backdrop,
   .password-dialog-icon-done {
+    animation: none;
+  }
+}
+
+/* =====================================================================
+   AMIGOS E MEMBROS (2026-10-21, item 26 / etapa 6)
+   FriendsSidebar.tsx, MembersPanel.tsx, UserList.tsx e o card de perfil
+   ===================================================================== */
+
+/* Selo de pedidos recebidos no tile da Lista de Amigos (barra da
+   esquerda). Um ponto de cor que pede atenção, com a borda na cor da
+   barra pra parecer recortado do círculo. */
+.app-left-sidebar-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 2px solid var(--color-background);
+  background-color: var(--color-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+  animation: app-left-sidebar-badge-in 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
+@keyframes app-left-sidebar-badge-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* --- abas do painel (Todos | Pendentes) ---------------------------------
+   Sem trilho nem borda em volta (pedido do usuário, 2026-10-21): só a aba
+   ativa ganha o realce. As duas dividem a largura igualmente. */
+.panel-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.panel-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--ev-c-text-2);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.panel-tab:hover {
+  color: var(--ev-c-text-1);
+}
+
+.panel-tab-active,
+.panel-tab-active:hover {
+  background-color: rgba(167, 139, 250, 0.16);
+  color: #ddd6fe;
+}
+
+.panel-tab:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 1px;
+}
+
+.panel-tab-count {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--ev-c-text-2);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+
+.panel-tab-active .panel-tab-count {
+  background-color: rgba(167, 139, 250, 0.22);
+  color: #ede9fe;
+}
+
+/* Pedidos recebidos: o vermelho do selo da barra, pra ler como a mesma
+   coisa nos dois lugares. */
+.panel-tab-count-alert,
+.panel-tab-active .panel-tab-count-alert {
+  background-color: var(--color-danger);
+  color: #fff;
+}
+
+/* --- estado vazio ------------------------------------------------------ */
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 12px 12px;
+  text-align: center;
+}
+
+.panel-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
+  border-radius: 18px;
+  background:
+    radial-gradient(100% 100% at 50% 0%, rgba(167, 139, 250, 0.28), transparent 75%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.2);
+  color: #c4b5fd;
+}
+
+.panel-empty-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+.panel-empty-subtitle {
+  margin: 4px 0 0;
+  max-width: 220px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ev-c-text-2);
+}
+
+.panel-empty-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--accent);
+  color: #1a1325;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.panel-empty-action:hover {
+  filter: brightness(1.08);
+}
+
+.panel-empty-action:active {
+  transform: scale(0.97);
+}
+
+/* --- relação na linha de status (Membros) ------------------------------ */
+.users-list-relation-friend {
+  color: #c4b5fd;
+}
+
+.users-list-relation-outgoing {
+  color: var(--ev-c-text-3);
+}
+
+.users-list-relation-incoming {
+  color: #fbbf24;
+}
+
+/* --- pedidos de amizade (aba Pedidos) ---------------------------------- */
+.friend-request-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.friend-request-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.friend-request-button:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.friend-request-button:disabled,
+.friend-request-cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Aceitar: o verde do "ao vivo" em fundo translúcido — afirmativo sem
+   gritar numa lista que pode ter vários. */
+.friend-request-accept {
+  background-color: rgba(74, 222, 128, 0.14);
+  color: var(--color-live);
+}
+
+.friend-request-accept:hover:not(:disabled) {
+  background-color: var(--color-live);
+  color: #0f1a12;
+}
+
+.friend-request-decline {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+}
+
+.friend-request-decline:hover:not(:disabled) {
+  background-color: rgba(248, 113, 113, 0.16);
+  color: var(--color-danger);
+}
+
+.friend-request-cancel {
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.friend-request-cancel:hover:not(:disabled) {
+  background-color: rgba(248, 113, 113, 0.14);
+  color: var(--color-danger);
+}
+
+/* --- Membros ------------------------------------------------------------
+   A casca `.side-panel` sem mudança nenhuma: desde 2026-10-21 (pedido do
+   usuário) o painel abre no MESMO lugar da Lista de amigos e da ficha de
+   sala, à esquerda — chegou a abrir na direita no começo do dia. */
+.members-panel-summary {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--ev-c-text-2);
+}
+
+.members-panel-online {
+  color: var(--color-live);
+}
+
+/* Busca: um campo baixo, no tom das abas. */
+.panel-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-3);
+  transition: box-shadow 0.15s ease;
+  cursor: text;
+}
+
+.panel-search:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.5);
+  color: #c4b5fd;
+}
+
+.panel-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--ev-c-text-1);
+  font: inherit;
+  font-size: 12px;
+}
+
+.panel-search input::placeholder {
+  color: var(--ev-c-text-3);
+}
+
+.panel-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+}
+
+.panel-search-clear:hover {
+  color: var(--ev-c-text-1);
+}
+
+
+/* TILE 100% CLICÁVEL nas listas de amigos e membros (2026-10-21, defeito
+   relatado pelo usuário): o padding de 6x8px morava no <li>, e o botão
+   que abre o mini perfil começava DENTRO dele — a borda do tile ganhava
+   o hover mas não era botão (nem o cursor virava a mãozinha). Agora o
+   padding é do próprio botão, que estica na altura toda, e o <li> não
+   tem folga nenhuma. O que fica à direita (marca de fixado, Aceitar/
+   Recusar dos pedidos) leva a folga dele junto. */
+.users-list-item {
+  padding: 0;
+  gap: 0;
+}
+
+.users-list-item > .user-tile-button {
+  align-self: stretch;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.users-list-item > .users-list-actions,
+.users-list-item > .friend-request-actions {
+  padding-right: 8px;
+}
+
+/* CABEÇALHO FIXO ALINHADO (2026-10-21, defeito relatado pelo usuário):
+   o primeiro título tinha 2px de folga em cima e os outros 10px — a
+   folga que separa um grupo do anterior. Como ela era PADDING, ia junto
+   quando o título grudava no topo, e o "Offline" parava mais baixo que o
+   "Online". Agora todos têm o mesmo padding, e a separação é MARGEM, que
+   fica pra trás quando o título gruda. Vale pra todas as listas com este
+   cabeçalho (Todos, Pendentes, Membros). */
+.users-group-header,
+.users-group-header:first-child {
+  padding-top: 4px;
+}
+
+.users-group-header:not(:first-child) {
+  margin-top: 8px;
+}
+
+/* =====================================================================
+   O RODAPÉ DA MINHA LIVE (2026-10-22, pedido do usuário — voltou, no lugar
+   da aba da etapa 7). FLAT: colado nas bordas da área de lives, sem
+   cantos nem margem, como as abas; só um fio claro em cima separa da
+   grade. Duas linhas — a sala e os tiles —, e recolhido sobra só a de
+   cima.
+   ===================================================================== */
+.live-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--app-chrome-border);
+  background:
+    radial-gradient(60% 140% at 0% 0%, rgba(74, 222, 128, 0.05), transparent 70%),
+    var(--ev-c-black-mute);
+  animation: live-dock-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Sobe de baixo, só um pouco — a grade encolhe junto. */
+@keyframes live-dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.live-dock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.live-dock-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ev-c-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-dock-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Quem assiste: o rótulo com o número e a fila de avatares. */
+.live-dock-viewers {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 6px;
+}
+
+.live-dock-viewers-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-2);
+}
+
+.live-dock-viewers-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--ev-c-text-1);
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  letter-spacing: 0;
+}
+
+/* Os avatares da fila com o anel na cor do FUNDO do rodapé — o recorte
+   entre um e outro (o padrão da fila usa o fundo da tela). */
+.live-dock-viewers .viewer-avatar-chip,
+.live-dock-viewers .viewer-avatar-more {
+  border-color: var(--ev-c-black-mute);
+}
+
+/* Os dois botões da direita: chat e recolher. Quadrados de cantos
+   suaves, cinza; aceso no roxo quando o chat está aberto. */
+.live-dock-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-1);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.live-dock-button:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.live-dock-button-on,
+.live-dock-button-on:hover {
+  background-color: rgba(139, 92, 246, 0.3);
+  color: #ede9fe;
+}
+
+.live-dock-button:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 1px;
+}
+
+/* Mensagem nova com o chat fechado: o ponto que respira no canto. */
+.live-dock-unread {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ev-c-black-mute);
+  box-sizing: content-box;
+  background-color: var(--color-unread, #f472b6);
+  animation: user-card-live-pulse 1.8s ease-out infinite;
+}
+
+.live-dock-button-unread {
+  color: #fff;
+}
+
+/* A linha dos tiles: lado a lado, alinhados à esquerda, de largura fixa
+   (o rodapé não dança quando o nome do jogo muda). */
+.live-dock-tiles {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* "ADICIONAR TRANSMISSÃO": a vaga tracejada da que não está no ar. */
+.ml-tile-add {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1.5px dashed rgba(167, 139, 250, 0.35);
+  background-color: rgba(139, 92, 246, 0.04);
+  color: var(--ev-c-text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.ml-tile-add:hover {
+  border-color: rgba(167, 139, 250, 0.7);
+  background-color: rgba(139, 92, 246, 0.1);
+  color: var(--ev-c-text-1);
+}
+
+.ml-tile-add:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 2px;
+}
+
+.ml-tile-add-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background-color: rgba(139, 92, 246, 0.14);
+  color: #c4b5fd;
+}
+
+/* O "+" no canto do ícone, recortado do fundo. */
+.ml-tile-add-plus {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid var(--ev-c-black-mute);
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.ml-tile-add-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ml-tile-add-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.ml-tile-add-hint {
+  font-size: 11.5px;
+  color: var(--ev-c-text-3);
+}
+
+/* --- O CHAT DA MINHA LIVE, como aba na direita (voltou em 2026-10-22) --- */
+.live-chat-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: var(--host-chat-dock-width, 280px);
+  flex-shrink: 0;
+  min-height: 0;
+  padding: 14px 14px 12px;
+  border-left: 1px solid var(--app-chrome-border);
+  background-color: var(--ev-c-black-mute);
+  animation: live-chat-dock-in 0.16s ease-out;
+}
+
+@keyframes live-chat-dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.live-chat-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.live-chat-dock-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+}
+
+/* --- O SELETOR DE FONTE ÚNICO (2026-10-22) ------------------------------
+   A chave "Tela | Vídeo" no topo das duas janelas, e as duas do MESMO
+   tamanho quando ela aparece — trocar de aba não pode mexer na moldura. */
+.transmit-kind-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 16px 22px 0;
+}
+
+.transmit-kind-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--ev-c-text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.transmit-kind-option:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-1);
+}
+
+.transmit-kind-option-active,
+.transmit-kind-option-active:hover {
+  border-color: rgba(167, 139, 250, 0.6);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(139, 92, 246, 0.28), transparent 70%),
+    rgba(139, 92, 246, 0.1);
+  color: var(--ev-c-text-1);
+  box-shadow: 0 8px 22px -12px rgba(139, 92, 246, 0.8);
+}
+
+.transmit-kind-option:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 2px;
+}
+
+.transmit-kind-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.transmit-kind-option-active .transmit-kind-icon {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.transmit-kind-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.transmit-kind-title {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.transmit-kind-hint {
+  font-size: 11.5px;
+  color: var(--ev-c-text-3);
+}
+
+/* Mais baixas desde 2026-10-22 (pedido do usuário): na aba Vídeo sobrava
+   um vão vazio embaixo da prévia. A do vídeo agora tem a altura do
+   conteúdo (prévia 16:9 + lista), e a da tela foi pra MESMA altura — a
+   grade dela rola por dentro. */
+.source-picker:has(.transmit-kind-switch),
+.webcam-picker:has(.transmit-kind-switch) {
+  width: min(900px, 92vw);
+  height: min(540px, 88vh);
+  max-height: none;
+}
+
+/* LARGURA E ALTURA FIXAS nas duas abas (2026-10-22, pedido do usuário:
+   trocar de Tela pra Vídeo não pode mudar o tamanho da janela). Na do
+   vídeo, o corpo ocupa o que sobra e a PRÉVIA estica até o pé — sem a
+   proporção 16:9 fixa ela deixaria um vão embaixo; o vídeo dentro dela
+   continua em `object-fit: cover`. */
+.webcam-picker:has(.transmit-kind-switch) .webcam-picker-body {
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.webcam-picker:has(.transmit-kind-switch) .webcam-picker-preview {
+  aspect-ratio: auto;
+  height: 100%;
+}
+
+/* Trocou de aba pela chave: a janela nova entra SEM a animação de abrir
+   — são duas janelas por baixo, e pra pessoa é uma só. */
+.modal-instant,
+.modal-instant > .source-picker,
+.modal-instant > .webcam-picker {
+  animation: none;
+}
+
+/* --- O BOTÃO DE TRANSMITIR (um só desde 2026-10-22) ---------------------
+   Só existe com nada no ar (com a live no ar ele some, e o rodapé é quem
+   controla). Sem o aumento de tamanho no hover, a pedido do usuário. */
+.app-left-sidebar-cast:hover,
+.app-left-sidebar-cast:active {
+  transform: none;
+}
+
+/* --- O SELO AO VIVO (o do rodapé da minha live) ------------------------- */
+.tx-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.14);
+  color: var(--color-live);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.tx-card-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background-color: currentColor;
+  animation: user-card-live-pulse 1.8s ease-out infinite;
+}
+
+.tx-card-badge-connecting {
+  background-color: rgba(167, 139, 250, 0.16);
+  color: #c4b5fd;
+}
+
+/* --- OS TILES DAS TRANSMISSÕES NO RODAPÉ (2026-10-22, pedido do usuário)
+   Uma linha só, FINOS: o ícone (a arte do jogo; no vídeo, a miniatura ao
+   vivo), "TELA · tempo" pequeno e apagado em cima, a FONTE em branco e em
+   destaque embaixo (com marquee quando não cabe), e os botões de ícone
+   encostados no fim. Tela até 410px, vídeo até 320px. */
+.ml-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 56px;
+  padding: 0 8px 0 8px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--app-chrome-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+}
+
+.ml-tile-screen {
+  flex: 0 1 410px;
+  max-width: 410px;
+}
+
+.ml-tile-cam {
+  flex: 0 1 320px;
+  max-width: 320px;
+  border-color: rgba(167, 139, 250, 0.22);
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.14), rgba(139, 92, 246, 0.04));
+}
+
+/* Parando: o tile fica, do mesmo tamanho, só com o indicador no centro. */
+.ml-tile-stopping {
+  justify-content: center;
+  gap: 8px;
+}
+
+.ml-tile > .live-tile-art,
+.ml-tile-icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 9px;
+}
+
+.ml-tile-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+}
+
+/* A miniatura ao vivo da webcam no lugar do ícone — 16:9, espelhada. */
+.ml-tile-thumb {
+  position: relative;
+  width: 64px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.25);
+  color: var(--accent);
+}
+
+.ml-tile-thumb video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.ml-tile-thumb-waiting svg {
+  position: relative;
+  animation: live-badge-pulse 1.1s ease-in-out infinite;
+}
+
+.ml-tile-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* "TELA · 00:12": o tipo em versalete pequeno e apagado, o ponto de estado
+   e o tempo logo depois. */
+.ml-tile-kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-3);
+  white-space: nowrap;
+}
+
+.ml-tile-dot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.18);
+}
+
+.ml-tile-dot-connecting {
+  background-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
+  animation: live-badge-pulse 1.1s ease-in-out infinite;
+}
+
+.ml-tile-timer {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--color-live);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono-font);
+}
+
+.ml-tile-subtitle-box {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* A FONTE, em destaque: branco cheio, uma linha só. */
+.ml-tile-subtitle {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.ml-tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.ml-tile-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.07);
+  color: var(--ev-c-text-1);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.ml-tile-icon-button:hover {
+  background-color: rgba(255, 255, 255, 0.13);
+}
+
+.ml-tile-icon-button:active {
+  transform: scale(0.94);
+}
+
+.ml-tile-icon-button-on,
+.ml-tile-icon-button-on:hover {
+  background-color: rgba(139, 92, 246, 0.3);
+  color: #ede9fe;
+}
+
+/* O PARAR: o mesmo degradê vermelho de antes, agora num botão de ícone. */
+.ml-tile-stop,
+.ml-tile-stop:hover {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+  color: #fff;
+  box-shadow: 0 6px 14px -6px rgba(220, 38, 38, 0.75);
+}
+
+.ml-tile-stop:hover {
+  filter: brightness(1.1);
+}
+
+/* A vaga tracejada do "Adicionar", da largura da transmissão que falta. */
+.live-dock-tiles > .ml-tile-add {
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 12px 0 8px;
+}
+
+.live-dock-tiles > .ml-tile-add-screen {
+  flex: 0 1 410px;
+  max-width: 410px;
+}
+
+.live-dock-tiles > .ml-tile-add-cam {
+  flex: 0 1 320px;
+  max-width: 320px;
+}
+
+.live-dock-tiles > .ml-tile-add .ml-tile-add-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+
+/* O botão do chat com o texto (2026-10-22). */
+.live-dock-button-text {
+  width: auto;
+  gap: 7px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.live-dock-button-text .live-dock-unread {
+  top: 5px;
+  right: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dock,
+  .live-chat-dock,
+  .live-dock-unread,
+  .tx-card-dot,
+  .ml-tile-dot-connecting {
+    animation: none;
+  }
+}
+
+/* --- A COLUNA À DIREITA DA BARRA (2026-10-22) -----------------------------
+   Em cima, os painéis da esquerda e a área de lives lado a lado; embaixo o
+   rodapé da minha live, na largura das duas — ele passa por baixo dos
+   painéis também (pedido do usuário). */
+.home-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.home-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- A "COBRINHA" DO AO VIVO (2026-10-22, pedido do usuário) -------------
+   Um traço verde girando em volta da pílula: um degradê cônico grande
+   girando por trás, e o miolo da pílula (`::after`) cobrindo tudo menos a
+   borda de 1.5px. O texto fica por cima dos dois (z-index negativo dentro
+   do `isolation`). */
+.live-badge-snake {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: transparent;
+}
+
+.live-badge-snake::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -2;
+  width: 160%;
+  aspect-ratio: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 210deg,
+    rgba(74, 222, 128, 0.35) 280deg,
+    #4ade80 350deg,
+    transparent 360deg
+  );
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: live-badge-snake 2.2s linear infinite;
+}
+
+/* O miolo: o verde translúcido da pílula sobre o fundo do rodapé, opaco
+   pra esconder o degradê. */
+.live-badge-snake::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  z-index: -1;
+  border-radius: 999px;
+  background:
+    linear-gradient(rgba(74, 222, 128, 0.14), rgba(74, 222, 128, 0.14)),
+    var(--ev-c-black-mute);
+}
+
+@keyframes live-badge-snake {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* --- Rodapé: o "Adicionar" numa linha só, e a fila sem barra de rolagem
+   (2026-10-22, visto no print do usuário: o texto quebrava em duas linhas
+   e o tile estourava a altura). */
+.live-dock-tiles {
+  overflow: hidden;
+}
+
+.ml-tile-add-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ml-tile-add-title,
+.ml-tile-add-hint {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-dock-tiles > .ml-tile-add .ml-tile-add-title {
+  font-size: 12.5px;
+}
+
+.live-dock-tiles > .ml-tile-add .ml-tile-add-hint {
+  font-size: 11px;
+}
+
+/* --- O SELETOR DE FONTE (redesenho de 2026-10-22, pedido do usuário) ------
+   Cabeçalho = O QUE transmitir (a chave "Tela | Vídeo", ou o título quando
+   a janela abre sozinha); logo abaixo, QUAL tela (Tela inteira | Janelas);
+   a grade com miniaturas um pouco menores; e a sala privada no COMEÇO do
+   rodapé nas duas janelas. */
+.picker-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px 14px 18px;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.picker-header > .icon-button {
+  margin-left: auto;
+  align-self: flex-start;
+}
+
+.picker-header .transmit-kind-switch {
+  flex: 1;
+  max-width: 560px;
+  padding: 0;
+}
+
+.source-picker-subbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 12px 22px 12px;
+}
+
+.source-picker-subbar-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-3);
+}
+
+/* Na barra de baixo as abas são secundárias: o trilho escuro com a aba
+   ativa clara, sem o degradê roxo (que agora é da chave Tela | Vídeo). */
+.source-picker-subbar .source-picker-tab {
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.source-picker-subbar .source-picker-tab-active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* Três miniaturas por linha (voltou de quatro no mesmo dia, pedido do
+   usuário — elas ficaram pequenas demais). */
+.source-picker-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 16px;
+}
+
+.source-picker-body {
+  padding-top: 14px;
+}
+
+/* A sala privada no começo do rodapé, nas duas janelas. */
+.source-picker-footer .private-switch,
+.webcam-picker-footer .private-switch {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-badge-snake::before {
+    animation-duration: 8s;
+  }
+}
+
+/* ===================================================== alertas (etapa 8)
+   Item 26, etapa 8 (2026-10-22, pedido do usuario): no lugar de um painel
+   de notificacoes guardadas, ALERTAS que nao ficam em lugar nenhum — o som,
+   o laranja na barra de tarefas e, pra live nova, estes cards no canto
+   superior direito, logo abaixo da titlebar. Ver NewLiveAlertStack.tsx. */
+
+.live-alert-stack {
+  position: fixed;
+  top: 44px;
+  right: 16px;
+  z-index: 940;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 316px;
+  pointer-events: none;
+}
+
+.live-alert {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  background:
+    radial-gradient(130% 90% at 0% 0%, rgba(74, 222, 128, 0.14), transparent 55%),
+    radial-gradient(120% 80% at 100% 0%, rgba(139, 92, 246, 0.14), transparent 60%),
+    rgba(24, 24, 30, 0.94);
+  box-shadow:
+    0 24px 50px -14px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: live-alert-in 0.32s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+
+.live-alert-leaving {
+  animation: live-alert-out 0.22s ease forwards;
+}
+
+@keyframes live-alert-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes live-alert-out {
+  to {
+    opacity: 0;
+    transform: translateX(28px) scale(0.96);
+  }
+}
+
+/* A foto da pessoa borrada no fundo (a capa do mini perfil). */
+.live-alert-backdrop {
+  position: absolute;
+  inset: -20px;
+  width: calc(100% + 40px);
+  height: calc(100% + 40px);
+  object-fit: cover;
+  filter: blur(28px) saturate(1.3);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.live-alert-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.live-alert:hover .live-alert-close,
+.live-alert-close:focus-visible {
+  opacity: 1;
+}
+
+.live-alert-close:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.live-alert-main {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 22px 0 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* O avatar com o anel verde "no ar". */
+.live-alert-avatar {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background-color: var(--ev-c-black-soft);
+  box-shadow:
+    0 0 0 2px rgba(24, 24, 30, 1),
+    0 0 0 4px var(--color-live),
+    0 0 18px 2px rgba(74, 222, 128, 0.35);
+}
+
+.live-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.live-alert-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-live);
+}
+
+.live-alert-dot,
+.users-list-live-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--color-live);
+  animation: user-card-live-pulse 1.8s ease-out infinite;
+}
+
+.live-alert-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.07);
+  color: var(--ev-c-text-2);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.live-alert-title {
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--ev-c-text-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-alert-title strong {
+  font-weight: 700;
+  color: #fff;
+}
+
+.live-alert-footer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.live-alert-game {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* A arte do jogo (NowPlayingArt) ou o icone no lugar dela. */
+.live-alert-game > :first-child {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.live-alert-game-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(74, 222, 128, 0.12);
+  color: var(--color-live);
+}
+
+.live-alert-game-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.live-alert-game-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ev-c-text-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-alert-viewers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--ev-c-text-3);
+}
+
+.live-alert-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4ade80, #22c55e);
+  color: #0d1f13;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -6px rgba(34, 197, 94, 0.8);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.live-alert-watch:hover {
+  filter: brightness(1.08);
+}
+
+.live-alert-watch:active {
+  transform: scale(0.96);
+}
+
+/* O tempo que falta ate o card sumir. Para junto com o timer quando o
+   mouse esta em cima (o `-paused`). */
+.live-alert-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(90deg, var(--color-live), #8b5cf6);
+  transform-origin: left;
+  animation-name: live-alert-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.live-alert-progress-paused {
+  animation-play-state: paused;
+}
+
+@keyframes live-alert-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* A tag AO VIVO no tile de uma pessoa (Lista de amigos e Membros), e o
+   anel verde na foto de quem esta no ar. */
+.users-list-actions {
+  gap: 6px;
+}
+
+.users-list-live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.1);
+  color: var(--color-live);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* O DOT DESALINHADO (2026-10-22, print do usuário). O flex centraliza a
+   CAIXA da linha, e a caixa tem a folga de ascendente/descendente da
+   fonte — que não é simétrica em volta das maiúsculas. Conforme o tile
+   caía num meio pixel diferente, o texto parecia subir ou descer em
+   relação ao dot. Aparado na altura das maiúsculas (`text-box`), o que
+   o flex centraliza é a própria letra.
+
+   A margem negativa devolve o `letter-spacing` que sobra depois do
+   último "O": sem ela, o texto fica meio espaço pra esquerda do centro
+   da pílula. */
+.users-list-live-label {
+  display: block;
+  text-box: trim-both cap alphabetic;
+  margin-right: -0.08em;
+}
+
+/* --- A COBRINHA EM CIMA DE FUNDO TRANSPARENTE (2026-10-22) ----------------
+   A mesma cobrinha do `.live-badge-snake` do rodapé, por outro caminho.
+   Aquela esconde o degradê com um miolo OPACO na cor do rodapé, que aqui
+   não serve: a tag fica num tile que muda de fundo no hover e na seleção,
+   e o miolo apareceria como um retângulo de outra cor. Aqui o degradê
+   cônico gira pelo ÂNGULO (`@property`) e uma máscara recorta só o anel
+   de 1.5px — o fundo da tag continua translúcido. Mesmo degradê e mesma
+   velocidade do rodapé. */
+@property --live-snake-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.live-snake-ring {
+  position: relative;
+}
+
+.live-snake-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--live-snake-angle),
+    transparent 0deg,
+    transparent 210deg,
+    rgba(74, 222, 128, 0.35) 280deg,
+    #4ade80 350deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: live-snake-ring 2.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes live-snake-ring {
+  to {
+    --live-snake-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-snake-ring::before {
+    animation-duration: 8s;
+  }
+}
+
+.users-list-item-live .mini-avatar > :first-child {
+  box-shadow: 0 0 0 2px var(--color-live);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-alert,
+  .live-alert-leaving,
+  .live-alert-dot,
+  .users-list-live-dot {
     animation: none;
   }
 }

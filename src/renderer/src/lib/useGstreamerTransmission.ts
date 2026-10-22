@@ -7,6 +7,7 @@ import {
 } from './transmissionSettings'
 import { getErrorMessage } from './errors'
 import { playSound } from './sounds'
+import { claimHostRoom, releaseHostRoom, teardownTransmission } from './hostRoom'
 
 // Item novo do roadmap ("Live via GStreamer"): caminho alternativo de
 // transmissão, fora do Chromium — o `getDisplayMedia` mede ~45fps mesmo na
@@ -26,9 +27,10 @@ import { playSound } from './sounds'
 // app só cria/derruba a sala e o ingress, e gerencia o processo GStreamer
 // (tudo via IPC pro main). O livekit-client continua sendo usado, só que
 // exclusivamente do lado de quem ASSISTE (useViewer.ts).
-function generateRoomCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}
+//
+// O CÓDIGO DA SALA saiu daqui em 2026-10-20 (item 26, webcam): a sala é do
+// host e pode receber a tela E a webcam, então quem gera o código, e
+// decide quando a sala acaba, é o registro em hostRoom.ts.
 
 // Pedido do usuário (2026-08-31, ver ROADMAP.md item 18): `deleteIngress`/
 // `deleteRoom` devolvem se derrubaram de verdade (ver src/main/livekit.ts)
@@ -95,28 +97,16 @@ type PipelineOutcome =
 // carregando); o que passar muito disso não é lentidão, é outra coisa.
 const PIPELINE_TIMEOUT_MS = 20000
 
-const TEARDOWN_MAX_ATTEMPTS = 10
-const TEARDOWN_RETRY_MS = 2000
-
-/** `true` se o servidor confirmou a queda; `false` se desistiu no teto. */
-async function teardownRoom(code: string): Promise<boolean> {
-  for (let attempt = 1; attempt <= TEARDOWN_MAX_ATTEMPTS; attempt++) {
-    const ingressOk = await window.api.livekit.deleteIngress(code)
-    const roomOk = await window.api.livekit.deleteRoom(code)
-    if (ingressOk && roomOk) return true
-
-    if (attempt === TEARDOWN_MAX_ATTEMPTS) {
-      console.warn(
-        `[teardown] desistindo de derrubar a sala ${code} depois de ` +
-          `${TEARDOWN_MAX_ATTEMPTS} tentativas (ingress=${ingressOk}, sala=${roomOk}). ` +
-          'A transmissão local já parou; o LiveKit recolhe a sala vazia sozinho.'
-      )
-      return false
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, TEARDOWN_RETRY_MS))
-  }
-  return false
+// Derruba a TELA: o ingress dela e, se ela era a última transmissão do
+// host, a sala inteira (2026-10-20 — com a webcam no ar, a sala fica). O
+// laço com teto descrito acima mora agora em `teardownTransmission`
+// (hostRoom.ts), que a webcam usa também.
+//
+// `releaseHostRoom` aqui, no INSTANTE da decisão, e não depois de matar o
+// processo: é isso que faz parar as duas juntas derrubar a sala uma vez.
+function teardownRoom(code: string): Promise<boolean> {
+  const { lastOne } = releaseHostRoom('screen')
+  return teardownTransmission(code, 'screen', lastOne)
 }
 
 interface UseGstreamerTransmissionResult {
@@ -290,6 +280,9 @@ export function useGstreamerTransmission(
       ingressRef.current = null
 
       if (wasExpected || !crashedRoomCode) {
+        // Morte inesperada antes de o código chegar à ref: a vaga da tela
+        // na sala do host ainda está tomada, e precisa ser devolvida.
+        if (!wasExpected) releaseHostRoom('screen')
         setRoomCode(null)
         if (!wasExpected && info.code !== 0) {
           const message =
@@ -370,7 +363,9 @@ export function useGstreamerTransmission(
     if (liveActiveRef.current) return false
     liveActiveRef.current = true
     setError(null)
-    const code = generateRoomCode()
+    // A sala do host (2026-10-20): nova, ou a que a webcam já abriu —
+    // aí o servidor vincula a tela a ela, e a privacidade é a da sala.
+    const { code } = claimHostRoom('screen', newSettings.private)
     const { width, height } = RESOLUTION_DIMENSIONS[newSettings.resolution]
     const bitrateKbps = Math.round(videoMaxBitrate(newSettings.resolution, newSettings.fps) / 1000)
 
@@ -436,7 +431,8 @@ export function useGstreamerTransmission(
           roomName: code,
           participantName,
           private: newSettings.private,
-          game: initialNowPlaying
+          game: initialNowPlaying,
+          source: 'screen'
         })
         // Parou enquanto a sala era criada: quem derruba é o `stop`, que
         // está esperando esta promessa pra fazer isso.
@@ -595,6 +591,7 @@ export function useGstreamerTransmission(
     await window.api.gstreamer.stop()
 
     if (code) await teardownRoom(code)
+    else releaseHostRoom('screen')
 
     resetLocalState()
     setStopping(false)

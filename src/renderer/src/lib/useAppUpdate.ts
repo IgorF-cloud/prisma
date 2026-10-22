@@ -22,6 +22,9 @@ interface UseAppUpdateResult {
   progress: number
   error: string | null
   canDismiss: boolean
+  // Atualização obrigatória (2026-10-22). Só a checagem do LOGIN liga
+  // isto — ver o efeito do `check()` abaixo.
+  required: boolean
   startUpdate: () => Promise<void>
   // Desiste do download em andamento e volta o diálogo pro começo
   // (2026-09-21).
@@ -44,6 +47,7 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
   const [stage, setStage] = useState<UpdateStage>('prompt')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [required, setRequired] = useState(false)
 
   useEffect(() => {
     if (!enabled) return
@@ -51,6 +55,13 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
       setCurrentVersion(result.currentVersion)
       if (result.available) {
         setUpdateInfo(result.info)
+        // OBRIGATÓRIA SÓ AQUI, no login (2026-10-22, pedido do usuário).
+        // Se a versão instalada está abaixo da mínima, o diálogo perde o
+        // "Agora não" e não fecha mais. O push que chega com o app aberto
+        // (logo abaixo) ignora o `required` de propósito: ninguém é
+        // tirado do meio de uma live por uma publicação — a obrigação
+        // vale a partir do próximo login.
+        setRequired(result.required)
         // No login o diálogo abre sozinho, como sempre foi.
         setDialogOpen(true)
       }
@@ -83,7 +94,12 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
         // Não há mais atualização (ex: republicaram uma versão anterior)
         // — apaga o botão, a não ser que já exista um download/instalação
         // em andamento, que não pode ter o chão puxado embaixo dele.
-        if (stageRef.current === 'prompt') setUpdateInfo(null)
+        // Sem atualização não há o que obrigar: um diálogo obrigatório
+        // aberto some junto.
+        if (stageRef.current === 'prompt') {
+          setUpdateInfo(null)
+          setRequired(false)
+        }
       }),
     []
   )
@@ -132,14 +148,18 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
   // desfazer, e o clique que chegasse atrasado (o download terminou
   // entre ver o botão e apertá-lo) apagaria a tela de "instalando" sem
   // impedir nada.
+  //
+  // Obrigatória, o cancelar volta pro começo do diálogo em vez de
+  // fechá-lo: desistir do download não pode virar a porta de saída que o
+  // "Agora não" deixou de ser.
   const cancelDownload = useCallback(() => {
     if (stageRef.current !== 'downloading') return
     cancelledRef.current = true
     void window.api.update.cancel()
     setStage('prompt')
     setProgress(0)
-    setDialogOpen(false)
-  }, [])
+    if (!required) setDialogOpen(false)
+  }, [required])
 
   // "Agora não" fecha o DIÁLOGO e só isso (2026-09-20). Antes ele
   // zerava o `updateInfo`, e com isso a informação de que existe
@@ -147,8 +167,9 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
   // de uma recusa. Agora o fato continua guardado, o botão verde da
   // titlebar fica lá, e reabrir é um clique.
   const dismiss = useCallback(() => {
+    if (required) return
     setDialogOpen(false)
-  }, [])
+  }, [required])
 
   const openDialog = useCallback(() => {
     // Recusou depois de um erro e voltou pelo botão: começa do começo,
@@ -168,7 +189,8 @@ export function useAppUpdate(enabled: boolean): UseAppUpdateResult {
     stage,
     progress,
     error,
-    canDismiss: stage === 'prompt' || stage === 'error',
+    canDismiss: !required && (stage === 'prompt' || stage === 'error'),
+    required,
     startUpdate,
     cancelDownload,
     dismiss,

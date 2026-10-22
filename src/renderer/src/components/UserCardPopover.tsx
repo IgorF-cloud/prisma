@@ -1,8 +1,12 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AvatarRef } from '../lib/avatar'
+import { Check, Clock, Eye, Pin, PinOff, Radio, UserMinus, UserPlus, X } from 'lucide-react'
+import { AvatarRef, customAvatarUrl } from '../lib/avatar'
 import { useDismissable } from '../lib/useDismissable'
+import { friendActions, FriendsContextValue, useFriendsContext } from '../lib/friendActions'
 import UserAvatar from './UserAvatar'
+import Tooltip from './Tooltip'
+import NowPlayingArt from './NowPlayingArt'
 
 export type UserCardStatus = 'online' | 'busy' | 'offline'
 
@@ -13,36 +17,21 @@ export interface UserCardTarget {
   // Retângulo do tile que foi clicado, em coordenadas da JANELA
   // (`getBoundingClientRect`) — é o que ancora o card, que é `fixed`.
   //
-  // ⚠️ É o retângulo do `<li>`, não o do botão de dentro dele. O botão
-  // começa DEPOIS do padding do item (6px no topo, na lista de
-  // usuários), e ancorar nele deixava o card visivelmente mais baixo que
-  // o tile realçado — foi o "deslocado pra baixo" que o usuário viu em
-  // 2026-09-13. O `<li>` é o retângulo que a pessoa enxerga, porque é
-  // ele que pinta o fundo do hover.
-  //
-  // Guardado no estado de quem abre, e não relido aqui: o card fecha em
-  // qualquer scroll (ver useDismissable), então um retângulo velho nunca
-  // chega a ser usado.
+  // ⚠️ É o retângulo do `<li>`, não o do botão de dentro dele: o botão
+  // começa DEPOIS do padding do item, e ancorar nele deixava o card
+  // visivelmente mais baixo que o tile realçado (2026-09-13). O card
+  // fecha em qualquer scroll (ver useDismissable), então um retângulo
+  // velho nunca chega a ser usado.
   rect: DOMRect
 }
 
 interface UserCardPopoverProps {
   target: UserCardTarget
   apiBaseUrl: string
-  // Como a caixa se alinha ao tile na vertical (2026-09-13, pedido do
-  // usuário):
-  //
-  //   'top'    — o topo da caixa encosta no topo do tile. É o padrão,
-  //              e é o que parece "preso" ao item clicado numa lista
-  //              que corre de cima pra baixo.
-  //   'center' — centralizada na altura do tile. Fica pra lista de
-  //              viewers da MINHA live, que é uma caixinha no canto
-  //              inferior direito da janela: lá o alinhamento pelo topo
-  //              não tem o que acompanhar, e a caixa quase sempre
-  //              acabaria empurrada pela borda de baixo de qualquer
-  //              jeito.
-  //
-  // Nos dois casos o limite da janela ainda manda — ver o clamp abaixo.
+  // Como a caixa se alinha ao tile na vertical: 'top' (o topo dos dois
+  // junto — o padrão, numa lista que corre de cima pra baixo) ou 'center'
+  // (a lista de viewers da MINHA live, que fica num canto da janela). O
+  // limite da janela manda nos dois casos — ver o clamp abaixo.
   align?: 'top' | 'center'
   onClose: () => void
 }
@@ -54,26 +43,31 @@ const STATUS_LABEL: Record<UserCardStatus, string> = {
 }
 
 // Folga entre o tile e o card, e margem mínima da borda da janela.
-//
-// 12px desde 2026-09-13 (era 10, pedido do usuário): com o card alinhado
-// pelo topo do tile, uma folga curta demais faz as duas caixas parecerem
-// uma coisa só, grudada.
 const GAP = 12
 const EDGE = 8
 
-// Ficha de um usuário (2026-09-13, pedido do usuário): clicar no tile de
-// alguém — na lista de USUÁRIOS, na de viewers de uma sala ou na da
-// minha própria live — abre esta caixa com a foto grande, o nome e o
-// status.
+// O MINI PERFIL de alguém (2026-09-13; redesenhado em 2026-10-21 a
+// pedido do usuário, no desenho da janela de Perfil). Abre ao clicar no
+// tile ou no avatar de alguém — nas listas de amigos e membros, na de
+// quem assiste uma sala, na da minha live.
 //
-// Um PORTAL pro <body>, pelo mesmo motivo do Tooltip: as três listas
-// vivem dentro de painéis com `overflow-y: auto`, e pelo CSS um overflow
-// não-visível num eixo força o recorte no outro também. Um card
-// posicionado dentro da lista seria cortado pela largura do painel.
+//   - capa em degradê com a própria foto da pessoa borrada por cima (a
+//     mesma ideia da janela de Perfil), e o avatar meio dentro dela;
+//   - no canto superior direito, as AÇÕES: fixar e a amizade (adicionar,
+//     cancelar o pedido, desfazer em vermelho) — que eram o menu "Mais"
+//     das listas até o mesmo dia;
+//   - nome, status e a relação comigo;
+//   - pedido recebido: Aceitar/Recusar no corpo, com o texto;
+//   - a pessoa com uma SALA ABERTA: um tile da live com "Ver", que abre
+//     os detalhes da sala dela.
 //
-// Posição calculada do retângulo do tile, com FLIP: abre à direita e,
-// se não couber (a lista de viewers da minha live fica no canto direito
-// do rodapé), vai pra esquerda.
+// As ações e a live vêm do contexto da Home (FriendsContext), porque o
+// card abre de vários lugares e só conhece o NOME. Sem contexto — ou no
+// meu próprio card —, ele mostra só a identidade.
+//
+// Um PORTAL pro <body>: as listas vivem em painéis com `overflow`, que
+// recortariam a caixa. Posição calculada do retângulo do tile, com FLIP:
+// abre à direita e, se não couber, vai pra esquerda.
 function UserCardPopover({
   target,
   apiBaseUrl,
@@ -81,38 +75,26 @@ function UserCardPopover({
   onClose
 }: UserCardPopoverProps): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement>(null)
+  const ctx = useFriendsContext()
 
   useDismissable(onClose)
 
-  // A posição é escrita DIRETO no elemento, e não por estado.
-  //
-  // O motivo é que ela depende do TAMANHO do card, que só existe depois
-  // de renderizar: guardar num estado significaria renderizar uma vez
-  // fora do lugar, medir e renderizar de novo. Escrevendo no
-  // `useLayoutEffect` a correção acontece antes da pintura — o card
-  // nunca aparece na posição errada, nem por um quadro.
-  //
-  // Por isso o elemento nasce com `visibility: hidden` no JSX abaixo:
-  // ele precisa estar no DOM (pra ter tamanho) sem estar visível.
+  // A posição é escrita DIRETO no elemento, antes da pintura: ela depende
+  // do TAMANHO do card, que só existe depois de renderizar. Por isso ele
+  // nasce com `visibility: hidden`.
   useLayoutEffect(() => {
     const el = cardRef.current
     if (!el) return
 
-    // `offsetWidth/Height` e NÃO `getBoundingClientRect()`: a caixa entra
-    // com uma animação de `scale`, e o rect devolveria o tamanho já
-    // transformado (menor, no primeiro quadro) — a conta sairia alguns
-    // pixels fora. O offset ignora transform e devolve a caixa de layout.
+    // `offsetWidth/Height` e NÃO `getBoundingClientRect()`: a entrada é
+    // animada com `scale`, e o rect viria transformado.
     const { offsetWidth: width, offsetHeight: height } = el
     const anchor = target.rect
 
     let left = anchor.right + GAP
-    // Não coube à direita: espelha pro outro lado do tile.
     if (left + width > window.innerWidth - EDGE) left = anchor.left - GAP - width
     left = Math.min(Math.max(left, EDGE), window.innerWidth - EDGE - width)
 
-    // Alinhado ao topo do tile ou centrado nele (ver `align`), e em
-    // qualquer caso preso dentro da janela: perto do rodapé o clamp puxa
-    // a caixa pra cima, senão ela sairia pela borda de baixo.
     let top = align === 'top' ? anchor.top : anchor.top + anchor.height / 2 - height / 2
     top = Math.min(Math.max(top, EDGE), window.innerHeight - EDGE - height)
 
@@ -121,36 +103,260 @@ function UserCardPopover({
     el.style.visibility = 'visible'
   }, [target, align])
 
+  const id = ctx?.idByName(target.name) ?? null
+  const isSelf = id !== null && id === ctx?.selfId
+  const live = ctx && !isSelf ? ctx.roomOfHost(target.name) : null
+  const photo = target.avatar?.type === 'custom' ? customAvatarUrl(apiBaseUrl, target.avatar) : null
+
   return createPortal(
     <div
       ref={cardRef}
       className="user-card"
       style={{ visibility: 'hidden' }}
       // O clique DENTRO do card não pode fechá-lo: quem fecha é um
-      // listener de `click` no documento, e parar a propagação aqui
-      // impede que o evento chegue lá.
+      // listener de `click` no documento.
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
       role="dialog"
       aria-label={`Perfil de ${target.name}`}
     >
-      <span className="user-card-avatar-wrapper">
-        <span className="user-card-avatar">
-          <UserAvatar avatar={target.avatar} apiBaseUrl={apiBaseUrl} size={30} />
-        </span>
-        {/* Fora do `.user-card-avatar` de propósito: aquele tem
-            `overflow: hidden` pra recortar a foto no círculo, e um dot
-            lá dentro seria cortado pela borda. Mesmo arranjo do box de
-            perfil. */}
-        <span className={`user-status-dot user-card-status-dot user-status-${target.status}`} />
-      </span>
+      <div className="user-card-cover">
+        {photo && <img className="user-card-cover-photo" src={photo} alt="" />}
+        {ctx && id !== null && !isSelf && <UserCardActions ctx={ctx} id={id} name={target.name} />}
+      </div>
 
-      <span className="user-card-name" title={target.name}>
-        {target.name}
-      </span>
-      <span className="user-card-status">{STATUS_LABEL[target.status]}</span>
+      <div className="user-card-identity">
+        <span className="user-card-avatar-wrapper">
+          <span className="user-card-avatar">
+            <UserAvatar avatar={target.avatar} apiBaseUrl={apiBaseUrl} size={34} />
+          </span>
+          {/* Fora do `.user-card-avatar`, que recorta a foto no círculo. */}
+          <span className={`user-status-dot user-card-status-dot user-status-${target.status}`} />
+        </span>
+      </div>
+
+      <div className="user-card-body">
+        <span className="user-card-name" title={target.name}>
+          {target.name}
+        </span>
+        <span className="user-card-meta">
+          <span className={`user-card-presence user-card-presence-${target.status}`}>
+            {STATUS_LABEL[target.status]}
+          </span>
+          {ctx && id !== null && !isSelf && <UserCardRelation ctx={ctx} id={id} />}
+        </span>
+
+        {ctx && id !== null && !isSelf && ctx.friends.relationOf(id) === 'incoming' && (
+          <UserCardRequest ctx={ctx} id={id} name={target.name} />
+        )}
+
+        {live && ctx && (
+          <div className="user-card-live">
+            {live.game ? (
+              <NowPlayingArt info={live.game} />
+            ) : (
+              <span className="user-card-live-icon">
+                <Radio size={18} />
+              </span>
+            )}
+            <span className="user-card-live-text">
+              <span className="user-card-live-badge live-snake-ring">
+                <span className="user-card-live-dot" aria-hidden="true" />
+                <span className="users-list-live-label">LIVE</span>
+              </span>
+              <span className="user-card-live-title" title={live.game?.name}>
+                {live.game?.name ?? 'Sala aberta'}
+              </span>
+              <span className="user-card-live-viewers">
+                <Eye size={11} />
+                {live.viewers} assistindo
+              </span>
+            </span>
+            <button
+              type="button"
+              className="user-card-live-button"
+              onClick={() => {
+                ctx.openRoom(live.code)
+                onClose()
+              }}
+            >
+              Ver
+            </button>
+          </div>
+        )}
+      </div>
     </div>,
     document.body
+  )
+}
+
+// A relação comigo, ao lado do status — um chip pequeno.
+function UserCardRelation({
+  ctx,
+  id
+}: {
+  ctx: FriendsContextValue
+  id: number
+}): React.JSX.Element | null {
+  switch (ctx.friends.relationOf(id)) {
+    case 'friend':
+      return <span className="user-card-chip user-card-chip-friend">Amigo</span>
+    case 'outgoing':
+      return <span className="user-card-chip">Pedido enviado</span>
+    case 'incoming':
+      return <span className="user-card-chip user-card-chip-incoming">Quer ser seu amigo</span>
+    default:
+      return null
+  }
+}
+
+// As AÇÕES do canto da capa: fixar e a amizade, em botões de vidro
+// redondos (o mesmo do "fechar" da janela de Perfil).
+function UserCardActions({
+  ctx,
+  id,
+  name
+}: {
+  ctx: FriendsContextValue
+  id: number
+  name: string
+}): React.JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const { friends, notify } = ctx
+  const target = { id, name }
+  const relation = friends.relationOf(id)
+  const isPinned = ctx.pinned.has(id)
+
+  const run = async (action: () => Promise<void>): Promise<void> => {
+    setBusy(true)
+    await action()
+    setBusy(false)
+  }
+
+  // Fixar é só pra amigo (2026-10-22, pedido do usuário). A exceção é quem
+  // JÁ está fixado sem ser amigo (fixou antes de desfazer a amizade): o
+  // botão fica, pra ainda dar pra desfixar daqui.
+  const canPin = relation === 'friend' || isPinned
+
+  return (
+    <div className="user-card-actions">
+      {canPin && (
+        <Tooltip label={isPinned ? 'Desfixar' : 'Fixar no topo'} placement="top" delayMs={0}>
+          <button
+            type="button"
+            className={`user-card-action${isPinned ? ' user-card-action-on' : ''}`}
+            aria-label={isPinned ? `Desfixar ${name}` : `Fixar ${name} no topo`}
+            aria-pressed={isPinned}
+            onClick={() =>
+              void ctx
+                .togglePin(id, !isPinned)
+                .catch(() =>
+                  notify(
+                    isPinned
+                      ? `Não foi possível desfixar ${name}`
+                      : `Não foi possível fixar ${name}`,
+                    true
+                  )
+                )
+            }
+          >
+            {isPinned ? (
+              <PinOff size={17} fill="currentColor" />
+            ) : (
+              <Pin size={17} fill="currentColor" />
+            )}
+          </button>
+        </Tooltip>
+      )}
+
+      {relation === 'none' && (
+        <Tooltip label="Adicionar amigo" placement="top" delayMs={0}>
+          <button
+            type="button"
+            className="user-card-action user-card-action-add"
+            disabled={busy}
+            aria-label={`Adicionar ${name} como amigo`}
+            onClick={() => run(() => friendActions.request(friends, target, notify))}
+          >
+            <UserPlus size={17} fill="currentColor" />
+          </button>
+        </Tooltip>
+      )}
+
+      {relation === 'outgoing' && (
+        <Tooltip label="Cancelar pedido" placement="top" delayMs={0}>
+          <button
+            type="button"
+            className="user-card-action user-card-action-pending"
+            disabled={busy}
+            aria-label={`Cancelar o pedido de amizade para ${name}`}
+            onClick={() => run(() => friendActions.cancel(friends, target, notify))}
+          >
+            <Clock size={17} />
+          </button>
+        </Tooltip>
+      )}
+
+      {relation === 'friend' && (
+        <Tooltip label="Desfazer amizade" placement="top" delayMs={0}>
+          <button
+            type="button"
+            className="user-card-action user-card-action-remove"
+            disabled={busy}
+            aria-label={`Desfazer a amizade com ${name}`}
+            onClick={() => run(() => friendActions.unfriend(friends, target, notify))}
+          >
+            <UserMinus size={17} fill="currentColor" />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  )
+}
+
+// Pedido recebido: a resposta mora no corpo, com o texto — é a única coisa
+// que a pessoa tem a decidir aqui, e merece mais que um ícone.
+function UserCardRequest({
+  ctx,
+  id,
+  name
+}: {
+  ctx: FriendsContextValue
+  id: number
+  name: string
+}): React.JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const { friends, notify } = ctx
+  const target = { id, name }
+  const run = async (action: () => Promise<void>): Promise<void> => {
+    setBusy(true)
+    await action()
+    setBusy(false)
+  }
+  return (
+    <div className="user-card-request">
+      <span className="user-card-request-text">{name} quer ser seu amigo</span>
+      <div className="user-card-request-buttons">
+        <button
+          type="button"
+          className="user-card-request-accept"
+          disabled={busy}
+          onClick={() => run(() => friendActions.accept(friends, target, notify))}
+        >
+          <Check size={14} />
+          Aceitar
+        </button>
+        <button
+          type="button"
+          className="user-card-request-decline"
+          disabled={busy}
+          onClick={() => run(() => friendActions.decline(friends, target, notify))}
+        >
+          <X size={14} />
+          Recusar
+        </button>
+      </div>
+    </div>
   )
 }
 

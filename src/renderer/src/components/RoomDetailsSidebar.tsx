@@ -7,9 +7,11 @@ import {
   Lock,
   MessageSquare,
   MessageSquareOff,
+  Monitor,
+  Video,
   X
 } from 'lucide-react'
-import { RoomInfo } from '../lib/useRooms'
+import { RoomFeed, RoomInfo, roomSources } from '../lib/useRooms'
 import { ChatRoomState } from '../lib/useLiveChat'
 import { AvatarRef } from '../lib/avatar'
 import LiveChat from './LiveChat'
@@ -35,10 +37,11 @@ interface RoomDetailsSidebarProps {
   // contas, que vive na HomeScreen.
   statusByName: Record<string, UserCardStatus>
   onClose: () => void
-  onWatch: () => void
-  // Sair da live sem precisar achar o tile dela na grade (2026-09-20)
-  // — ver o bloco "Assistindo" no corpo.
-  onLeave: () => void
+  // Assistir/sair de UMA transmissão (2026-10-20, pedido do usuário) —
+  // a tela e a webcam têm cada uma o seu cartão e o seu botão. Sair da
+  // última à vista é sair da live (ver closeFeed na HomeScreen).
+  onWatchFeed: (feed: RoomFeed) => void
+  onLeaveFeed: (feed: RoomFeed) => void
   // Item 21 (chat da live, 2026-09-23). `null` quando não estou
   // assistindo esta sala: decisão do usuário — a aba de chat só existe
   // pra quem está na live, então sem isso ela nem é renderizada.
@@ -46,6 +49,9 @@ interface RoomDetailsSidebarProps {
   selfName: string
   onSendChat: (text: string) => Promise<boolean>
   onChatOpened: () => void
+  // As transmissões que EU fechei nesta sala (2026-10-20, item 26). Vazio
+  // quando não estou assistindo.
+  hiddenFeeds: Partial<Record<RoomFeed, true>>
 }
 
 // Item 5 do roadmap, 2ª parte (2026-09-09) — a sub-barra de DETALHES da
@@ -68,14 +74,20 @@ function RoomDetailsSidebar({
   isWatching,
   statusByName,
   onClose,
-  onWatch,
-  onLeave,
+  onWatchFeed,
+  onLeaveFeed,
   chat,
   selfName,
   onSendChat,
-  onChatOpened
+  onChatOpened,
+  hiddenFeeds
 }: RoomDetailsSidebarProps): React.JSX.Element {
   const viewers = room.participants.filter((p) => p !== room.hostName)
+  const sources = roomSources(room)
+  // Uma sala sem nenhuma das duas é estado de passagem (o host trocando
+  // de fonte) — mostra a tela, como antes da webcam existir.
+  const activeFeeds = (['screen', 'cam'] as RoomFeed[]).filter((feed) => sources[feed])
+  const feeds: RoomFeed[] = activeFeeds.length > 0 ? activeFeeds : ['screen']
 
   // Chat da live (item 21, 2026-09-23). Começa FECHADO: a ficha da sala
   // é sobre a sala, e o chat é uma escolha de quem quer conversar.
@@ -134,7 +146,7 @@ function RoomDetailsSidebar({
     <aside className="side-panel">
       <div className="side-panel-header">
         <div className="side-panel-heading">
-          <span className="side-panel-title">Live de {room.hostName ?? '???'}</span>
+          <span className="side-panel-title">Sala de {room.hostName ?? '???'}</span>
           <span className="room-details-subline">
             <LiveTimer startedAt={room.startedAt} className="room-details-timer" />
             {/* Só quem foi convidado recebe uma sala privada na lista, então
@@ -158,57 +170,89 @@ function RoomDetailsSidebar({
         </button>
       </div>
 
-      {/* O que está sendo transmitido. A arte vem do `iconUrl` que o host
-          reporta junto do jogo (ver gameDetection.ts) e que o servidor já
-          reenvia pra todo mundo na lista de salas — nada aqui é buscado à
-          parte. Sem arte, o NowPlayingArt cai no placeholder certo pro
-          tipo (jogo / janela / monitor).
+      {/* UM CARTÃO POR TRANSMISSÃO (2026-10-20, pedido do usuário). Antes
+          era um "Assistir" só, que abria a tela E a webcam de uma vez (e
+          ainda travava o app por um instante); agora cada uma tem o seu
+          cartão — o que é, o nome, e o próprio Assistir/Sair. A tela vem
+          em cima, a webcam embaixo.
 
-          Nada detectado ainda: não renderiza NADA (pedido do usuário,
-          2026-09-09). O bloco tem `min-height`, então um placeholder aqui
-          deixaria um vazio de 44px no meio da ficha — pior do que o botão
-          "Assistir" simplesmente subir. */}
-      {room.game && (
-        <div className="room-details-now-playing">
-          <NowPlayingArt info={room.game} />
-          <div className="room-details-now-playing-text">
-            <span className="room-details-label">
-              {room.game.kind === 'game' ? 'Jogando' : 'Transmitindo'}
-            </span>
-            <MarqueeText text={room.game.name} className="room-details-game" />
-          </div>
-        </div>
-      )}
+          A arte da tela vem do `iconUrl` que o host reporta junto do jogo
+          (ver gameDetection.ts) e que o servidor já reenvia na lista de
+          salas. Sem jogo detectado, o cartão mostra o ícone de monitor —
+          o cartão existe de qualquer jeito, porque é nele que mora o
+          botão. */}
+      <div className="room-feeds">
+        {feeds.map((feed) => {
+          const isCam = feed === 'cam'
+          // Assistindo ESTA transmissão: na sala e sem ter fechado o tile
+          // dela. A tela no mini player conta como assistindo.
+          const watching = isWatching && hiddenFeeds[feed] !== true
+          const kind = isCam
+            ? 'Webcam'
+            : room.game
+              ? `Tela · ${room.game.kind === 'game' ? 'Jogando' : 'Transmitindo'}`
+              : 'Tela'
+          const name = isCam
+            ? `Câmera de ${room.hostName ?? '???'}`
+            : (room.game?.name ?? 'Tela compartilhada')
+          const KindIcon = isCam ? Video : Monitor
+          return (
+            <section
+              key={feed}
+              className={`room-feed room-feed-${feed}${watching ? ' room-feed-watching' : ''}`}
+            >
+              <div className="room-feed-info">
+                {!isCam && room.game ? (
+                  <NowPlayingArt info={room.game} />
+                ) : (
+                  <span className="room-feed-icon">
+                    <KindIcon size={20} />
+                  </span>
+                )}
+                <div className="room-feed-text">
+                  <span className="room-feed-kind">
+                    <span className="room-feed-live" aria-hidden="true" />
+                    {kind}
+                  </span>
+                  {/* O mesmo vai-e-vem do nome no rodapé da MINHA live
+                      (pedido do usuário) — só anda quando não cabe. */}
+                  <MarqueeText text={name} className="room-feed-name" />
+                </div>
+              </div>
 
-      {/* JÁ ASSISTINDO vira uma LINHA, não um botão apagado (2026-09-20,
-          pedido do usuário). Um botão desabilitado comunica "não dá pra
-          clicar" quando a mensagem real é outra: "você já está aqui, e
-          pode sair". A saída fica do lado direito, que é onde ações
-          destrutivas moram no resto do app. */}
-      {isWatching ? (
-        <div className="room-details-watching">
-          <Eye size={15} />
-          Assistindo
-          {/* Dentro do chip, encostado na ponta direita: a saída pertence
-              a este estado, não é uma ação solta ao lado dele. Sem fundo
-              nem borda de propósito — o chip já é a "caixa", e um botão
-              dentro de outro botão pesaria a ficha inteira. */}
-          <button
-            type="button"
-            className="room-details-leave"
-            onClick={onLeave}
-            aria-label="Sair da live"
-          >
-            <X size={14} />
-            Sair
-          </button>
-        </div>
-      ) : (
-        <button type="button" className="room-details-watch" onClick={onWatch}>
-          <Eye size={15} />
-          Assistir
-        </button>
-      )}
+              {/* JÁ ASSISTINDO vira uma LINHA, não um botão apagado
+                  (2026-09-20, pedido do usuário): a mensagem é "você já
+                  está aqui, e pode sair". A saída fica na ponta direita,
+                  onde ações destrutivas moram no resto do app. */}
+              {watching ? (
+                <div className="room-details-watching">
+                  <Eye size={15} />
+                  Assistindo
+                  <button
+                    type="button"
+                    className="room-details-leave"
+                    onClick={() => onLeaveFeed(feed)}
+                    aria-label={isCam ? 'Parar de assistir a webcam' : 'Parar de assistir a tela'}
+                  >
+                    <X size={14} />
+                    Sair
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="room-details-watch"
+                  onClick={() => onWatchFeed(feed)}
+                  aria-label={isCam ? 'Assistir a webcam' : 'Assistir a tela'}
+                >
+                  <Eye size={15} />
+                  Assistir
+                </button>
+              )}
+            </section>
+          )
+        })}
+      </div>
 
       {/* Só a LISTA colapsa quando o chat abre (2026-09-23, 2ª rodada de
           desenho). A linha de cima — "Assistindo" + contador — fica

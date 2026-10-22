@@ -54,11 +54,25 @@ const NEVER_RECONNECT = { nextRetryDelayInMs: (): null => null }
 // desconecta completamente quando é desligado — mais simples, e como o
 // preview vem desabilitado por padrão, na maior parte do tempo essa
 // conexão nem existe.
+//
+// A WEBCAM (2026-10-20, item 26, etapa 4): o mesmo truque, numa segunda
+// conexão. `feed: 'cam'` assina o vídeo de `<host>-cam` (a identity da
+// webcam no servidor) e entra como `<host>-cam-preview` — termina em
+// "-preview", então o servidor já a trata como oculta, e não termina em
+// "-cam", que o `/token` recusa. Duas conexões e não uma porque cada
+// preview liga e desliga sozinho, junto com a SUA transmissão.
+//
+// `alwaysOn`: a miniatura do cartão da webcam no rodapé não tem botão —
+// existe enquanto a webcam estiver no ar. O toggle continua existindo,
+// só não manda.
 export function useHostPreview(
   roomCode: string | null,
-  hostIdentity: string | null
+  hostIdentity: string | null,
+  { feed = 'screen', alwaysOn = false }: { feed?: 'screen' | 'cam'; alwaysOn?: boolean } = {}
 ): UseHostPreviewResult {
-  const [enabled, setEnabled] = useState(false)
+  const [toggled, setEnabled] = useState(false)
+  const enabled = alwaysOn || toggled
+  const targetIdentity = hostIdentity && feed === 'cam' ? `${hostIdentity}-cam` : hostIdentity
   const videoTrackRef = useRef<RemoteVideoTrack | null>(null)
   const videoElementRef = useRef<HTMLVideoElement | null>(null)
   // Só pro `disconnect()` abaixo alcançar a conexão viva de fora do
@@ -70,7 +84,7 @@ export function useHostPreview(
   // toggle — sem isso, religar uma transmissão nova deixaria o preview
   // "ligado" sozinho sem o usuário ter pedido de novo.
   useEffect(() => {
-    if (!enabled || !roomCode || !hostIdentity) return
+    if (!enabled || !roomCode || !targetIdentity) return
 
     let cancelled = false
     const room = new Room({ reconnectPolicy: NEVER_RECONNECT })
@@ -78,7 +92,7 @@ export function useHostPreview(
 
     function subscribeHostVideo(): void {
       for (const participant of room.remoteParticipants.values()) {
-        if (participant.identity !== hostIdentity) continue
+        if (participant.identity !== targetIdentity) continue
         for (const publication of participant.videoTrackPublications.values()) {
           publication.setSubscribed(true)
         }
@@ -86,10 +100,10 @@ export function useHostPreview(
     }
 
     room.on(RoomEvent.TrackPublished, (_publication, participant) => {
-      if (participant.identity === hostIdentity) subscribeHostVideo()
+      if (participant.identity === targetIdentity) subscribeHostVideo()
     })
     room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-      if (participant.identity !== hostIdentity || track.kind !== Track.Kind.Video) return
+      if (participant.identity !== targetIdentity || track.kind !== Track.Kind.Video) return
       videoTrackRef.current = track as RemoteVideoTrack
       if (videoElementRef.current) track.attach(videoElementRef.current)
     })
@@ -110,7 +124,7 @@ export function useHostPreview(
     async function connect(): Promise<void> {
       const { token, wsUrl } = await window.api.livekit.getToken({
         roomName: roomCode as string,
-        participantName: `${hostIdentity}-preview`,
+        participantName: `${targetIdentity}-preview`,
         role: 'viewer',
         hidden: true
       })
@@ -136,7 +150,7 @@ export function useHostPreview(
       if (videoElementRef.current) videoElementRef.current.srcObject = null
       setEnabled(false)
     }
-  }, [enabled, roomCode, hostIdentity])
+  }, [enabled, roomCode, targetIdentity])
 
   // Desconecta na hora, sem depender do cleanup do efeito (que só roda no
   // próximo render). Chamado antes de derrubar a sala — ver

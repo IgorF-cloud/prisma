@@ -17,6 +17,10 @@ export type AvatarRef =
 // server.js), então nunca chega parcial aqui.
 export interface UserSettings {
   alertForNewLives: boolean
+  // Alerta de novas lives em três níveis (2026-10-22, etapa 8). Opcional:
+  // servidor anterior e o session.json antigo não trazem — aí vale o
+  // `alertForNewLives` (ver newLiveAlertsOf no renderer).
+  newLiveAlerts?: 'all' | 'friends' | 'none'
   // Sobreposição de viewers na tela durante a live (2026-09-10).
   // Nasce DESLIGADA: ela desenha por cima da tela do usuário.
   showViewersOverlay: boolean

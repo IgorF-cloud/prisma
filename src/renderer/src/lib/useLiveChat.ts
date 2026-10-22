@@ -198,6 +198,10 @@ export function useLiveChat(
   useEffect(() => {
     const offMessage = window.api.chat.onMessage(({ roomName, message }) => {
       if (!openRoomsRef.current.has(roomName)) return
+      // Mensagem de outra pessoa numa sala que eu assisto ou na minha
+      // (etapa 8, 2026-10-22): o laranja na barra de tarefas. O main só
+      // acende com o app sem foco — ver taskbarFlash.ts.
+      if (message.from !== selfNameRef.current) window.api.app.flashTaskbar()
       setRooms((current) => {
         const room = current[roomName] ?? EMPTY_ROOM
         // O servidor ecoa a mensagem pro próprio autor, então esta é a

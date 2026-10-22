@@ -74,11 +74,25 @@ export async function deleteRoom(roomName: string): Promise<boolean> {
   }
 }
 
+// Qual das transmissões da sala (2026-10-20, item 26): a da tela ou a da
+// webcam — cada uma tem o seu ingress no servidor.
+export type TransmissionSource = 'screen' | 'cam'
+
 // Mesmo espírito do deleteRoom acima (devolve sucesso/falha real).
-export async function deleteIngress(roomName: string): Promise<boolean> {
-  logEvent('livekit', `deleteIngress(${roomName}): enviando DELETE /ingress/${roomName}`)
+//
+// `source` (2026-10-20): remove SÓ aquela transmissão — a outra, se
+// houver, continua no ar. Sem ele é a tela, como sempre foi.
+export async function deleteIngress(
+  roomName: string,
+  source: TransmissionSource = 'screen'
+): Promise<boolean> {
+  const query = source === 'cam' ? '?source=cam' : ''
+  logEvent(
+    'livekit',
+    `deleteIngress(${roomName}, ${source}): enviando DELETE /ingress/${roomName}${query}`
+  )
   try {
-    const response = await fetch(`${API_BASE_URL}/ingress/${roomName}`, {
+    const response = await fetch(`${API_BASE_URL}/ingress/${roomName}${query}`, {
       method: 'DELETE',
       headers: { Authorization: authHeader() },
       signal: AbortSignal.timeout(DELETE_REQUEST_TIMEOUT_MS)
@@ -143,6 +157,10 @@ export function setupLivekitHandlers(): void {
         // o subtítulo alguns segundos depois. Opcional: sem ele a
         // informação chega pelo POST /rooms/:roomName/game de sempre.
         game?: { kind: string; name: string; iconUrl?: string | null } | null
+        // Qual transmissão este ingress publica (2026-10-20, item 26).
+        // Sem ele o servidor entende `screen`. Com a sala do host já
+        // aberta pela outra, o servidor VINCULA esta a ela.
+        source?: TransmissionSource
       }
     ): Promise<{ url: string; streamKey: string }> => {
       const response = await fetch(`${API_BASE_URL}/ingress`, {
@@ -164,5 +182,7 @@ export function setupLivekitHandlers(): void {
     }
   )
 
-  ipcMain.handle('livekit:deleteIngress', (_event, roomName: string) => deleteIngress(roomName))
+  ipcMain.handle('livekit:deleteIngress', (_event, roomName: string, source?: TransmissionSource) =>
+    deleteIngress(roomName, source === 'cam' ? 'cam' : 'screen')
+  )
 }

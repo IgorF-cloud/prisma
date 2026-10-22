@@ -97,22 +97,39 @@ interface SourcePickerDialogProps {
   // (2026-09-25, ver lastTransmissionQuality.ts).
   initialQuality?: TransmissionQuality
   initialPrivate: boolean
+  // A sala já existe (a webcam abriu, 2026-10-20 — item 26): a tela entra
+  // nela, e a privacidade é a da sala. O switch aparece travado, como no
+  // modo de atualizar.
+  privateLocked?: boolean
   // A fonte da live no ar (modo de atualizar): abre na aba dela e com o
   // selo "Transmitindo".
   currentSourceId?: string | null
   onClose: () => void
   onPick: (settings: TransmissionSettings, source: CaptureSource) => void
+  // O seletor ÚNICO (2026-10-22): a chave "Tela | Vídeo" no topo, e
+  // `instant` quando a janela entrou por ela (sem a animação de abrir) —
+  // ver TransmitKindSwitch.
+  kindSwitch?: React.ReactNode
+  instant?: boolean
+  // A sala privada é UMA escolha pras duas abas do seletor — quem guarda é
+  // o App (ver `picker.isPrivate`), avisado a cada troca.
+  onPrivateChange?: (isPrivate: boolean) => void
 }
 
 function SourcePickerDialog({
   mode,
   initialQuality,
   initialPrivate,
+  privateLocked = false,
   currentSourceId = null,
   onClose,
-  onPick
+  onPick,
+  kindSwitch = null,
+  instant = false,
+  onPrivateChange
 }: SourcePickerDialogProps): React.JSX.Element {
   const labels = LABELS[mode]
+  const switchLocked = mode === 'update' || privateLocked
 
   // Lido uma vez só, na montagem — o `useState(fn)` não roda a cada
   // render.
@@ -246,25 +263,45 @@ function SourcePickerDialog({
   // do rodapé da Home, e ali o `position: fixed` do fundo ficaria preso
   // no empilhamento do rodapé — partes da Home pintariam por cima dele.
   return createPortal(
-    <div className="modal-backdrop source-picker-backdrop" onClick={onClose}>
+    <div
+      className={`modal-backdrop source-picker-backdrop${instant ? ' modal-instant' : ''}`}
+      onClick={onClose}
+    >
       <div
         className="source-picker"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="source-picker-title"
+        aria-labelledby={kindSwitch ? undefined : 'source-picker-title'}
+        aria-label={kindSwitch ? 'Escolher o que transmitir' : undefined}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="source-picker-header">
-          <div className="settings-modal-heading">
-            <span className="settings-modal-icon">{labels.icon}</span>
-            <div className="settings-modal-titles">
-              <h2 id="source-picker-title" className="settings-modal-title">
-                {labels.title}
-              </h2>
-              <p className="settings-modal-subtitle">{labels.subtitle}</p>
-            </div>
-          </div>
+        {/* O CABEÇALHO (2026-10-22, pedido do usuário): a escolha de O QUE
+            transmitir — a chave "Tela | Vídeo" — quando o seletor é o
+            único da barra; sozinho (o "Adicionar" do rodapé, ou atualizar a
+            live), o título de sempre. Embaixo, a escolha de QUAL tela. */}
+        <header className="source-picker-header picker-header">
+          {kindSwitch ?? (
+            <>
+              <div className="settings-modal-heading">
+                <span className="settings-modal-icon">{labels.icon}</span>
+                <div className="settings-modal-titles">
+                  <h2 id="source-picker-title" className="settings-modal-title">
+                    {labels.title}
+                  </h2>
+                  <p className="settings-modal-subtitle">{labels.subtitle}</p>
+                </div>
+              </div>
+            </>
+          )}
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar">
+            <X size={16} />
+          </button>
+        </header>
 
+        <div className="source-picker-subbar">
+          <span className="source-picker-subbar-label">
+            {sourceType === 'screen' ? 'Escolha o monitor' : 'Escolha a janela'}
+          </span>
           <div className="source-picker-tabs" role="tablist">
             <button
               type="button"
@@ -297,11 +334,7 @@ function SourcePickerDialog({
               {!loadingSources && <span className="source-picker-tab-count">{windows.length}</span>}
             </button>
           </div>
-
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar">
-            <X size={16} />
-          </button>
-        </header>
+        </div>
 
         <div className="source-picker-body">
           {loadingSources ? (
@@ -340,6 +373,43 @@ function SourcePickerDialog({
         </div>
 
         <footer className="source-picker-footer">
+          {/* NO COMEÇO do rodapé, no mesmo lugar da janela do vídeo
+              (2026-10-22): a sala privada vale pra sala, seja qual for a
+              aba. O <input> fica escondido e o <span> desenha o switch — mesmo
+              padrão do SettingsModal. Continua sendo um checkbox de
+              verdade por baixo, então teclado e leitor de tela funcionam
+              sem `role`/`aria` manuais. */}
+          <label
+            className={switchLocked ? 'private-switch private-switch-locked' : 'private-switch'}
+          >
+            <span className="private-switch-text">
+              <span className="private-switch-title">
+                <Lock size={13} />
+                Sala privada
+              </span>
+              <span className="private-switch-description">
+                {switchLocked
+                  ? 'Definida ao iniciar a live'
+                  : isPrivate
+                    ? 'Só entra quem você convidar'
+                    : 'Aparece pra todo mundo'}
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="private-switch-input"
+              checked={isPrivate}
+              disabled={switchLocked}
+              onChange={(e) => {
+                setIsPrivate(e.target.checked)
+                onPrivateChange?.(e.target.checked)
+              }}
+            />
+            <span className="private-switch-track">
+              <span className="private-switch-thumb" />
+            </span>
+          </label>
+
           <div className="settings-group">
             <span className="settings-group-label">Resolução</span>
             <div className="pill-group">
@@ -373,40 +443,6 @@ function SourcePickerDialog({
               ))}
             </div>
           </div>
-
-          {/* O <input> fica escondido e o <span> desenha o switch — mesmo
-              padrão do SettingsModal. Continua sendo um checkbox de
-              verdade por baixo, então teclado e leitor de tela funcionam
-              sem `role`/`aria` manuais. */}
-          <label
-            className={
-              mode === 'update' ? 'private-switch private-switch-locked' : 'private-switch'
-            }
-          >
-            <span className="private-switch-text">
-              <span className="private-switch-title">
-                <Lock size={13} />
-                Sala privada
-              </span>
-              <span className="private-switch-description">
-                {mode === 'update'
-                  ? 'Definida ao iniciar a live'
-                  : isPrivate
-                    ? 'Só entra quem você convidar'
-                    : 'Aparece pra todo mundo'}
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              className="private-switch-input"
-              checked={isPrivate}
-              disabled={mode === 'update'}
-              onChange={(e) => setIsPrivate(e.target.checked)}
-            />
-            <span className="private-switch-track">
-              <span className="private-switch-thumb" />
-            </span>
-          </label>
         </footer>
       </div>
     </div>,

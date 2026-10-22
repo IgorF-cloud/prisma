@@ -39,9 +39,18 @@ interface ContextMenuProps {
   position: ContextMenuPosition
   items: ContextMenuItem[]
   onClose: () => void
+  // 'cursor' (padrão): o menu nasce no ponto, pra baixo e pra direita —
+  // o menu de botão direito de sempre.
+  // 'beside' (2026-10-21, pedido do usuário pro botão "Mais" das
+  // listas): `position` é o canto SUPERIOR DIREITO do botão, e o menu
+  // abre AO LADO dele — a borda esquerda do menu na direita do botão,
+  // os dois alinhados pelo topo.
+  anchor?: 'cursor' | 'beside'
 }
 
 const EDGE = 8
+// Folga entre o botão e o menu no modo 'beside'.
+const BESIDE_GAP = 6
 
 // Menu de botão direito (2026-09-13, pedido do usuário: "Expulsar" na
 // lista de viewers da minha live).
@@ -55,7 +64,12 @@ const EDGE = 8
 // apareceria com a cara do Windows no meio de uma janela sem moldura e
 // com estilo próprio, e ainda precisaria de uma ida e volta por IPC pra
 // uma decisão que é toda da tela.
-function ContextMenu({ position, items, onClose }: ContextMenuProps): React.JSX.Element {
+function ContextMenu({
+  position,
+  items,
+  onClose,
+  anchor = 'cursor'
+}: ContextMenuProps): React.JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null)
 
   useDismissable(onClose)
@@ -73,19 +87,31 @@ function ContextMenu({ position, items, onClose }: ContextMenuProps): React.JSX.
     // Abre pra baixo/direita do cursor, como todo menu de contexto; se
     // não couber, espelha pro outro lado em vez de simplesmente encostar
     // na borda — assim o menu nunca cobre o item que foi clicado.
-    const left =
-      position.x + width > window.innerWidth - EDGE
-        ? Math.max(position.x - width, EDGE)
-        : position.x
-    const top =
-      position.y + height > window.innerHeight - EDGE
-        ? Math.max(position.y - height, EDGE)
-        : position.y
+    let left: number
+    let top: number
+    if (anchor === 'beside') {
+      // Ao lado do botão, com uma folga; sem espaço à direita, vai pro
+      // outro lado do ponto. Embaixo, sobe só o que faltar.
+      left =
+        position.x + BESIDE_GAP + width > window.innerWidth - EDGE
+          ? Math.max(position.x - width - BESIDE_GAP, EDGE)
+          : position.x + BESIDE_GAP
+      top = Math.max(Math.min(position.y, window.innerHeight - EDGE - height), EDGE)
+    } else {
+      left =
+        position.x + width > window.innerWidth - EDGE
+          ? Math.max(position.x - width, EDGE)
+          : position.x
+      top =
+        position.y + height > window.innerHeight - EDGE
+          ? Math.max(position.y - height, EDGE)
+          : position.y
+    }
 
     el.style.left = `${left}px`
     el.style.top = `${top}px`
     el.style.visibility = 'visible'
-  }, [position])
+  }, [position, anchor])
 
   return createPortal(
     <div
