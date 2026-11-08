@@ -1,4 +1,5 @@
 import { useState, type JSX } from 'react'
+import { Video } from 'lucide-react'
 import { NowPlayingInfo } from '../lib/nowPlaying'
 import gamePlaceholder from '../assets/steam.png'
 import screenPlaceholder from '../assets/monitor.png'
@@ -23,6 +24,17 @@ const PLACEHOLDER_IMAGE: Record<NowPlayingInfo['kind'], string> = {
   game: gamePlaceholder,
   screen: screenPlaceholder,
   window: windowPlaceholder
+}
+
+// A arte da WEBCAM (2026-10-23, pedido do usuário): a câmera do lucide,
+// branca e preenchida, no mesmo quadrado e no mesmo tamanho do desenho
+// de monitor — as duas transmissões lado a lado falam a mesma língua.
+export function CamArt(): JSX.Element {
+  return (
+    <div className="live-tile-art live-tile-art-cam">
+      <Video fill="currentColor" strokeWidth={1.5} />
+    </div>
+  )
 }
 
 export default function NowPlayingArt({ info }: { info: NowPlayingInfo }): JSX.Element {

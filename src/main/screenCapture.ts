@@ -161,6 +161,29 @@ function ehCamadaInvisivel(janela: NativeWindow): boolean {
   return janela.ToolWindow && janela.ClickThrough === true
 }
 
+// A SUPERFÍCIE DO SHELL (2026-10-23, pedido do usuário). Abrir o menu
+// Iniciar punha na grade dois cards, "Iniciar" e "Pesquisar" — e o mesmo
+// vale pra central de notificações, o painel de rede/som, o seletor de
+// emoji. Fechadas, essas janelas ficam cloaked e o `ehFantasma` já as
+// tira; abertas, o DWM desenha, e elas passavam.
+//
+// Em vez de uma lista de títulos (que muda com o idioma e a cada
+// atualização do Windows), a regra é pela ORIGEM, com duas chaves juntas:
+//   - a classe `Windows.UI.Core.CoreWindow` de TOPO — a janela crua de um
+//     app UWP. A de um app UWP comum (To Do, Calculadora) aberto vive
+//     DENTRO de um `ApplicationFrameWindow`, que é o card dele;
+//   - o executável em `%windir%\SystemApps\` — a pasta onde o Windows
+//     guarda os pedaços do próprio shell (StartMenuExperienceHost,
+//     SearchHost, ShellExperienceHost, TextInputHost). App da loja mora em
+//     `WindowsApps`, e não entra.
+// Caminho vazio (processo que recusou a leitura) não é julgado: fica.
+function ehSuperficieDoShell(janela: NativeWindow): boolean {
+  return (
+    janela.ClassName === 'Windows.UI.Core.CoreWindow' &&
+    /\\SystemApps\\/i.test(janela.Path || '')
+  )
+}
+
 // O título sem o contador de não lidas na frente — "(3) WhatsApp" e
 // "WhatsApp" são a mesma janela pra quem olha a grade.
 function tituloSemContador(titulo: string): string {
@@ -203,9 +226,9 @@ export interface ListSourcesOptions {
   // que é o que custa caro aqui — sobram nome, id e ícone do programa, e
   // o card já sabe se desenhar assim (ver CaptureSourceCard.tsx).
   //
-  // Serve a dois usos: a primeira pintura da tela de iniciar, que não
-  // pode esperar, e a checagem de 2 em 2 segundos, que só quer saber se
-  // alguma janela nasceu ou morreu.
+  // A grade do dialog não usa mais isto desde 2026-10-23 (a atualização
+  // de 3 em 3 segundos traz a miniatura junto, ver SourcePickerDialog.tsx);
+  // fica pra quem só precisa da lista.
   thumbnails?: boolean
   // Aceita a última grade COMPLETA se ela for mais nova que isto. É o
   // que faz a pré-carga da Home valer: a tela de iniciar abre com tudo
@@ -359,18 +382,20 @@ async function listSources(options: ListSourcesOptions = {}): Promise<CaptureSou
   //    Só julga o card que casou com uma janela da enumeração: o que não
   //    casou fica, porque "não sei o que é isso" nunca pode virar "então
   //    some com ele".
-  //    A camada invisível (`ehCamadaInvisivel`) sai no mesmo passo.
+  //    A camada invisível (`ehCamadaInvisivel`) e a superfície do shell
+  //    (`ehSuperficieDoShell`) saem no mesmo passo.
   const semFantasmas = result.filter((source) => {
     const janela = janelaDoCard.get(source)
     if (!janela) return true
-    const fantasma = ehFantasma(janela)
-    if (!fantasma && !ehCamadaInvisivel(janela)) return true
-    logGstreamer(
-      `listSources: escondendo "${janela.Title}" (${janela.ProcessName}) — ` +
-        (fantasma
-          ? 'janela que o Windows não está desenhando nesta área de trabalho'
-          : 'camada transparente que o clique atravessa')
-    )
+    const motivo = ehFantasma(janela)
+      ? 'janela que o Windows não está desenhando nesta área de trabalho'
+      : ehCamadaInvisivel(janela)
+        ? 'camada transparente que o clique atravessa'
+        : ehSuperficieDoShell(janela)
+          ? 'parte do shell do Windows (menu Iniciar, pesquisa, notificações)'
+          : null
+    if (!motivo) return true
+    logGstreamer(`listSources: escondendo "${janela.Title}" (${janela.ProcessName}) — ${motivo}`)
     janelaDoCard.delete(source)
     return false
   })

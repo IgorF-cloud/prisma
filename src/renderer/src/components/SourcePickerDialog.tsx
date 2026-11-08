@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Cast, Lock, Monitor, AppWindow, RefreshCw, SlidersHorizontal, X } from 'lucide-react'
 import {
@@ -33,11 +33,14 @@ import SourcesLoading from './SourcesLoading'
 // ele. Quem chama decide o que acontece depois (ver App.tsx e
 // HomeScreen.tsx).
 
-// De quanto em quanto tempo procurar janela nova, enquanto o dialog de
-// INICIAR está aberto (2026-10-13). A checagem é a lista SEM miniatura
-// (barata), comparando conjuntos de id; só quando uma janela nasce ou
-// morre é que a grade é remontada com as miniaturas.
-const RECHECAGEM_MS = 2000
+// De quanto em quanto tempo atualizar a grade, enquanto o dialog de
+// INICIAR está aberto. Até 2026-10-23 eram 2 segundos com a lista SEM
+// miniatura, e a grade só era remontada quando uma janela nascia ou
+// morria — a miniatura de uma janela que já estava lá ficava parada no
+// instante em que o dialog abriu. Agora (pedido do usuário) são 3
+// segundos com a grade COMPLETA: janela nova e miniatura nova no mesmo
+// passo.
+const RECHECAGEM_MS = 3000
 
 // Quanto vale a grade que a Home pré-carregou no hover do botão de
 // transmitir (ver `prefetch` em src/main/screenCapture.ts). Vinte
@@ -145,17 +148,12 @@ function SourcePickerDialog({
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [loadingSources, setLoadingSources] = useState(true)
 
-  // A lista mais recente, pra checagem periódica comparar sem entrar nas
-  // dependências do efeito (que monta uma vez só).
-  const sourcesRef = useRef<CaptureSource[]>([])
-
   useEffect(() => {
     let cancelled = false
     let checando = false
     let temLista = false
 
     function aplicar(list: CaptureSource[]): void {
-      sourcesRef.current = list
       setSources(list)
     }
 
@@ -176,21 +174,12 @@ function SourcePickerDialog({
       if (current) setSourceType(current.type)
     }
 
-    async function procurarJanelaNova(): Promise<void> {
+    async function atualizarGrade(): Promise<void> {
       if (checando || !temLista) return
       checando = true
       try {
-        const agora = await window.api.screenCapture.listSources({ thumbnails: false })
-        if (cancelled) return
-
-        // Compara CONJUNTOS de id: o id de uma janela é o HWND dela, então
-        // trocar de título ou de posição não remonta nada.
-        const antes = sourcesRef.current
-        const mesmos =
-          antes.length === agora.length &&
-          agora.every((source) => antes.some((anterior) => anterior.id === source.id))
-        if (mesmos) return
-
+        // A `key` de cada card é o id (o HWND, pra janela), então trocar
+        // a lista não remonta tile nenhum: só a imagem e o título mudam.
         const completa = await window.api.screenCapture.listSources()
         if (cancelled) return
         // Decodifica as miniaturas novas ANTES de trocar a grade
@@ -211,7 +200,7 @@ function SourcePickerDialog({
     // Sem a recarga no modo de atualizar: ali já existe uma live no ar, e
     // varrer janela em segundo plano é trabalho tirado de quem transmite.
     const timer =
-      mode === 'start' ? setInterval(() => void procurarJanelaNova(), RECHECAGEM_MS) : null
+      mode === 'start' ? setInterval(() => void atualizarGrade(), RECHECAGEM_MS) : null
 
     return () => {
       cancelled = true

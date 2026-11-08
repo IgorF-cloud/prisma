@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, ChevronRight, Circle, LogOut, Moon, Settings } from 'lucide-react'
 import { getErrorMessage } from '../lib/errors'
 import { AuthUser } from '../lib/authUser'
+import { MyLiveWhere, myLiveTagLabel } from '../lib/myLive'
 import UserAvatar from './UserAvatar'
 
 interface UserProfileModalProps {
@@ -19,6 +20,9 @@ interface UserProfileModalProps {
   // Janela de perfil (2026-10-19) — mesma razão do `onOpenSettings`:
   // quem renderiza é a HomeScreen. Ver ProfileWindow.tsx.
   onOpenProfile: () => void
+  // Onde a minha live está no ar, se estiver (2026-10-28, item 27): a tag
+  // "Transmitindo do App/Site" no cabeçalho.
+  myLive?: MyLiveWhere | null
 }
 
 // As duas preferências de presença, com o ícone que as identifica.
@@ -56,7 +60,8 @@ function UserProfileModal({
   onUserUpdate,
   onLogout,
   onOpenSettings,
-  onOpenProfile
+  onOpenProfile,
+  myLive = null
 }: UserProfileModalProps): React.JSX.Element {
   // Presença (item 11, 2026-09-10). Só "available"/"busy": offline não é
   // escolha, é consequência de fechar o app — quem decide isso é o
@@ -95,6 +100,14 @@ function UserProfileModal({
           coisa é explicada por extenso. O e-mail saiu daqui junto: ele
           mora na janela agora. */}
       <div className="profile-popover-section profile-popover-head">
+        {/* EU AO VIVO (pedido do usuário, 2026-10-28): de onde a live está
+            saindo — o app ou o site. Linha própria, no topo do cabeçalho. */}
+        {myLive && (
+          <span className="profile-live-tag">
+            <span className="profile-live-tag-dot" aria-hidden="true" />
+            {myLiveTagLabel(myLive)}
+          </span>
+        )}
         <button
           type="button"
           className="profile-popover-identity-row profile-popover-open"

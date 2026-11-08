@@ -1,12 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Clock, Eye, Pin, PinOff, Radio, UserMinus, UserPlus, X } from 'lucide-react'
+import { Check, Clock, Pin, PinOff, Radio, UserMinus, UserPlus, X } from 'lucide-react'
 import { AvatarRef, customAvatarUrl } from '../lib/avatar'
 import { useDismissable } from '../lib/useDismissable'
 import { friendActions, FriendsContextValue, useFriendsContext } from '../lib/friendActions'
 import UserAvatar from './UserAvatar'
 import Tooltip from './Tooltip'
-import NowPlayingArt from './NowPlayingArt'
 
 export type UserCardStatus = 'online' | 'busy' | 'offline'
 
@@ -58,8 +57,8 @@ const EDGE = 8
 //     das listas até o mesmo dia;
 //   - nome, status e a relação comigo;
 //   - pedido recebido: Aceitar/Recusar no corpo, com o texto;
-//   - a pessoa com uma SALA ABERTA: um tile da live com "Ver", que abre
-//     os detalhes da sala dela.
+//   - a pessoa com uma SALA ABERTA: um tile genérico ("Ao vivo agora ·
+//     Sala de X") com "Ver", que abre os detalhes da sala dela.
 //
 // As ações e a live vêm do contexto da Home (FriendsContext), porque o
 // card abre de vários lugares e só conhece o NOME. Sem contexto — ou no
@@ -151,25 +150,20 @@ function UserCardPopover({
         )}
 
         {live && ctx && (
+          // GENÉRICO desde 2026-10-23 (pedido do usuário): o tile diz que a
+          // pessoa está com a SALA ABERTA, não o que passa nela — a fonte
+          // (tela, jogo, webcam) é assunto da ficha da sala, a um "Ver".
           <div className="user-card-live">
-            {live.game ? (
-              <NowPlayingArt info={live.game} />
-            ) : (
-              <span className="user-card-live-icon">
-                <Radio size={18} />
-              </span>
-            )}
+            <span className="user-card-live-icon">
+              <Radio size={16} />
+            </span>
             <span className="user-card-live-text">
-              <span className="user-card-live-badge live-snake-ring">
+              <span className="user-card-live-eyebrow">
                 <span className="user-card-live-dot" aria-hidden="true" />
-                <span className="users-list-live-label">LIVE</span>
+                Ao vivo agora
               </span>
-              <span className="user-card-live-title" title={live.game?.name}>
-                {live.game?.name ?? 'Sala aberta'}
-              </span>
-              <span className="user-card-live-viewers">
-                <Eye size={11} />
-                {live.viewers} assistindo
+              <span className="user-card-live-title" title={`Sala de ${target.name}`}>
+                Sala de <strong>{target.name}</strong>
               </span>
             </span>
             <button

@@ -56,6 +56,9 @@ public static class PrismaWindows
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumProc callback, IntPtr param);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string className, string title);
+
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hwnd);
 
@@ -330,8 +333,10 @@ public static class PrismaWindows
         LoadParents();
         List<string> rows = new List<string>();
 
-        EnumWindows(delegate (IntPtr hwnd, IntPtr param)
+        HashSet<IntPtr> vistas = new HashSet<IntPtr>();
+        EnumProc visitar = delegate (IntPtr hwnd, IntPtr param)
         {
+            vistas.Add(hwnd);
             if (!IsWindowVisible(hwnd)) return true;
 
             StringBuilder title = new StringBuilder(512);
@@ -410,7 +415,23 @@ public static class PrismaWindows
                .Append("}");
             rows.Add(row.ToString());
             return true;
-        }, IntPtr.Zero);
+        };
+
+        EnumWindows(visitar, IntPtr.Zero);
+
+        // AS JANELAS QUE O EnumWindows PULA (2026-10-23). Desde o Windows
+        // 8 ele não devolve as janelas IMERSIVAS do shell — "Iniciar",
+        // "Pesquisar", "Centro de Notificações" — mas o Chromium lista
+        // essas, e o card que não tem par aqui não pode ser julgado pela
+        // grade (ver `ehSuperficieDoShell` em screenCapture.ts). O
+        // `FindWindowEx` percorre TODAS as janelas de topo, na mesma ordem
+        // Z; esta segunda passada só acrescenta as que faltaram. Vir
+        // DEPOIS mantém o `IsMain` de todo o resto exatamente como era.
+        IntPtr proxima = IntPtr.Zero;
+        while ((proxima = FindWindowExW(IntPtr.Zero, proxima, null, null)) != IntPtr.Zero)
+        {
+            if (!vistas.Contains(proxima)) visitar(proxima, IntPtr.Zero);
+        }
 
         return rows;
     }

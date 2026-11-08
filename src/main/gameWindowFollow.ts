@@ -102,6 +102,10 @@ interface FollowState {
   // Enquanto isto está ligado não há processo nenhum capturando, então
   // não existe decisão útil pro tick tomar de qualquer forma.
   recovering: boolean
+  // As janelas do MESMO jogo que já existiam quando o seguidor ligou
+  // (2026-11-03). Nenhuma delas é candidata — ver o tick. `null` enquanto
+  // a primeira enumeração não volta; até lá o tick não decide nada.
+  preexisting: Set<string> | null
 }
 
 let state: FollowState | null = null
@@ -188,6 +192,7 @@ async function tick(mainWindow: BrowserWindow): Promise<void> {
   }
 
   if (Date.now() < current.cooldownUntil) return
+  if (!current.preexisting) return
   // O usuário fechou a janela que ele mesmo escolheu: a live cai, e isso
   // é o comportamento combinado. Não é papel do seguidor procurar
   // substituta.
@@ -196,10 +201,22 @@ async function tick(mainWindow: BrowserWindow): Promise<void> {
   // Candidata: OUTRO processo (PID diferente — duas janelas do mesmo
   // processo não são "o jogo abriu", são só duas janelas) cujo
   // executável cai na mesma entrada da lista.
+  //
+  // E que APARECEU depois de a live começar (2026-11-03, bug do usuário
+  // com o LoL). A lista do Discord não diz quem é o cliente e quem é o
+  // jogo, então a troca era cega pra direção: escolhendo a janela da
+  // PARTIDA, o cliente (aberto, minimizado) virava a "janela irmã" no
+  // primeiro tick, a live pulava pra ele 4s depois e caía na captura do
+  // cliente minimizado. O caso que o seguidor resolve é sempre "o jogo
+  // abriu depois" — uma janela que já estava lá quando a pessoa escolheu
+  // a dela foi preterida por ela, e não é o seguidor que vai desfazer a
+  // escolha.
+  const preexisting = current.preexisting
   const candidate = windows.find(
     (w) =>
       w.Id !== current.originalPid &&
       handleOf(w) !== current.originalHandle &&
+      !preexisting.has(handleOf(w)) &&
       findGameByProcessName(w.ProcessName)?.name === current.gameName
   )
   if (!candidate) return
@@ -447,8 +464,36 @@ export function handleFollowSourceChanged(
     autoHandle: null,
     cooldownUntil: 0,
     pending: null,
-    recovering: false
+    recovering: false,
+    preexisting: null
   }
+  // O retrato das janelas do jogo que JÁ existem — ver `preexisting`.
+  const following = state
+  void listWindows()
+    .then((windows) => {
+      if (state !== following) return
+      following.preexisting = new Set(
+        windows
+          .filter(
+            (w) =>
+              w.Id !== following.originalPid &&
+              findGameByProcessName(w.ProcessName)?.name === following.gameName
+          )
+          .map(handleOf)
+      )
+      if (following.preexisting.size > 0) {
+        logGstreamer(
+          `gameWindowFollow: ${following.preexisting.size} janela(s) de "${following.gameName}" já ` +
+            'abertas ao ligar — não serão seguidas'
+        )
+      }
+    })
+    .catch((err) => {
+      // Sem o retrato não dá pra saber a direção: desliga, em vez de
+      // arriscar a troca errada.
+      logGstreamer(`gameWindowFollow: erro ao listar janelas ao ligar: ${err}`)
+      if (state === following) stopFollowing()
+    })
   logGstreamer(
     `gameWindowFollow: seguindo "${game.name}" a partir do HWND ${captureArg.value} (pid ${captureArg.windowPid})`
   )

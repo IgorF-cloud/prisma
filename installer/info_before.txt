@@ -1,0 +1,7 @@
+﻿Bem-vindo(a) à instalação do Prisma!
+
+Este instalador vai:
+
+ - Instalar o Prisma nesta máquina, junto com tudo de que ele precisa para transmitir.
+
+Clique em Avançar para continuar.

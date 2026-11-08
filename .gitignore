@@ -7,12 +7,18 @@ out
 # Segredos e configuração local
 .env
 .env.*
-!.env.example.template
+!.env.example
 
-# Instalador: os binários do GStreamer (36 MB) e o Prisma-Setup.exe (97 MB)
-# não cabem no Git — o .exe está a 3 MB do limite de arquivo do GitHub.
-# A pasta inteira é levada na mão de uma máquina pra outra (ver RELEASE.md).
-/installer
+# Instalador: o script do Inno (prisma.iss), o coletor do GStreamer e as
+# artes do wizard VÃO pro git. Ficam de fora só os binários — o GStreamer
+# embarcado (36 MB, gerado por collect-gstreamer.ps1) e o Prisma-Setup.exe
+# (97 MB, a 3 MB do limite de arquivo do GitHub) — e o certificado de
+# code-signing, que é de cada um (ver README).
+/installer/gstreamer/
+/installer/output/*
+!/installer/output/.gitkeep
+/installer/certs/
+/installer/getSHA256.txt
 
 # Documentação interna de trabalho — fica só local
 MEMORIA.md

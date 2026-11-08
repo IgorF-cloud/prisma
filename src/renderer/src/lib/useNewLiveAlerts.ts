@@ -1,13 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RoomInfo } from './useRooms'
+import { RoomFeed, RoomInfo, roomSources } from './useRooms'
 import { NewLiveAlerts } from './authUser'
 import { playSound } from './sounds'
 
-// Um card de "live nova" no canto superior direito do app.
+// Um card de "live nova" no canto superior direito do app — UM POR
+// TRANSMISSÃO (2026-10-23, pedido do usuário): a tela e a webcam de uma
+// mesma sala alertam cada uma a sua.
 export interface NewLiveAlert {
-  // O código da sala — também a chave do card.
+  // `código:transmissão` — a chave do card.
+  key: string
   code: string
+  feed: RoomFeed
   hostName: string
+}
+
+const FEEDS: RoomFeed[] = ['screen', 'cam']
+
+function alertKey(code: string, feed: RoomFeed): string {
+  return `${code}:${feed}`
+}
+
+function activeFeeds(room: RoomInfo): RoomFeed[] {
+  const sources = roomSources(room)
+  return FEEDS.filter((feed) => sources[feed])
 }
 
 // Quantos cards cabem empilhados. O mais antigo sai quando chega o
@@ -17,7 +32,7 @@ const MAX_ALERTS = 3
 
 interface UseNewLiveAlertsResult {
   alerts: NewLiveAlert[]
-  dismiss: (code: string) => void
+  dismiss: (key: string) => void
 }
 
 // ALERTA DE LIVE NOVA (item 26, etapa 8 — 2026-10-22). Nasceu como
@@ -49,18 +64,29 @@ interface UseNewLiveAlertsResult {
 //
 // A própria sala é ignorada: o som de iniciar a minha live é tocado pelos
 // hooks de transmissão (resposta a um clique, não um alerta).
+//
+// POR TRANSMISSÃO (2026-10-23): a baseline guarda, por sala, quais
+// transmissões já foram vistas. Uma sala no ar com a tela que liga a
+// webcam alerta de novo — é uma live nova pra quem assiste. O "já vista"
+// dura a vida da sala: o host trocando de fonte (a tela some e volta num
+// instante) não repete o alerta.
 export function useNewLiveAlerts(
   rooms: RoomInfo[],
   myRoomCode: string | null,
   mode: NewLiveAlerts,
-  isFriend: (hostName: string) => boolean
+  isFriend: (hostName: string) => boolean,
+  // O meu nome (2026-10-28, item 27): a minha live pode estar saindo do
+  // SITE, numa sala que este app não conhece pelo código — e ela não pode
+  // me alertar "live nova" de mim mesmo.
+  selfName?: string
 ): UseNewLiveAlertsResult {
   const [alerts, setAlerts] = useState<NewLiveAlert[]>([])
-  const knownRef = useRef<Set<string> | null>(null)
-  // Salas que apareceram SEM host ainda (o nome chega num broadcast
-  // seguinte). Sem o nome não dá pra saber se é de um amigo — a decisão
-  // fica pra quando ele chegar, em vez de a sala virar "conhecida" em
-  // silêncio e nunca alertar.
+  // código da sala -> transmissões já vistas nela.
+  const seenRef = useRef<Map<string, Set<RoomFeed>> | null>(null)
+  // Transmissões que apareceram com a sala SEM host ainda (o nome chega
+  // num broadcast seguinte). Sem o nome não dá pra saber se é de um amigo
+  // — a decisão fica pra quando ele chegar, em vez de a transmissão virar
+  // "vista" em silêncio e nunca alertar.
   const pendingRef = useRef<Set<string>>(new Set())
 
   // O `isFriend` muda a cada mudança de amizade; em ref pra não reavaliar
@@ -71,39 +97,57 @@ export function useNewLiveAlerts(
   }, [isFriend])
 
   useEffect(() => {
-    const currentCodes = new Set(rooms.map((room) => room.name))
-    const previousCodes = knownRef.current
-    knownRef.current = currentCodes
+    // As transmissões no ar agora, por chave.
+    const liveKeys = new Set<string>()
+    for (const room of rooms) {
+      for (const feed of activeFeeds(room)) liveKeys.add(alertKey(room.name, feed))
+    }
 
     // Primeira observação: só baseline, em silêncio.
-    if (!previousCodes) return
+    if (!seenRef.current) {
+      seenRef.current = new Map(rooms.map((room) => [room.name, new Set(activeFeeds(room))]))
+      return
+    }
+    const seen = seenRef.current
 
-    for (const code of pendingRef.current) {
-      if (!currentCodes.has(code)) pendingRef.current.delete(code)
+    // Sala que acabou sai da baseline: se o mesmo código voltar, é outra
+    // live.
+    const currentCodes = new Set(rooms.map((room) => room.name))
+    for (const code of seen.keys()) {
+      if (!currentCodes.has(code)) seen.delete(code)
+    }
+    for (const key of pendingRef.current) {
+      if (!liveKeys.has(key)) pendingRef.current.delete(key)
     }
 
     const fresh: NewLiveAlert[] = []
     for (const room of rooms) {
-      if (room.name === myRoomCode) continue
-      const isNew = !previousCodes.has(room.name) || pendingRef.current.has(room.name)
-      if (!isNew) continue
-      if (!room.hostName) {
-        pendingRef.current.add(room.name)
-        continue
+      const roomSeen = seen.get(room.name) ?? new Set<RoomFeed>()
+      seen.set(room.name, roomSeen)
+      for (const feed of activeFeeds(room)) {
+        const key = alertKey(room.name, feed)
+        if (roomSeen.has(feed) && !pendingRef.current.has(key)) continue
+        roomSeen.add(feed)
+        if (room.name === myRoomCode) continue
+        if (!room.hostName) {
+          pendingRef.current.add(key)
+          continue
+        }
+        pendingRef.current.delete(key)
+        if (room.hostName === selfName) continue
+        if (mode === 'none') continue
+        if (mode === 'friends' && !isFriendRef.current(room.hostName)) continue
+        fresh.push({ key, code: room.name, feed, hostName: room.hostName })
       }
-      pendingRef.current.delete(room.name)
-      if (mode === 'none') continue
-      if (mode === 'friends' && !isFriendRef.current(room.hostName)) continue
-      fresh.push({ code: room.name, hostName: room.hostName })
     }
 
-    // Uma sala que acabou leva o card junto — "Assistir" numa live que
-    // não existe mais seria um botão quebrado.
+    // Uma transmissão que acabou leva o card junto — "Assistir" numa live
+    // que não existe mais seria um botão quebrado.
     setAlerts((current) => {
-      const alive = current.filter((alert) => currentCodes.has(alert.code))
+      const alive = current.filter((alert) => liveKeys.has(alert.key))
       if (fresh.length === 0) return alive.length === current.length ? current : alive
-      const known = new Set(alive.map((alert) => alert.code))
-      return [...alive, ...fresh.filter((alert) => !known.has(alert.code))].slice(-MAX_ALERTS)
+      const known = new Set(alive.map((alert) => alert.key))
+      return [...alive, ...fresh.filter((alert) => !known.has(alert.key))].slice(-MAX_ALERTS)
     })
 
     if (fresh.length > 0) {
@@ -111,10 +155,10 @@ export function useNewLiveAlerts(
       playSound('newLive')
       window.api.app.flashTaskbar()
     }
-  }, [rooms, myRoomCode, mode])
+  }, [rooms, myRoomCode, mode, selfName])
 
-  const dismiss = useCallback((code: string) => {
-    setAlerts((current) => current.filter((alert) => alert.code !== code))
+  const dismiss = useCallback((key: string) => {
+    setAlerts((current) => current.filter((alert) => alert.key !== key))
   }, [])
 
   return { alerts, dismiss }

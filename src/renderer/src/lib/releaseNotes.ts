@@ -58,6 +58,43 @@ export interface ReleaseNote {
 // escolha.
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.6.0',
+    date: '2026-11-04',
+    summary:
+      'Agora você transmite a sua webcam — e também pode transmitir direto do navegador, pelo Prisma Web, sem instalar nada.',
+    sections: [
+      {
+        kind: 'novidades',
+        items: [
+          'Transmita a sua webcam: sozinha ou junto com a tela, na mesma sala. Quem assiste vê as duas lado a lado e escolhe o que quer ver.',
+          'Transmita pelo Prisma Web: a tela ou a webcam, direto do Chrome ou do Edge, com o mesmo controle da sua live que você tem no app.',
+          'Um botão só para transmitir: escolha entre Tela e Vídeo numa janela nova, mais simples.',
+          'Amigos: adicione, aceite pedidos e acompanhe todo mundo numa lista nova, com quem está online e quem está ao vivo.',
+          'Lives privadas agora são para os seus amigos.',
+          'Alerta de live nova, com um botão para assistir na hora. Você escolhe de quem quer ser avisado.',
+          'Membros e perfis novos: veja todo mundo que usa o Prisma e abra o perfil de qualquer pessoa com um clique.',
+          'Live em destaque: com várias lives abertas, clique numa para deixá-la grande.'
+        ]
+      },
+      {
+        kind: 'melhorias',
+        items: [
+          'Visual renovado no rodapé da sua live, nos detalhes da sala, nas Configurações e na janela de atualização.',
+          'Controles por cima da live mais modernos e fáceis de ver.',
+          'A lista de janelas para transmitir se atualiza sozinha e mostra só o que interessa.',
+          'Tudo isso vale também no Prisma Web.'
+        ]
+      },
+      {
+        kind: 'correcoes',
+        items: [
+          'Transmitindo a partida de um jogo com cliente separado, a live não pula mais sozinha para o cliente.',
+          'Ao sair de uma live, o seu nome some na hora da lista de quem está assistindo.'
+        ]
+      }
+    ]
+  },
+  {
     version: '1.5.1',
     date: '2026-10-19',
     summary: 'Uma correção rápida para o avatar em GIF.',

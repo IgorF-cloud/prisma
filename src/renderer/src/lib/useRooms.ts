@@ -33,6 +33,14 @@ export interface RoomInfo {
   // TELA e/ou a da WEBCAM, cada uma com o seu tile pra quem assiste.
   // Opcional porque servidor anterior à 1.2 não manda — ver `roomSources`.
   sources?: RoomSources
+  // Quando cada transmissão começou (epoch ms, 2026-10-23) — o timer de
+  // cada tile na ficha da sala. Opcional: servidor anterior não manda, e
+  // aí vale o `startedAt` da sala (ver `feedStartedAt`).
+  sourcesStartedAt?: Partial<Record<RoomFeed, number | null>>
+  // De onde vem cada transmissão (2026-10-28, item 27): "app" (este app)
+  // ou "web" (o Prisma Web). `null` na que não está no ar ou cuja origem
+  // o servidor não sabe. Opcional: servidor anterior não manda.
+  origins?: Partial<Record<RoomFeed, 'app' | 'web' | null>>
 }
 
 export interface RoomSources {
@@ -41,6 +49,11 @@ export interface RoomSources {
 }
 
 export type RoomFeed = keyof RoomSources
+
+// O início de UMA transmissão, com o da sala quando o servidor não diz.
+export function feedStartedAt(room: RoomInfo, feed: RoomFeed): number {
+  return room.sourcesStartedAt?.[feed] ?? room.startedAt
+}
 
 // As transmissões de uma sala, com o padrão de antes da webcam (só tela)
 // quando o servidor não diz nada.

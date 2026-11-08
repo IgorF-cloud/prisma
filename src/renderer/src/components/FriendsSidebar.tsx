@@ -94,7 +94,6 @@ function FriendsSidebar({
           onClick={() => setTab('friends')}
         >
           Todos
-          {friendUsers.length > 0 && <span className="panel-tab-count">{friendUsers.length}</span>}
         </button>
         <button
           type="button"

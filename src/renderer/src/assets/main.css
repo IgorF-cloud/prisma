@@ -2671,11 +2671,11 @@ code {
   border-color: rgba(167, 139, 250, 0.22);
 }
 
-/* Sem arte (nada detectado ainda): o monitor no quadrado de 42px. Os
-   10px de raio são os do `.room-feed-icon`. */
+/* Sem arte (nada detectado ainda): o monitor no quadrado de 32px. Os
+   10px de raio são os da arte em `.room-feed`. */
 .live-card-icon {
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -2826,13 +2826,13 @@ code {
   background-color: var(--color-danger);
 }
 
-/* A MINIATURA DA WEBCAM: 16:9 na altura da arte (42px). `cover` porque a
+/* A MINIATURA DA WEBCAM: 16:9 na altura da arte (32px). `cover` porque a
    câmera pode ser 4:3 — recorta em vez de deixar tarja. Espelhada, como a
    prévia da janela de escolha (ver WebcamLiveCard.tsx). */
 .live-card-thumb {
   position: relative;
-  width: 75px;
-  height: 42px;
+  width: 57px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -3024,8 +3024,8 @@ code {
    do jogo (a suposicao antiga de que "a imagem cobre o quadrado inteiro"
    so vale pras artes opacas). */
 .live-tile-art {
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -3067,10 +3067,19 @@ code {
   flex-shrink: 0;
 }
 
+/* A câmera da webcam (CamArt, 2026-10-23): branca e preenchida, do
+   tamanho do desenho de monitor — o quadrado menos o padding de 5px do
+   `-placeholder`, com a mesma opacidade. */
+.live-tile-art-cam svg {
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  opacity: 0.85;
+}
+
 /* O rodape NAO tem tamanho proprio de arte desde 2026-10-16 (pedido do
    usuario): tinha 50px aqui, e o painel de detalhes da sala 42px — o
    mesmo icone em dois tamanhos. Agora todo icone de jogo, janela,
-   programa ou monitor e 42x42, nos dois lugares, pela regra base acima.
+   programa ou monitor e 32x32 (era 42 ate 2026-10-23), nos dois lugares, pela regra base acima.
    O rodape continua com 76px de altura (as duas linhas da ficha pedem
    isso); a arte so fica centrada na vertical. */
 
@@ -3333,8 +3342,8 @@ code {
   margin: 0;
   /* A folga da esquerda existia pro alfinete que ficava no canto do tile
      e vazava pra fora dele; ele saiu no redesenho de 2026-09-29 (o
-     estado "fixado" virou a faixa ambar DENTRO do tile, ver
-     `.users-list-item-pinned`), mas o par padding/margem continua aqui
+     estado "fixado" hoje e o alfinete roxo na foto, ver
+     `.users-list-pin-mark`), mas o par padding/margem continua aqui
      de proposito.
 
      Continua porque o `overflow-y: auto` acima recorta nos DOIS eixos —
@@ -3357,8 +3366,6 @@ code {
 }
 
 .users-list-item {
-  /* Ancora da faixa de "fixado" (`::before`), que e absoluta na borda
-     esquerda do tile — ver `.users-list-item-pinned` mais abaixo. */
   position: relative;
   display: flex;
   align-items: center;
@@ -3529,27 +3536,26 @@ code {
    ficha da pessoa. Os dois viraram opcoes de um menu so (ver
    ContextMenu.tsx), atras de um chevron. */
 
-/* O MARCADOR de "esta fixado": alfinete pequeno, cinza e preenchido.
+/* O MARCADOR de "esta fixado" (2026-10-23, pedido do usuario): alfinete
+   roxo e preenchido no canto superior ESQUERDO da foto — o oposto do
+   dot de presenca, que fica no inferior direito. Inclinado 45 graus pra
+   esquerda, como um alfinete espetado na foto.
 
-   Nao e botao e nao deve parecer um — sem fundo, sem borda, sem hover e
-   sem cursor proprio. E um simbolo ao lado do nome, como o ponto de
-   presenca na foto: diz um estado, nao oferece uma acao. Quem desfixa e
-   o menu ao lado.
+   Substituiu duas marcas de uma vez: o alfinete cinza na coluna de
+   acoes e a ponta roxa no canto do tile (2026-10-16). Na foto ele diz o
+   mesmo sem ocupar espaco na linha.
 
-   Cinza e nao ambar porque o ambar ja esta no tile inteiro (ver
-   `.users-list-item-pinned`): repetido no icone, ele seria a terceira
-   coisa amarela da mesma linha. Preenchido e o que faz um icone de 13px
-   sobreviver sem cor — o contorno vazado do lucide some nesse tamanho. */
+   O `drop-shadow` na cor do fundo faz o papel da borda do dot: recorta
+   o icone da foto em vez de deixa-lo colado por cima. */
 .users-list-pin-mark {
+  position: absolute;
+  top: -4px;
+  left: -4px;
   display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--ev-c-text-3);
-  /* Pequena folga ate o botao de menu, que so aparece no hover. Como o
-     slot dele nasce com largura 0, esta margem e o unico espaco
-     reservado — e ela some junto com o marcador em quem nao esta
-     fixado. */
-  margin-right: 2px;
+  color: var(--accent);
+  transform: rotate(-45deg);
+  filter: drop-shadow(0 0 1px var(--color-background))
+    drop-shadow(0 0 1px var(--color-background));
   pointer-events: none;
 }
 
@@ -3725,44 +3731,6 @@ code {
   width: 34px;
   opacity: 1;
   transform: translateX(0);
-}
-
-/* O TILE de quem esta fixado (2026-09-29, redesenho a pedido do
-   usuario): um brilho ambar que nasce na borda esquerda e morre no meio
-   da linha.
-
-   So o BRILHO. Chegou a ter tambem uma faixa solida de 3px na borda, e
-   ela saiu no mesmo dia a pedido do usuario: com a faixa, cada fixado
-   ganhava uma linha vertical dura, e uma sequencia deles no topo da
-   lista lia como uma cerca — o oposto do que o brilho faz, que e tingir
-   a linha sem lhe acrescentar uma borda.
-
-   A marca vive no FUNDO, entao ela nao disputa espaco com a foto, com o
-   nome nem com o menu — a lista continua com o mesmo ritmo, fixados e
-   nao fixados na mesma altura.
-
-   O degrade para em 60%: passando disso ele alcancaria a coluna de
-   acoes, e um icone cinza sobre fundo ambar perde justamente o cinza. */
-/* TROCADO em 2026-10-16, pedido do usuario: o brilho ambar saiu e o
-   fixado virou uma PONTA roxa no canto superior esquerdo do tile — um
-   triangulo pequeno, na cor do app, como a orelha de uma pagina marcada.
-
-   Continua valendo o que o brilho tinha de bom: a marca nao ocupa
-   espaco (e absoluta, por cima do canto), entao fixados e nao fixados
-   seguem na mesma altura e com o nome no mesmo lugar. O `border-radius`
-   e o mesmo do tile (8px), pra ponta acompanhar a curva dele em vez de
-   sair quadrada por fora. */
-.users-list-item-pinned::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 14px;
-  height: 14px;
-  border-top-left-radius: 8px;
-  background-color: var(--accent);
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-  pointer-events: none;
 }
 
 /* ---------------------------------------------------------------------
@@ -5019,11 +4987,6 @@ body.overlay-window #root {
   text-overflow: ellipsis;
 }
 
-.room-details-timer {
-  font-size: 11px;
-  color: var(--color-live);
-}
-
 .room-details-label {
   display: flex;
   align-items: center;
@@ -5048,108 +5011,6 @@ body.overlay-window #root {
 .room-details-empty {
   font-size: 12px;
   color: var(--ev-c-text-2);
-}
-
-/* O botao que de fato entra na live — de proposito o unico elemento com
-   a cor de acento aqui: abrir o painel nao entra na sala, entao esta e a
-   acao que precisa se destacar do resto da ficha. */
-.room-details-watch {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-shrink: 0;
-  padding: 10px 14px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent-gradient, var(--accent));
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    filter 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.room-details-watch:hover:not(:disabled) {
-  filter: brightness(1.1);
-  box-shadow: var(--accent-glow, 0 6px 18px rgba(167, 139, 250, 0.35));
-}
-
-/* Ja assistindo: o botao vira so um rotulo de estado. Nao some, pra
-   barra nao mudar de altura ao entrar na live. */
-.room-details-watch:disabled {
-  background: var(--ev-c-gray-3);
-  color: var(--ev-c-text-2);
-  cursor: default;
-}
-
-/* JÁ ASSISTINDO (2026-09-20, pedido do usuário) — no lugar do botão
-   "Assistir" apagado.
-   --------------------------------------------------------------------
-   Um botão desabilitado comunicava "não dá pra clicar" quando a mensagem
-   real é outra: "você já está aqui, e pode sair".
-
-   O visual nasceu do dos chips que flutuavam sobre a live (hoje
-   `.tile-chip`, o padrão dos chips da live): mesmo fundo, mesmo
-   raio de 12px, sem borda, e a saída ocupando a ponta direita inteira —
-   mais uma sombra, que é o que o diferencia deles. Lá o chip flutua
-   sobre o vídeo e se destaca sozinho; aqui ele está sobre o fundo da
-   ficha, e a sombra é o que o levanta.
-
-   `height` explícito (e não altura vinda de padding) porque a saída
-   precisa PREENCHER a altura toda pro realce do hover ir de borda a
-   borda, como no chip da live. 40px é a altura do
-   `.room-details-watch`, o botão que este chip substitui — se aquele
-   mudar, a ficha "pula" ao entrar na live. */
-.room-details-watching {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  height: 40px;
-  /* Nada à direita: lá a saída encosta na borda, igual ao chip da
-     live. */
-  padding: 0 0 0 14px;
-  border-radius: 12px;
-  overflow: hidden;
-  background-color: var(--ev-button-alt-bg);
-  color: var(--ev-button-alt-text);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: normal;
-}
-
-/* Só o ícone do OLHO — o "x" da saída fica dentro do <button> e continua
-   vermelho. */
-.room-details-watching > svg {
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-/* Mesma saída do chip da live (`.tile-chip-button-danger`): sem fundo até o mouse
-   chegar, e então o vermelho apagado de sempre — preenchendo o canto
-   inteiro, com o mesmo raio do chip do lado de fora. */
-.room-details-leave {
-  /* O que empurra a saída pra ponta direita do chip. */
-  margin-left: auto;
-  align-self: stretch;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 0 12px 12px 0;
-  background: none;
-  color: var(--color-danger);
-  font: inherit;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.room-details-leave:hover {
-  background-color: rgba(248, 113, 113, 0.15);
 }
 
 /* `flex: 1` aqui e o que reserva o rodape pro CHAT DA LIVE: a lista de
@@ -6908,9 +6769,8 @@ body.overlay-window #root {
    usuário) — a tela em cima, a webcam embaixo, cada uma com o próprio
    Assistir/Sair (ver RoomDetailsSidebar.tsx).
 
-   O botão de dentro é o mesmo `.room-details-watch` / chip
-   `.room-details-watching` de sempre, com a mesma altura (40px) nos dois
-   estados — entrar ou sair não faz o cartão pular. */
+   O Assistir e o Sair são a mesma pílula de 30px nos dois estados —
+   entrar ou sair não faz o cartão pular. */
 .room-feeds {
   display: flex;
   flex-direction: column;
@@ -6918,40 +6778,145 @@ body.overlay-window #root {
   flex-shrink: 0;
 }
 
-/* Sem borda, padding nem fundo (2026-10-22, pedido do usuário): o cartão
-   virou só o agrupamento — ícone + nome em cima, o botão embaixo, rente
-   às bordas da sidebar. O fundo saiu junto porque, sem padding, o
-   gradiente encostava no conteúdo. */
+/* No visual do ALERTA de live nova (2026-10-23, pedido do usuário), com a
+   BORDA de volta (tinha saído em 2026-10-22) e o brilho verde do "no ar"
+   vindo da esquerda — o mesmo do alerta e do mini perfil.
+
+   DUAS FAIXAS: em cima a arte e as duas linhas de texto, que vão até o
+   fim do cartão; embaixo o timer da transmissão e o botão. */
 .room-feed {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(120% 140% at 0% 50%, rgba(74, 222, 128, 0.09), transparent 60%),
+    rgba(255, 255, 255, 0.03);
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.room-feed-info {
+.room-feed:hover {
+  border-color: rgba(74, 222, 128, 0.22);
+}
+
+/* Assistindo esta transmissão: a borda verde acesa, com um halo leve. */
+.room-feed-watching,
+.room-feed-watching:hover {
+  border-color: rgba(74, 222, 128, 0.38);
+  box-shadow: 0 0 18px -6px rgba(74, 222, 128, 0.45);
+}
+
+.room-feed-head {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-/* Sem arte (webcam, ou tela sem jogo detectado): o ícone num quadrado
-   do mesmo 42x42 da `.live-tile-art`. */
-.room-feed-icon {
-  width: 42px;
-  height: 42px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* A arte (jogo, monitor, janela, câmera) — o quadrado arredondado. */
+.room-feed-head > .live-tile-art {
   border-radius: 10px;
-  background-color: rgba(255, 255, 255, 0.06);
-  color: var(--ev-c-text-2);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
-.room-feed-cam .room-feed-icon {
-  background-color: rgba(139, 92, 246, 0.18);
-  color: var(--accent);
+/* A faixa de baixo, separada da de cima por um fio. */
+.room-feed-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* O tempo desta transmissão, em Roboto Mono (2026-10-23, pedido do
+   usuário): mono-espaçada, o chip não muda de largura a cada segundo. */
+.room-feed-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.1);
+  color: var(--color-live);
+  font-family: 'Roboto Mono', var(--mono-font);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A pílula verde do alerta (`.live-alert-watch`), ocupando o resto da
+   faixa. */
+.room-feed-watch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4ade80, #22c55e);
+  color: #0d1f13;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -6px rgba(34, 197, 94, 0.8);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.room-feed-watch:hover {
+  filter: brightness(1.08);
+}
+
+.room-feed-watch:active {
+  transform: scale(0.96);
+}
+
+/* A saída, quando já estou assistindo: a mesma pílula, apagada, e o
+   vermelho de sempre no hover. */
+.room-feed-leave {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.07);
+  color: var(--ev-c-text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.room-feed-leave:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: var(--color-danger);
+}
+
+.room-feed-leave:active {
+  transform: scale(0.96);
 }
 
 /* `flex: 1` + `min-width: 0` é o par que deixa o marquee funcionar —
@@ -6969,11 +6934,18 @@ body.overlay-window #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  min-width: 0;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ev-c-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--color-live);
+}
+
+.room-feed-kind > svg {
+  flex-shrink: 0;
 }
 
 /* O pontinho de "no ar", o mesmo verde do chip do tile. */
@@ -6983,7 +6955,13 @@ body.overlay-window #root {
   flex-shrink: 0;
   border-radius: 999px;
   background-color: var(--color-live);
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+  animation: user-card-live-pulse 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-feed-live {
+    animation: none;
+  }
 }
 
 /* A fonte de sempre do nome na ficha (13px/500, pedido do usuário — sem
@@ -8479,65 +8457,60 @@ body.overlay-window #root {
   cursor: default;
 }
 
-/* A LIVE da pessoa: um tile com a arte do jogo, o selo AO VIVO, o nome do
-   que esta passando, quantos assistem e o "Ver". Fundo com um brilho
-   verde do "ao vivo" vindo da esquerda, borda fina verde. */
+/* A SALA ABERTA da pessoa (genérico desde 2026-10-23, pedido do usuário —
+   no desenho do alerta de live nova): o ícone de "no ar", "Ao vivo agora",
+   "Sala de X" e o "Ver". Fundo com o brilho verde vindo da esquerda,
+   borda fina verde. */
 .user-card-live {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-top: 12px;
-  padding: 10px;
-  border-radius: 12px;
+  padding: 9px;
+  border-radius: 14px;
   background:
     radial-gradient(120% 140% at 0% 50%, rgba(74, 222, 128, 0.12), transparent 60%),
     rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.22);
 }
 
-/* A arte do jogo (NowPlayingArt) no tamanho do tile. */
-.user-card-live > :first-child {
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-}
-
 .user-card-live-icon {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(74, 222, 128, 0.12);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(74, 222, 128, 0.22), rgba(34, 197, 94, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.25);
   color: var(--color-live);
 }
 
 .user-card-live-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
 
-/* Pílula com a cobrinha desde 2026-10-22 (pedido do usuário), a mesma
-   tag LIVE da lista de amigos — ver `.users-list-live-tag` e
-   `.live-snake-ring`. Antes era só o texto verde, sem pílula. */
-.user-card-live-badge {
+/* O mesmo "AO VIVO AGORA" do alerta (`.live-alert-eyebrow`). */
+.user-card-live-eyebrow {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  gap: 5px;
-  height: 18px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background-color: rgba(74, 222, 128, 0.1);
-  font-size: 9px;
+  gap: 6px;
+  font-size: 9.5px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
   color: var(--color-live);
 }
 
 .user-card-live-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 999px;
@@ -8560,19 +8533,15 @@ body.overlay-window #root {
 
 .user-card-live-title {
   font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ev-c-text-1);
+  color: var(--ev-c-text-2);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.user-card-live-viewers {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--ev-c-text-2);
+.user-card-live-title strong {
+  font-weight: 700;
+  color: #fff;
 }
 
 /* O "Ver": a pilula verde do ao vivo, com brilho. */
@@ -11927,20 +11896,14 @@ body.overlay-window #root {
   min-width: 0;
 }
 
-/* A arte do jogo (NowPlayingArt) ou o icone no lugar dela. */
+/* A arte da transmissao: o jogo (NowPlayingArt), o monitor ou a camera
+   (CamArt). */
 .live-alert-game > :first-child {
   flex-shrink: 0;
   width: 32px;
   height: 32px;
   border-radius: 8px;
-}
-
-.live-alert-game-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(74, 222, 128, 0.12);
-  color: var(--color-live);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .live-alert-game-text {
@@ -12125,6 +12088,56 @@ body.overlay-window #root {
   .live-alert-leaving,
   .live-alert-dot,
   .users-list-live-dot {
+    animation: none;
+  }
+}
+
+/* --- UMA LIVE POR PESSOA (2026-10-28, item 27 do roadmap) ---------------
+   O botão de transmitir TRAVADO, com a live já no ar no Prisma Web (ou em
+   outro app): continua lá, apagado e sem o pulso, e o motivo aparece no
+   hover. Cinza, e não o roxo esmaecido — roxo apagado ainda leria como
+   "clicável". O mesmo desenho do site. */
+.app-left-sidebar-cast-blocked,
+.app-left-sidebar-cast-blocked:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ev-c-text-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  cursor: not-allowed;
+}
+
+.app-left-sidebar-cast-blocked::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* A tag "Transmitindo do App/Site" no topo do cabeçalho do perfil. */
+.profile-live-tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 7px;
+  margin: 6px 6px 0;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background-color: rgba(74, 222, 128, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.28);
+  color: var(--color-live);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.profile-live-tag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background-color: currentColor;
+  animation: user-card-live-pulse 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-live-tag-dot {
     animation: none;
   }
 }

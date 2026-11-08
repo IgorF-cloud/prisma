@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Eye, Lock, Play, Radio, X } from 'lucide-react'
+import { Eye, Lock, Play, X } from 'lucide-react'
 import { AvatarRef, customAvatarUrl } from '../lib/avatar'
-import { RoomInfo } from '../lib/useRooms'
+import { RoomFeed, RoomInfo } from '../lib/useRooms'
 import { NewLiveAlert } from '../lib/useNewLiveAlerts'
 import UserAvatar from './UserAvatar'
-import NowPlayingArt from './NowPlayingArt'
+import NowPlayingArt, { CamArt } from './NowPlayingArt'
 
 // Quanto um card fica na tela. Parado com o mouse em cima (a pessoa está
 // lendo ou indo clicar), e a barrinha embaixo mostra o que falta.
@@ -17,9 +17,9 @@ interface NewLiveAlertStackProps {
   rooms: RoomInfo[]
   userAvatars: Record<string, AvatarRef>
   apiBaseUrl: string
-  onWatch: (room: RoomInfo) => void
+  onWatch: (room: RoomInfo, feed: RoomFeed) => void
   onDetails: (code: string) => void
-  onDismiss: (code: string) => void
+  onDismiss: (key: string) => void
 }
 
 // Os cards de LIVE NOVA (item 26, etapa 8 — 2026-10-22), no canto superior
@@ -46,14 +46,15 @@ function NewLiveAlertStack({
         if (!room) return null
         return (
           <NewLiveAlertCard
-            key={alert.code}
+            key={alert.key}
             room={room}
+            feed={alert.feed}
             hostName={alert.hostName}
             avatar={userAvatars[alert.hostName] ?? null}
             apiBaseUrl={apiBaseUrl}
-            onWatch={() => onWatch(room)}
+            onWatch={() => onWatch(room, alert.feed)}
             onDetails={() => onDetails(room.name)}
-            onDismiss={() => onDismiss(alert.code)}
+            onDismiss={() => onDismiss(alert.key)}
           />
         )
       })}
@@ -63,6 +64,8 @@ function NewLiveAlertStack({
 
 interface NewLiveAlertCardProps {
   room: RoomInfo
+  // Qual transmissão o card anuncia (2026-10-23: um alerta por live).
+  feed: RoomFeed
   hostName: string
   avatar: AvatarRef | null
   apiBaseUrl: string
@@ -73,6 +76,7 @@ interface NewLiveAlertCardProps {
 
 function NewLiveAlertCard({
   room,
+  feed,
   hostName,
   avatar,
   apiBaseUrl,
@@ -112,6 +116,8 @@ function NewLiveAlertCard({
 
   const photo = avatar?.type === 'custom' ? customAvatarUrl(apiBaseUrl, avatar) : null
   const viewers = room.participants.filter((p) => p !== room.hostName).length
+  const isCam = feed === 'cam'
+  const sourceName = isCam ? `Câmera de ${hostName}` : (room.game?.name ?? 'Tela compartilhada')
 
   return (
     <div
@@ -148,23 +154,23 @@ function NewLiveAlertCard({
             )}
           </span>
           <span className="live-alert-title">
-            <strong>{hostName}</strong> iniciou uma live
+            <strong>{hostName}</strong> {isCam ? 'iniciou uma live de vídeo' : 'iniciou uma live'}
           </span>
         </span>
       </button>
 
       <div className="live-alert-footer">
         <span className="live-alert-game">
-          {room.game ? (
-            <NowPlayingArt info={room.game} />
+          {/* A webcam com a câmera; a tela com a arte do jogo, ou o desenho
+              de monitor enquanto nada foi detectado. */}
+          {isCam ? (
+            <CamArt />
           ) : (
-            <span className="live-alert-game-icon">
-              <Radio size={13} />
-            </span>
+            <NowPlayingArt info={room.game ?? { kind: 'screen', name: sourceName }} />
           )}
           <span className="live-alert-game-text">
-            <span className="live-alert-game-name" title={room.game?.name}>
-              {room.game?.name ?? 'Sala aberta'}
+            <span className="live-alert-game-name" title={sourceName}>
+              {sourceName}
             </span>
             {viewers > 0 && (
               <span className="live-alert-viewers">

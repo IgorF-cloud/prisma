@@ -5,6 +5,7 @@ import { WebcamStatus } from '../lib/useWebcamTransmission'
 import { RoomInfo } from '../lib/useRooms'
 import { AvatarRef } from '../lib/avatar'
 import { AuthUser } from '../lib/authUser'
+import { MyLiveWhere } from '../lib/myLive'
 import UserAvatar from './UserAvatar'
 import UserProfileModal from './UserProfileModal'
 import Tooltip from './Tooltip'
@@ -30,14 +31,15 @@ interface AppLeftSidebarProps {
   // painel de detalhes aberto: dá pra assistir sem o painel aberto e
   // vice-versa.
   watchingRoomCodes: string[]
-  // Tile fixo do topo: abre a LISTA DE AMIGOS (era a de usuários até
-  // 2026-10-21 — todo mundo agora está nos Membros, na titlebar).
+  // Segundo tile fixo do topo: abre a LISTA DE AMIGOS (era a de usuários
+  // até 2026-10-21 — todo mundo agora está nos Membros).
   onUsersClick: () => void
   usersActive: boolean
   // Pedidos de amizade RECEBIDOS esperando resposta — o selo do tile.
   incomingRequests: number
-  // MEMBROS (2026-10-21): o tile logo abaixo, que abre o painel da
-  // direita com todo mundo do app. Morou na titlebar até o mesmo dia.
+  // MEMBROS (2026-10-21): o PRIMEIRO tile do topo (desde 2026-10-23), que
+  // abre o painel da direita com todo mundo do app. Morou na titlebar até
+  // 2026-10-21.
   onMembersClick: () => void
   membersActive: boolean
   // Recarrega a lista de salas por HTTP, num caminho separado do
@@ -56,6 +58,13 @@ interface AppLeftSidebarProps {
   onPrepareTransmission: () => void
   screenStatus: WebcamStatus
   webcamStatus: WebcamStatus
+  // Onde a MINHA live está no ar, se estiver (2026-10-28, item 27) — aqui,
+  // no Prisma Web ou em outro app. Acende o LIVE no avatar e a tag no
+  // cabeçalho do perfil.
+  myLive: MyLiveWhere | null
+  // Por que não dá pra transmitir agora (a live já está no ar em outro
+  // lugar). `null` = dá.
+  transmitBlockedReason: string | null
   onOpenSettings: () => void
   onUserUpdate: (user: AuthUser) => void
   onLogout: () => void
@@ -85,6 +94,8 @@ function AppLeftSidebar({
   onPrepareTransmission,
   screenStatus,
   webcamStatus,
+  myLive,
+  transmitBlockedReason,
   onOpenSettings,
   onUserUpdate,
   onLogout,
@@ -110,9 +121,26 @@ function AppLeftSidebar({
 
   return (
     <aside className="app-left-sidebar">
-      {/* Fixo no topo, fora da lista rolável abaixo. Usa a mesma classe
+      {/* Fixos no topo, fora da lista rolável abaixo. Usam a mesma classe
           dos tiles de sala pra herdar a barrinha branca de hover/seleção
-          e as medidas — o que muda é o miolo do círculo. */}
+          e as medidas — o que muda é o miolo do círculo.
+          MEMBROS vem PRIMEIRO, a Lista de amigos logo abaixo (2026-10-23,
+          pedido do usuário — até então era o contrário). Abre o painel da
+          DIREITA. */}
+      <Tooltip label="Membros" placement="right" delayMs={0}>
+        <button
+          type="button"
+          className={`app-left-sidebar-live${membersActive ? ' app-left-sidebar-live-active' : ''}`}
+          onClick={onMembersClick}
+          aria-label="Membros"
+          aria-pressed={membersActive}
+        >
+          <span className="app-left-sidebar-users-icon">
+            <UserGroupIcon size={20} />
+          </span>
+        </button>
+      </Tooltip>
+
       <Tooltip label="Lista de amigos" placement="right" delayMs={0}>
         <button
           type="button"
@@ -132,22 +160,6 @@ function AppLeftSidebar({
               {incomingRequests > 9 ? '9+' : incomingRequests}
             </span>
           )}
-        </button>
-      </Tooltip>
-
-      {/* MEMBROS (2026-10-21, pedido do usuário) — logo abaixo da Lista de
-          amigos, com o mesmo tile. Abre o painel da DIREITA. */}
-      <Tooltip label="Membros" placement="right" delayMs={0}>
-        <button
-          type="button"
-          className={`app-left-sidebar-live${membersActive ? ' app-left-sidebar-live-active' : ''}`}
-          onClick={onMembersClick}
-          aria-label="Membros"
-          aria-pressed={membersActive}
-        >
-          <span className="app-left-sidebar-users-icon">
-            <UserGroupIcon size={20} />
-          </span>
         </button>
       </Tooltip>
 
@@ -233,15 +245,23 @@ function AppLeftSidebar({
           a live no ar ele SOME (o rodapé é quem controla), e com ele o
           anel girando, a barrinha lateral e o card do hover que teve por
           um dia. */}
+      {/* TRAVADO (2026-10-28, item 27, pedido do usuário): com a live no
+          ar no Prisma Web (ou em outro app), o botão continua aqui, apagado,
+          com o motivo no hover. `aria-disabled` e não `disabled`: botão
+          desabilitado não recebe o hover, e o motivo nunca apareceria. A
+          trava de verdade é o servidor (409 no /ingress). */}
       {screenStatus === 'idle' && webcamStatus === 'idle' && (
-        <Tooltip label="Transmitir" placement="right" delayMs={0}>
+        <Tooltip label={transmitBlockedReason ?? 'Transmitir'} placement="right" delayMs={0}>
           <button
             type="button"
-            className="app-left-sidebar-cast"
-            onClick={onOpenPicker}
-            onPointerEnter={onPrepareTransmission}
-            onFocus={onPrepareTransmission}
-            aria-label="Transmitir"
+            className={`app-left-sidebar-cast${transmitBlockedReason ? ' app-left-sidebar-cast-blocked' : ''}`}
+            onClick={() => {
+              if (!transmitBlockedReason) onOpenPicker()
+            }}
+            onPointerEnter={transmitBlockedReason ? undefined : onPrepareTransmission}
+            onFocus={transmitBlockedReason ? undefined : onPrepareTransmission}
+            aria-disabled={transmitBlockedReason ? true : undefined}
+            aria-label={transmitBlockedReason ?? 'Transmitir'}
           >
             <Cast size={20} />
           </button>
@@ -269,10 +289,9 @@ function AppLeftSidebar({
               }`}
             />
             {/* EU AO VIVO (2026-10-22, pedido do usuário): o mesmo selo AO VIVO
-                dos tiles de sala, com a tela ou o vídeo no ar. */}
-            {(screenStatus !== 'idle' || webcamStatus !== 'idle') && (
-              <span className="app-left-sidebar-live-pill">LIVE</span>
-            )}
+                dos tiles de sala, com a tela ou o vídeo no ar — aqui ou, desde
+                2026-10-28 (item 27), no Prisma Web. */}
+            {myLive && <span className="app-left-sidebar-live-pill">LIVE</span>}
           </button>
         </Tooltip>
 
@@ -285,6 +304,7 @@ function AppLeftSidebar({
             onLogout={onLogout}
             onOpenProfile={onOpenProfile}
             onOpenSettings={onOpenSettings}
+            myLive={myLive}
           />
         )}
       </div>

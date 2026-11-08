@@ -3,21 +3,20 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  Eye,
+  Clock,
   Lock,
   MessageSquare,
   MessageSquareOff,
-  Monitor,
-  Video,
+  Play,
   X
 } from 'lucide-react'
-import { RoomFeed, RoomInfo, roomSources } from '../lib/useRooms'
+import { feedStartedAt, RoomFeed, RoomInfo, roomSources } from '../lib/useRooms'
 import { ChatRoomState } from '../lib/useLiveChat'
 import { AvatarRef } from '../lib/avatar'
 import LiveChat from './LiveChat'
 import UserAvatar from './UserAvatar'
 import ViewerAvatarRow from './ViewerAvatarRow'
-import NowPlayingArt from './NowPlayingArt'
+import NowPlayingArt, { CamArt } from './NowPlayingArt'
 import MarqueeText from './MarqueeText'
 import LiveTimer from './LiveTimer'
 import UserCardPopover, { UserCardStatus, UserCardTarget } from './UserCardPopover'
@@ -147,18 +146,20 @@ function RoomDetailsSidebar({
       <div className="side-panel-header">
         <div className="side-panel-heading">
           <span className="side-panel-title">Sala de {room.hostName ?? '???'}</span>
-          <span className="room-details-subline">
-            <LiveTimer startedAt={room.startedAt} className="room-details-timer" />
-            {/* Só quem foi convidado recebe uma sala privada na lista, então
-                quem está vendo isto já tem acesso — o selo é informativo,
-                não um cadeado. */}
-            {room.private && (
+          {/* O timer da sala saiu daqui em 2026-10-23 (pedido do usuário):
+              cada transmissão mostra o seu, no próprio cartão.
+
+              Só quem foi convidado recebe uma sala privada na lista, então
+              quem está vendo isto já tem acesso — o selo é informativo,
+              não um cadeado. */}
+          {room.private && (
+            <span className="room-details-subline">
               <span className="room-details-private">
                 <Lock size={11} />
                 Privada
               </span>
-            )}
-          </span>
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -195,20 +196,20 @@ function RoomDetailsSidebar({
           const name = isCam
             ? `Câmera de ${room.hostName ?? '???'}`
             : (room.game?.name ?? 'Tela compartilhada')
-          const KindIcon = isCam ? Video : Monitor
+          // Tela sem jogo detectado ainda: o desenho de monitor, o mesmo
+          // que a arte usa quando não acha capa.
+          const screenInfo = room.game ?? { kind: 'screen' as const, name }
           return (
+            // DUAS FAIXAS (2026-10-23, pedido do usuário): em cima a arte e
+            // as duas linhas — o que é e o nome — indo até o fim do cartão;
+            // embaixo o tempo DESTA transmissão e o botão. O botão saiu da
+            // ponta da linha porque espremia o nome.
             <section
               key={feed}
               className={`room-feed room-feed-${feed}${watching ? ' room-feed-watching' : ''}`}
             >
-              <div className="room-feed-info">
-                {!isCam && room.game ? (
-                  <NowPlayingArt info={room.game} />
-                ) : (
-                  <span className="room-feed-icon">
-                    <KindIcon size={20} />
-                  </span>
-                )}
+              <div className="room-feed-head">
+                {isCam ? <CamArt /> : <NowPlayingArt info={screenInfo} />}
                 <div className="room-feed-text">
                   <span className="room-feed-kind">
                     <span className="room-feed-live" aria-hidden="true" />
@@ -220,35 +221,40 @@ function RoomDetailsSidebar({
                 </div>
               </div>
 
-              {/* JÁ ASSISTINDO vira uma LINHA, não um botão apagado
-                  (2026-09-20, pedido do usuário): a mensagem é "você já
-                  está aqui, e pode sair". A saída fica na ponta direita,
-                  onde ações destrutivas moram no resto do app. */}
-              {watching ? (
-                <div className="room-details-watching">
-                  <Eye size={15} />
-                  Assistindo
+              <div className="room-feed-foot">
+                {/* O timer é por TRANSMISSÃO (saiu do cabeçalho da sala): a
+                    webcam ligada no meio da live tem o próprio tempo. */}
+                <span className="room-feed-timer">
+                  <Clock size={12} />
+                  <LiveTimer startedAt={feedStartedAt(room, feed)} />
+                </span>
+
+                {/* Já assistindo: só a SAÍDA, na ponta direita (2026-10-23,
+                    pedido do usuário — o "Assistindo" saiu; o cartão aceso
+                    em verde já diz isso). Apagada, e em vermelho no hover,
+                    como as ações destrutivas do resto do app. */}
+                {watching ? (
                   <button
                     type="button"
-                    className="room-details-leave"
+                    className="room-feed-leave"
                     onClick={() => onLeaveFeed(feed)}
                     aria-label={isCam ? 'Parar de assistir a webcam' : 'Parar de assistir a tela'}
                   >
-                    <X size={14} />
+                    <X size={13} />
                     Sair
                   </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="room-details-watch"
-                  onClick={() => onWatchFeed(feed)}
-                  aria-label={isCam ? 'Assistir a webcam' : 'Assistir a tela'}
-                >
-                  <Eye size={15} />
-                  Assistir
-                </button>
-              )}
+                ) : (
+                  <button
+                    type="button"
+                    className="room-feed-watch"
+                    onClick={() => onWatchFeed(feed)}
+                    aria-label={isCam ? 'Assistir a webcam' : 'Assistir a tela'}
+                  >
+                    <Play size={12} fill="currentColor" />
+                    Assistir
+                  </button>
+                )}
+              </div>
             </section>
           )
         })}

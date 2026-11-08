@@ -170,6 +170,11 @@ function UserList({
                       <span className="mini-avatar">
                         <UserAvatar avatar={avatarOf(user)} apiBaseUrl={apiBaseUrl} size={14} />
                         <span className={`user-status-dot user-status-${status}`} />
+                        {isPinned && (
+                          <span className="users-list-pin-mark" aria-hidden="true">
+                            <Pin size={12} fill="currentColor" />
+                          </span>
+                        )}
                       </span>
 
                       <span className="users-list-text">
@@ -192,19 +197,12 @@ function UserList({
                       </span>
                     </button>
 
-                    {(isLive || isPinned) && (
+                    {isLive && (
                       <span className="users-list-actions">
-                        {isLive && (
-                          <span className="users-list-live-tag live-snake-ring">
-                            <span className="users-list-live-dot" aria-hidden="true" />
-                            <span className="users-list-live-label">Live</span>
-                          </span>
-                        )}
-                        {isPinned && (
-                          <span className="users-list-pin-mark" aria-hidden="true">
-                            <Pin size={13} fill="currentColor" />
-                          </span>
-                        )}
+                        <span className="users-list-live-tag live-snake-ring">
+                          <span className="users-list-live-dot" aria-hidden="true" />
+                          <span className="users-list-live-label">Live</span>
+                        </span>
                       </span>
                     )}
                   </li>

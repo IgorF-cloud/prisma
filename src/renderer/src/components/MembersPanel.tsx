@@ -56,8 +56,15 @@ function MembersPanel({
           <span className="side-panel-title">Membros</span>
           {!loading && !loadError && (
             <span className="members-panel-summary">
-              {others.length} {others.length === 1 ? 'membro' : 'membros'} ·{' '}
-              <span className="members-panel-online">{onlineCount} online</span>
+              {others.length} {others.length === 1 ? 'membro' : 'membros'}
+              {/* Sem ninguem online, o "· 0 online" some (2026-10-28, pedido do
+                  usuario). `others` ja deixa de fora quem esta logado. */}
+              {onlineCount > 0 && (
+                <>
+                  {' · '}
+                  <span className="members-panel-online">{onlineCount} online</span>
+                </>
+              )}
             </span>
           )}
         </div>

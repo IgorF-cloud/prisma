@@ -15,10 +15,20 @@
     (/avatars/<id>.webp), fora da própria página — só 'self' data:
     bloqueava esse carregamento (aparecia como "imagem não reconhecida",
     a CSP nunca deixava a requisição sair, não era falha no upload nem
-    no estado do React). -->
+    no estado do React).
+    style-src/font-src liberam o Google Fonts (2026-10-23): a Roboto Mono
+    do timer de cada transmissão vem de lá em runtime, a pedido do
+    usuário. Sem internet ela não carrega e o timer cai na mono do
+    sistema (ver `--mono-font`). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; connect-src 'self' ws: wss: http: https:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: http: https:; connect-src 'self' ws: wss: http: https:"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500&display=swap"
     />
   </head>
 

@@ -43,6 +43,7 @@ import MarqueeText from '../components/MarqueeText'
 import { AvatarRef } from '../lib/avatar'
 import { useRoomPresenceSounds } from '../lib/useRoomPresenceSounds'
 import { useNewLiveAlerts } from '../lib/useNewLiveAlerts'
+import { liveElsewhereReason, myLiveWhere } from '../lib/myLive'
 import NewLiveAlertStack from '../components/NewLiveAlertStack'
 import { useUsersDirectory } from '../lib/useUsersDirectory'
 import { useFriends } from '../lib/useFriends'
@@ -522,7 +523,12 @@ function HomeScreen({
   // tempo real (ver useHiddenOwnRoomCode.ts pro race condition que isso
   // corrige: as chamadas de DELETE podem confirmar sucesso antes do
   // webhook `room_finished` propagar).
-  const visibleRooms = rooms.filter((room) => room.name !== hiddenOwnRoomCode)
+  //
+  // E nenhuma sala MINHA (2026-10-28, item 27): a live que eu tenho no ar
+  // pelo Prisma Web também não aparece — o LIVE no meu avatar já diz.
+  const visibleRooms = rooms.filter(
+    (room) => room.name !== hiddenOwnRoomCode && room.hostName !== user.name
+  )
 
   // Itens 17-18 do roadmap: quantidade/nomes de quem está assistindo a
   // própria live — sai de graça da mesma lista em tempo real (`rooms`,
@@ -580,6 +586,13 @@ function HomeScreen({
   const anyStopping = stoppingTransmission || webcamStatus === 'stopping'
   const myLiveActive = transmitting || stoppingTransmission || webcamOn
   const roomLive = (transmitting && liveNoAr) || webcamStatus === 'live'
+
+  // UMA LIVE POR PESSOA (2026-10-28, item 27): onde a minha live está no
+  // ar — aqui, no Prisma Web, ou em outro app. No ar em outro lugar, o
+  // botão de transmitir fica travado com o motivo no hover. A trava de
+  // verdade é o servidor (409 no /ingress); isto é o aviso antes do clique.
+  const myLive = myLiveWhere(rooms, user.name, myLiveActive, hiddenOwnRoomCode)
+  const transmitBlockedReason = myLive && myLive !== 'here' ? liveElsewhereReason(myLive) : null
 
   // O RODAPÉ DA MINHA LIVE (2026-10-22, pedido do usuário — voltou, no
   // lugar da aba da etapa 7). Sempre aberto com a live no ar (chegou a
@@ -694,7 +707,8 @@ function HomeScreen({
     rooms,
     hiddenOwnRoomCode,
     newLiveAlertsOf(user.settings),
-    isFriendByName
+    isFriendByName,
+    user.name
   )
 
   // Os tiles que a grade mostra. A live que está no mini player
@@ -1011,6 +1025,8 @@ function HomeScreen({
                   : 'idle'
             }
             webcamStatus={webcamStatus}
+            myLive={myLive}
+            transmitBlockedReason={transmitBlockedReason}
             onOpenSettings={() => setSettingsOpen(true)}
             onUserUpdate={onUserUpdate}
             onLogout={onLogout}
@@ -1412,10 +1428,10 @@ function HomeScreen({
           rooms={rooms}
           userAvatars={userAvatars}
           apiBaseUrl={apiBaseUrl}
-          // Assistir entra na live (a tela, ou o vídeo se for só ele) e
-          // abre a ficha da sala, como o Assistir de lá.
-          onWatch={(room) => {
-            watchFeed(room, roomSources(room).screen ? 'screen' : 'cam')
+          // Assistir abre a transmissão que o card anuncia (um alerta por
+          // live desde 2026-10-23) e a ficha da sala, como o Assistir de lá.
+          onWatch={(room, feed) => {
+            watchFeed(room, feed)
             setSidePanel({ kind: 'room', code: room.name })
           }}
           onDetails={(code) => setSidePanel({ kind: 'room', code })}
