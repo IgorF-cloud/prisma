@@ -230,10 +230,6 @@ export interface ListSourcesOptions {
   // de 3 em 3 segundos traz a miniatura junto, ver SourcePickerDialog.tsx);
   // fica pra quem só precisa da lista.
   thumbnails?: boolean
-  // Aceita a última grade COMPLETA se ela for mais nova que isto. É o
-  // que faz a pré-carga da Home valer: a tela de iniciar abre com tudo
-  // pronto em vez de começar do zero no clique.
-  maxAgeMs?: number
 }
 
 // O TAMANHO DA MINIATURA (2026-10-17, pedido do usuário: "melhorar a
@@ -250,10 +246,23 @@ export interface ListSourcesOptions {
 const MINIATURA = { width: 640, height: 360 }
 const MINIATURA_JPEG_QUALIDADE = 85
 
-// A última grade completa (com miniatura). Só o resultado COMPLETO entra
-// aqui: uma lista sem miniatura no cache responderia a pergunta errada
-// pra quem pediu a grade inteira.
-let ultimaGrade: { at: number; sources: CaptureSource[] } | null = null
+// SEM GRADE GUARDADA (2026-11-24, pedido do usuário). Até aqui a última
+// grade completa ficava guardada, e a tela de iniciar aceitava uma de até
+// 20 segundos — a da pré-carga da Home. O efeito: uma janela aberta ou
+// fechada nesse meio-tempo demorava a aparecer (ou a sumir) até a
+// rechecagem de 3 em 3 segundos do dialog. Como a grade precisa ser
+// buscada de novo de qualquer jeito, guardá-la não adiantava nada.
+//
+// O que SOBROU é só juntar buscas que nascem coladas: a pré-carga sai no
+// hover do botão de transmitir, e o clique vem uns instantes depois. Uma
+// busca que COMEÇOU há menos de `BUSCA_RECENTE_MS` — terminada ou ainda
+// correndo — já descreve a máquina no momento do clique, e o dialog pega
+// carona nela em vez de começar outra. Passou disso, busca de novo.
+//
+// O que continua guardado de verdade é o que não muda entre aberturas: o
+// ícone de cada executável (ver windowIcon.ts).
+const BUSCA_RECENTE_MS = 1500
+let ultimaBusca: { startedAt: number; promise: Promise<CaptureSource[]> } | null = null
 
 // A grade de seleção de fonte.
 //
@@ -279,14 +288,30 @@ export function screenDisplayName(
   return `Tela ${index >= 0 ? index + 1 : 1}`
 }
 
-async function listSources(options: ListSourcesOptions = {}): Promise<CaptureSource[]> {
-  const { thumbnails = true, maxAgeMs = 0 } = options
+// A grade completa, juntando buscas que começam coladas (ver
+// `ultimaBusca`). A lista sem miniatura não entra nessa carona: ela
+// responderia a pergunta errada pra quem pediu a grade inteira.
+function listSources(options: ListSourcesOptions = {}): Promise<CaptureSource[]> {
+  if (options.thumbnails === false) return buscarGrade(false)
 
-  if (ultimaGrade && maxAgeMs > 0 && Date.now() - ultimaGrade.at <= maxAgeMs) {
-    logGstreamer(`listSources: reaproveitando a grade de ${Date.now() - ultimaGrade.at}ms atrás`)
-    return ultimaGrade.sources
+  const agora = Date.now()
+  if (ultimaBusca && agora - ultimaBusca.startedAt <= BUSCA_RECENTE_MS) {
+    logGstreamer(
+      `listSources: aproveitando a busca começada há ${agora - ultimaBusca.startedAt}ms`
+    )
+    return ultimaBusca.promise
   }
 
+  const busca = { startedAt: agora, promise: buscarGrade(true) }
+  ultimaBusca = busca
+  // Uma busca que falhou não serve de carona pra ninguém.
+  busca.promise.catch(() => {
+    if (ultimaBusca === busca) ultimaBusca = null
+  })
+  return busca.promise
+}
+
+async function buscarGrade(thumbnails: boolean): Promise<CaptureSource[]> {
   // As duas perguntas são INDEPENDENTES, e é isso que as deixa correr
   // juntas (2026-09-25) — a enumeração sai de graça atrás das miniaturas,
   // que é o que realmente custa aqui.
@@ -330,7 +355,7 @@ async function listSources(options: ListSourcesOptions = {}): Promise<CaptureSou
 
   // Sem a enumeração não dá pra julgar fantasma nem pôr ícone: vai o que
   // o Chromium listou, como sempre foi o degrau de baixo aqui.
-  if (!porHandle) return guardar(result, thumbnails)
+  if (!porHandle) return result
 
   // A janela por trás de cada card, quando deu pra confirmar qual é.
   // Chaveado pelo próprio objeto porque o `id` da fonte muda abaixo.
@@ -425,14 +450,7 @@ async function listSources(options: ListSourcesOptions = {}): Promise<CaptureSou
     })
   )
 
-  return guardar(visiveis, thumbnails)
-}
-
-// Guarda a grade pra quem pedir uma recente — só a COMPLETA, ver
-// `ultimaGrade`.
-function guardar(sources: CaptureSource[], thumbnails: boolean): CaptureSource[] {
-  if (thumbnails) ultimaGrade = { at: Date.now(), sources }
-  return sources
+  return visiveis
 }
 
 // Usado pela TransmissionScreen (itens 9/10/11 do roadmap) só pra montar
@@ -453,8 +471,9 @@ export function setupScreenCapture(): void {
   //
   // Não devolve nada de propósito. A grade completa são dezenas de
   // miniaturas em base64 — alguns megabytes atravessando o IPC — e quem
-  // pré-carrega não vai desenhar nada com elas. Fica no `ultimaGrade`
-  // daqui, e a tela de iniciar pega de lá com `maxAgeMs`.
+  // pré-carrega não vai desenhar nada com elas. A busca fica em
+  // `ultimaBusca`, e o dialog pega carona nela se abrir logo em seguida.
+  // Ela também já deixa os ícones dos programas no cache (windowIcon.ts).
   //
   // Engolir o erro é o certo: falhar numa pré-carga que ninguém pediu não
   // pode virar um erro na tela de quem está só olhando a lista de lives.

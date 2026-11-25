@@ -42,10 +42,30 @@ import SourcesLoading from './SourcesLoading'
 // passo.
 const RECHECAGEM_MS = 3000
 
-// Quanto vale a grade que a Home pré-carregou no hover do botão de
-// transmitir (ver `prefetch` em src/main/screenCapture.ts). Vinte
-// segundos é o tempo em que uma miniatura ainda descreve a janela.
-const GRADE_PRE_CARREGADA_MS = 20000
+// ORDEM ESTÁVEL DA GRADE (2026-11-25, pedido do usuário)
+//
+// O Windows devolve as janelas na ordem de empilhamento (a da frente
+// primeiro), então a cada recarga um clique em outra janela, ou uma
+// janela abrindo e fechando, embaralhava os tiles. Agora a primeira carga
+// define a ordem e as recargas só mexem nas bordas: quem já estava fica
+// no mesmo lugar (com título e miniatura novos), quem fechou sai, e quem
+// abriu entra no COMEÇO da lista.
+function manterOrdem(anterior: CaptureSource[], nova: CaptureSource[]): CaptureSource[] {
+  if (anterior.length === 0) return nova
+  const porId = new Map(nova.map((source) => [source.id, source]))
+  const mantidas: CaptureSource[] = []
+  for (const source of anterior) {
+    const atual = porId.get(source.id)
+    if (atual) {
+      mantidas.push(atual)
+      porId.delete(source.id)
+    }
+  }
+  // O que sobrou no mapa é fonte nova, na ordem em que o Windows mandou.
+  // Entra no COMEÇO (2026-11-25, pedido do usuário): quem acabou de abrir
+  // o jogo procura ele ali, mesmo que as outras andem uma casa.
+  return [...porId.values(), ...mantidas]
+}
 
 // Uma miniatura que falha ao decodificar não segura a grade: o `<img>`
 // tenta de novo sozinho na pintura, como antes.
@@ -154,17 +174,21 @@ function SourcePickerDialog({
     let temLista = false
 
     function aplicar(list: CaptureSource[]): void {
-      setSources(list)
+      setSources((anterior) => manterOrdem(anterior, list))
     }
 
     // UMA CARGA SÓ, COMPLETA (2026-10-13): a tentativa de carregar em
     // duas etapas foi desfeita no mesmo dia, a pedido do usuário — as
     // miniaturas preenchendo depois da grade montada ficaram estranhas
     // de ver, e adiantavam ~165ms.
+    //
+    // SEMPRE BUSCADA NA ABERTURA (2026-11-24): não aceita mais a grade da
+    // pré-carga de até 20 segundos atrás — janela aberta ou fechada nesse
+    // tempo demorava a aparecer ou a sumir. O main só junta esta busca
+    // com a da pré-carga quando as duas nascem coladas (ver
+    // `ultimaBusca` em src/main/screenCapture.ts).
     async function carregar(): Promise<void> {
-      const list = await window.api.screenCapture.listSources(
-        mode === 'start' ? { maxAgeMs: GRADE_PRE_CARREGADA_MS } : undefined
-      )
+      const list = await window.api.screenCapture.listSources()
       if (cancelled) return
       aplicar(list)
       temLista = true

@@ -12,6 +12,7 @@ import { RawTrackStats, readVideoReceiverStats } from './useTrackStats'
 import { getErrorMessage } from './errors'
 import { loadLastViewerVolume, saveLastViewerVolume } from './lastViewerVolume'
 import { playSound } from './sounds'
+import { applyPlayoutBuffer } from './playoutBuffer'
 import { RoomFeed } from './useRooms'
 
 // A webcam do host publica com a identity `<host>-cam` (2026-10-20, item
@@ -344,6 +345,8 @@ export function useViewer(
           publication.setSubscribed(false)
           return
         }
+        // Buffer de suavização (ver playoutBuffer.ts) — tela e webcam.
+        if (track.kind === Track.Kind.Video) applyPlayoutBuffer(track)
         // A webcam vai pro slot DELA (2026-10-20). Áudio da webcam não
         // existe; se um dia vier, é ignorado — o som da live é o da tela.
         if (feed === 'cam') {

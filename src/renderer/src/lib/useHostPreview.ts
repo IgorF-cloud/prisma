@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RemoteVideoTrack, Room, RoomEvent, Track } from 'livekit-client'
 import { RawTrackStats, readVideoReceiverStats } from './useTrackStats'
+import { applyPlayoutBuffer } from './playoutBuffer'
 
 interface UseHostPreviewResult {
   // Desabilitado por padrão (pedido explícito do usuário) — só conecta
@@ -104,6 +105,11 @@ export function useHostPreview(
     })
     room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
       if (participant.identity !== targetIdentity || track.kind !== Track.Kind.Video) return
+      // O mesmo buffer de 80 ms de quem assiste (2026-11-25, pedido do
+      // usuário): o preview mostra a live com o ritmo que o público vê, em
+      // vez da tremida da rede. Ver playoutBuffer.ts. Vale pra tela e pra
+      // miniatura da webcam, que usam este mesmo hook.
+      applyPlayoutBuffer(track as RemoteVideoTrack)
       videoTrackRef.current = track as RemoteVideoTrack
       if (videoElementRef.current) track.attach(videoElementRef.current)
     })

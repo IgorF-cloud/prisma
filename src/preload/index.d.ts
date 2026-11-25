@@ -242,13 +242,12 @@ interface Api {
   }
   screenCapture: {
     // `thumbnails: false` devolve a grade sem capturar miniatura nenhuma
-    // — bem mais rápido, e é com o que a tela de iniciar pinta a primeira
-    // vez e checa de 2 em 2 segundos se alguma janela nasceu ou morreu.
-    // `maxAgeMs` aceita a última grade completa se ela for recente (a
-    // pré-carga da Home). Ver src/main/screenCapture.ts.
-    listSources: (options?: { thumbnails?: boolean; maxAgeMs?: number }) => Promise<CaptureSource[]>
-    // Manda montar a grade em segundo plano e NÃO devolve nada: serve só
-    // pra que a tela de iniciar encontre tudo pronto.
+    // — bem mais rápido. A grade completa é sempre buscada de novo; só
+    // pega carona numa busca começada há instantes (a pré-carga da Home).
+    // Ver src/main/screenCapture.ts.
+    listSources: (options?: { thumbnails?: boolean }) => Promise<CaptureSource[]>
+    // Manda montar a grade em segundo plano e NÃO devolve nada: o dialog
+    // que abrir logo em seguida aproveita essa mesma busca.
     prefetch: () => Promise<void>
   }
   livekit: {

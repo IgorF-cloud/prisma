@@ -36,17 +36,45 @@ formato novo é a **1.4.1**.
 
 ---
 
+## 1.7.0 — em andamento (desde 2026-11-25)
+
+> Ainda não gerada. Os itens vão entrando aqui enquanto a versão é
+> escrita.
+
+### Novidades
+
+_(nada ainda)_
+
+### Melhorias
+
+- 🧪 O preview da sua própria live (e a miniatura da sua webcam) usa o
+  mesmo buffer de 80 ms de quem assiste: você vê a live com a mesma
+  suavidade que o público.
+- 🧪 Na janela de **Iniciar live**, as janelas não trocam mais de lugar
+  enquanto a lista se atualiza: cada uma fica onde apareceu, uma que
+  fecha some sem embaralhar as outras, e uma nova entra no começo da
+  lista.
+
+### Correções
+
+- 🧪 Na janela de **Iniciar live**, a lista de janelas é sempre buscada
+  na hora em que a janela abre: uma janela que você acabou de abrir já
+  aparece, e uma que você fechou já não está mais lá — antes elas podiam
+  demorar alguns segundos pra aparecer ou sumir.
+
+---
+
 ## 1.6.0 — gerada em 2026-11-04
 
 > Gerada a pedido do usuário em 2026-11-04, com os itens abaixo ainda
-> 🧪. Foco da versão: **transmissão da webcam** e **transmissão pelo
+> ✅. Foco da versão: **transmissão da webcam** e **transmissão pelo
 > Prisma Web**. Notas no app (resumidas, sem detalhe técnico), em
 > `src/renderer/src/lib/releaseNotes.ts`. O Prisma Web saiu junto, na
 > 1.6.0.
 
 ### Novidades
 
-- 🧪 **Transmita a tela pelo Prisma Web**, direto do Chrome ou do Edge no
+- ✅ **Transmita a tela pelo Prisma Web**, direto do Chrome ou do Edge no
   computador: o botão Transmitir chegou na barra da esquerda do site. Você
   escolhe a qualidade e se a sala é privada, e o próprio navegador abre a
   lista de telas, janelas e abas. Pra levar o som, marque "Compartilhar
@@ -54,48 +82,48 @@ formato novo é a **1.4.1**.
   app, e o rodapé da sua live no site é o mesmo do app: o selo LIVE,
   quem está assistindo, o chat, o preview e o parar. Dá pra trocar a tela
   sem derrubar a live.
-- 🧪 No Prisma Web a imagem é codificada pela placa de vídeo. Se o
+- ✅ No Prisma Web a imagem é codificada pela placa de vídeo. Se o
   navegador passar a codificar no processador no meio da live, aparece o
   aviso "Processador" no rodapé, e a live continua no ar.
-- 🧪 **Uma live por vez:** se você está transmitindo pelo app, o botão
+- ✅ **Uma live por vez:** se você está transmitindo pelo app, o botão
   Transmitir do site fica travado (no hover: "Já transmitindo pelo App"),
   e o contrário também. Mesmo que o aviso não chegue a tempo, a
   transmissão é recusada na hora de começar.
-- 🧪 Com a sua live no ar, o seu avatar na barra da esquerda ganha o selo
+- ✅ Com a sua live no ar, o seu avatar na barra da esquerda ganha o selo
   LIVE, e ao clicar nele o topo do seu perfil mostra de onde ela está
   saindo: "Transmitindo do App" ou "Transmitindo do Site". Vale no app e
   no Prisma Web.
-- 🧪 **Transmita a webcam pelo Prisma Web:** o botão Transmitir do site
+- ✅ **Transmita a webcam pelo Prisma Web:** o botão Transmitir do site
   abre a janela com a chave **Tela | Vídeo**, como no app. Na aba Vídeo
   você escolhe a câmera, confere na prévia e transmite. Dá pra ter a
   tela e a webcam juntas na mesma sala: com uma delas no ar, o rodapé
   mostra "Adicionar transmissão" no lugar da outra.
-- 🧪 No rodapé da sua live no Prisma Web, o botão direito no avatar de
+- ✅ No rodapé da sua live no Prisma Web, o botão direito no avatar de
   quem está assistindo abre **Silenciar no chat** e **Expulsar**, e no
   chat da sua live o botão de silenciar aparece ao passar o mouse na
   mensagem — os mesmos do app.
-- 🧪 Transmita a sua webcam: um botão novo na barra da esquerda, acima do
+- ✅ Transmita a sua webcam: um botão novo na barra da esquerda, acima do
   Transmitir, abre a janela da webcam — escolha a câmera, confira na
   prévia e transmita. Dá pra transmitir só a webcam, ou ligar a webcam
   com a live da tela já no ar: as duas ficam na mesma sala. A qualidade
   é ajustada sozinha ao melhor que a câmera oferece. Só vídeo, sem áudio.
-- 🧪 Lives com webcam: quando quem transmite liga a webcam, ela aparece
+- ✅ Lives com webcam: quando quem transmite liga a webcam, ela aparece
   num quadro próprio, ao lado da tela, com a etiqueta "Webcam". Dá pra
   fechar só a webcam (ou só a tela) e continuar assistindo o resto. Vale
   no app e no Prisma Web.
-- 🧪 Nos detalhes da sala, a tela e a webcam têm cada uma o seu cartão,
+- ✅ Nos detalhes da sala, a tela e a webcam têm cada uma o seu cartão,
   com o próprio Assistir e Sair: dá pra assistir só uma delas, abrir a
   outra depois, ou sair de uma sem largar a outra. Uma transmissão que o
   host liga com você já assistindo aparece ali, mas só abre quando você
   clica em Assistir. Nome de jogo ou janela comprido demais desliza pra
   mostrar o texto inteiro, como no rodapé da sua live. Vale no app e no
   Prisma Web.
-- 🧪 **Um botão só pra transmitir**, na barra da esquerda: ele abre uma
+- ✅ **Um botão só pra transmitir**, na barra da esquerda: ele abre uma
   janela onde você escolhe transmitir a **Tela** (um monitor ou uma
   janela) ou o **Vídeo** (a sua webcam). Com a live no ar ele sai da
   barra — quem controla a live é o rodapé. A webcam ganhou um ícone de vídeo, que
   aparece em todo lugar onde ela aparece — também no Prisma Web.
-- 🧪 **O rodapé da sua live**: ao iniciar a tela ou o vídeo, aparece
+- ✅ **O rodapé da sua live**: ao iniciar a tela ou o vídeo, aparece
   embaixo a "Sala de você", com AO VIVO, se é privada e quem está
   assistindo, e um cartão pra cada transmissão — com o tempo no ar,
   preview, atualizar e parar (o do vídeo com uma miniatura ao vivo da
@@ -103,51 +131,51 @@ formato novo é a **1.4.1**.
   sua live abre do lado direito, pelo botão Chat do rodapé. Com a live no
   ar, o seu avatar na barra ganha o selo LIVE, e o AO VIVO do rodapé tem
   um contorno verde girando.
-- 🧪 A janela de escolher o que transmitir ficou mais clara: em cima você
+- ✅ A janela de escolher o que transmitir ficou mais clara: em cima você
   escolhe Tela ou Vídeo; na Tela, logo abaixo, se é um monitor inteiro ou
   uma janela. A opção de sala privada fica no mesmo lugar nas duas, e vale
   pra sala.
-- 🧪 **Amigos:** dá pra adicionar como amigo, cancelar o pedido, aceitar
+- ✅ **Amigos:** dá pra adicionar como amigo, cancelar o pedido, aceitar
   ou recusar um pedido recebido e desfazer uma amizade — pelo perfil da
   pessoa (clicando no avatar ou no nome). A
   amizade só vale depois que a outra pessoa aceita. Vale no app e no
   Prisma Web.
-- 🧪 **Lista de amigos:** o botão de Usuários virou a Lista de amigos,
+- ✅ **Lista de amigos:** o botão de Usuários virou a Lista de amigos,
   com duas abas — **Todos** (seus amigos, online e offline, com os
   fixados no topo) e **Pendentes** (os pedidos que você recebeu, com
   Aceitar e Recusar, e os que você mandou). Um selo vermelho no botão mostra quantos pedidos
   estão esperando resposta. Vale no app e no Prisma Web.
-- 🧪 **Membros:** um botão novo no topo da barra da esquerda, logo acima da
+- ✅ **Membros:** um botão novo no topo da barra da esquerda, logo acima da
   Lista de amigos, abre todo mundo que usa o Prisma — no mesmo lugar da
   Lista de amigos e dos detalhes de uma live — com busca por nome, quem
   está online e quem já é seu amigo. Vale no app e no Prisma Web.
-- 🧪 **Fixar amigos agora também no Prisma Web**, com os mesmos fixados
+- ✅ **Fixar amigos agora também no Prisma Web**, com os mesmos fixados
   do app — pelo perfil do amigo.
-- 🧪 **Perfil novo:** clicar numa pessoa (ou no avatar dela) abre um
+- ✅ **Perfil novo:** clicar numa pessoa (ou no avatar dela) abre um
   perfil com a foto, o nome e se ela está online. No canto, os botões de
   fixar e de adicionar amigo — ou de remover, se já for amigo. Se a
   pessoa estiver ao vivo, aparece a live dela com um botão **Ver**, que
   abre os detalhes da sala. Vale no app e no Prisma Web.
-- 🧪 **Prisma Web:** a Home ganhou uma barra no topo, igual à do app, com
+- ✅ **Prisma Web:** a Home ganhou uma barra no topo, igual à do app, com
   a marca do Prisma à esquerda.
-- 🧪 **Alerta de live nova:** quando alguém inicia uma live, aparece um
+- ✅ **Alerta de live nova:** quando alguém inicia uma live, aparece um
   aviso no canto superior direito com a pessoa, o que ela está jogando e
   um botão **Assistir** — junto do som e, com o app minimizado, do
   destaque laranja na barra de tarefas (no Prisma Web, o título da aba
   pisca). Nas Configurações você escolhe de quem receber: **Todas**,
   **Somente amigos** ou **Nenhuma**. Vale no app e no Prisma Web.
-- 🧪 **Mensagem no chat** de uma live que você assiste (ou da sua) com o
+- ✅ **Mensagem no chat** de uma live que você assiste (ou da sua) com o
   app em segundo plano acende o destaque laranja na barra de tarefas. No
   Prisma Web, o título da aba pisca.
-- 🧪 Na lista de amigos e na de membros, quem está ao vivo ganha a
+- ✅ Na lista de amigos e na de membros, quem está ao vivo ganha a
   etiqueta **AO VIVO** e um anel verde na foto. Vale no app e no Prisma
   Web.
-- 🧪 **Live privada agora é pros seus amigos:** só você e os seus amigos
+- ✅ **Live privada agora é pros seus amigos:** só você e os seus amigos
   veem e entram nela — a tela e a webcam juntas. Quem deixa de ser amigo
   sai da live na hora. Quem você expulsa de uma live privada não volta
   mais pra ela, mesmo sendo seu amigo (na próxima live, volta). O convite
   pra live saiu. Vale no app e no Prisma Web.
-- 🧪 **Live em destaque:** com mais de uma live aberta, clique numa delas
+- ✅ **Live em destaque:** com mais de uma live aberta, clique numa delas
   e ela fica grande em cima, com as outras numa fileira centralizada
   embaixo. Clique em outra da fileira pra trocar o destaque; clique na
   destacada (ou feche ela) pra voltar à grade normal. Vale no app e no
@@ -155,52 +183,52 @@ formato novo é a **1.4.1**.
 
 ### Melhorias
 
-- 🧪 **Diagnóstico da transmissão no Prisma Web:** com a tela no ar, um
+- ✅ **Diagnóstico da transmissão no Prisma Web:** com a tela no ar, um
   botão novo no cartão da Tela, no rodapé da sua live, abre um painel
   que se atualiza a cada segundo. Ele mostra quantos quadros a captura
   entrega, quantos são codificados e quantos são enviados, além da
   rede até o servidor, e aponta o que parece estar travando a live. O
   botão Copiar leva tudo pra colar numa conversa.
-- 🧪 No Prisma Web, transmitir em 60 fps agora pede ao navegador pra
+- ✅ No Prisma Web, transmitir em 60 fps agora pede ao navegador pra
   manter os 60 quadros mesmo quando a captura atrasa, em vez de deixar
   a cadência cair.
-- 🧪 O modo foco agora abre por um botão em cada live (no canto de
+- ✅ O modo foco agora abre por um botão em cada live (no canto de
   baixo, ao lado do mini player e da tela cheia), a partir de qualquer
   layout — e, ao sair, a tela volta pro layout em que estava. Vale no app
   e no Prisma Web.
-- 🧪 Os botões e etiquetas por cima da live ganharam visual novo, mais
+- ✅ Os botões e etiquetas por cima da live ganharam visual novo, mais
   moderno e mais visível — o mesmo em todas as lives e, um pouco menor,
   no mini player. Vale no app e no Prisma Web.
 
-- 🧪 Na lista de amigos e de membros e no mini perfil, a tag de quem está
+- ✅ Na lista de amigos e de membros e no mini perfil, a tag de quem está
   ao vivo agora diz "LIVE" e tem a cobrinha verde girando em volta, igual
   à do rodapé da sua live; a bolinha fica alinhada com o texto. Vale no
   app e no Prisma Web.
-- 🧪 O selo "LIVE" sobre a foto de quem está ao vivo, na barra da
+- ✅ O selo "LIVE" sobre a foto de quem está ao vivo, na barra da
   esquerda, agora é verde. Vale no app e no Prisma Web.
-- 🧪 O selo do rodapé da sua live também passou a dizer "LIVE".
-- 🧪 O botão de fixar no topo, no mini perfil, só aparece pra amigos. Vale
+- ✅ O selo do rodapé da sua live também passou a dizer "LIVE".
+- ✅ O botão de fixar no topo, no mini perfil, só aparece pra amigos. Vale
   no app e no Prisma Web.
-- 🧪 Janela de atualização com visual novo: mostra a versão atual e a
+- ✅ Janela de atualização com visual novo: mostra a versão atual e a
   nova lado a lado, e a barra de download vem com a porcentagem ao lado.
-- 🧪 Algumas atualizações passam a ser **obrigatórias**: ao abrir o app
+- ✅ Algumas atualizações passam a ser **obrigatórias**: ao abrir o app
   numa versão antiga demais, a janela de atualização aparece sem o "Agora
   não". Se o app já estiver aberto quando a versão sair, dá pra atualizar
   depois. Só a partir desta versão.
-- 🧪 Nas listas de amigos e de membros, o título "Offline" agora para
+- ✅ Nas listas de amigos e de membros, o título "Offline" agora para
   alinhado no topo ao rolar, igual ao "Online". Vale no app e no Prisma
   Web.
-- 🧪 O botão de entrar numa live pelo código saiu, e o código não aparece
+- ✅ O botão de entrar numa live pelo código saiu, e o código não aparece
   mais nos detalhes da sua live. Vale no app e no Prisma Web.
-- 🧪 Ao sair de uma live, o seu nome some na hora da lista de quem está
+- ✅ Ao sair de uma live, o seu nome some na hora da lista de quem está
   assistindo — antes ele ainda ficava lá por uns 3 a 4 segundos. Vale no
   app e no Prisma Web.
 
-- 🧪 Nas Notas da atualização, as atualizações de uma versão aparecem
+- ✅ Nas Notas da atualização, as atualizações de uma versão aparecem
   como uma fileira de cartões no topo, com a quantidade de atualizações.
   Clicar num cartão leva direto ao que mudou nela, logo abaixo das
   novidades do lançamento da versão.
-- 🧪 Nos detalhes da live, a tela e a webcam ganharam cartões novos, no
+- ✅ Nos detalhes da live, a tela e a webcam ganharam cartões novos, no
   visual do alerta de live nova: com borda, o ícone do jogo, da tela ou da
   janela (a webcam com um ícone de câmera) e o nome inteiro em cima; e
   embaixo, o tempo daquela transmissão e o Assistir verde. Assistindo, o
@@ -209,36 +237,40 @@ formato novo é a **1.4.1**.
   do momento em que ligou. O tempo usa uma fonte de largura fixa, então o
   chip não fica mudando de tamanho a cada segundo. Vale no app e no
   Prisma Web.
-- 🧪 Os ícones de jogo, tela, janela e câmera ficaram um pouco menores em
+- ✅ Os ícones de jogo, tela, janela e câmera ficaram um pouco menores em
   todo lugar: rodapé da sua live, alerta, detalhes da live e mini perfil.
   Vale no app e no Prisma Web.
-- 🧪 No mini perfil de quem está ao vivo, o cartão da live ficou mais
+- ✅ No mini perfil de quem está ao vivo, o cartão da live ficou mais
   simples: "Ao vivo agora", "Sala de …" e o Ver — sem dizer o que está
   sendo transmitido. Vale no app e no Prisma Web.
-- 🧪 O alerta de live nova agora é por transmissão: se alguém já está ao
+- ✅ O alerta de live nova agora é por transmissão: se alguém já está ao
   vivo com a tela e liga a webcam (ou o contrário), chega um alerta novo
   pra ela — e o Assistir do alerta abre exatamente essa transmissão. Vale
   no app e no Prisma Web.
-- 🧪 Janela de Configurações redesenhada: maior, com letra mais legível,
+- ✅ Janela de Configurações redesenhada: maior, com letra mais legível,
   as opções separadas por seção e as três escolhas do alerta de novas
   lives como cartões, cada um explicando o que faz. Embaixo, um aviso
   de que tudo é salvo na hora. Vale no app e no Prisma Web.
-- 🧪 Na escolha da janela pra transmitir, a lista se atualiza a cada 3
+- ✅ Na escolha da janela pra transmitir, a lista se atualiza a cada 3
   segundos e as miniaturas das janelas também — antes ficavam paradas no
   momento em que a janela de escolha abriu.
-- 🧪 O menu Iniciar, a pesquisa e outros painéis do Windows não aparecem
+- ✅ O menu Iniciar, a pesquisa e outros painéis do Windows não aparecem
   mais como janelas pra transmitir.
-- 🧪 Na Lista de amigos, quem está fixado ganhou um alfinete roxo,
+- ✅ Na Lista de amigos, quem está fixado ganhou um alfinete roxo,
   inclinado, no canto de cima da foto — no lugar da ponta roxa no canto
   do tile. E a aba **Todos** não mostra mais o número de amigos (o
   contador dos **Pendentes** continua). Vale no app e no Prisma Web.
-- 🧪 Em Membros, o "0 online" não aparece mais: o número de online só
+- ✅ Em Membros, o "0 online" não aparece mais: o número de online só
   aparece quando tem alguém além de você online. Vale no app e no
   Prisma Web.
+- ✅ Assistir uma live ficou mais suave: o vídeo segura uma fração de
+  segundo (80 ms) pra absorver a variação da internet, e o movimento sai
+  no ritmo certo, sem tremidas — ainda praticamente instantâneo. Vale no
+  app e no Prisma Web.
 
 ### Correções
 
-- 🧪 Transmitindo a **janela da partida** de um jogo que tem cliente
+- ✅ Transmitindo a **janela da partida** de um jogo que tem cliente
   separado (o League of Legends), a live não pula mais sozinha pro
   cliente alguns segundos depois de começar — era isso que derrubava a
   transmissão. Escolhendo o cliente, a troca automática pra partida
@@ -253,7 +285,7 @@ formato novo é a **1.4.1**.
 
 ### Correções
 
-- 🧪 O avatar em GIF agora fica animado de verdade. Na 1.5.0, o GIF
+- ✅ O avatar em GIF agora fica animado de verdade. Na 1.5.0, o GIF
   enviado era salvo como foto parada (no app e no Prisma Web).
 
 ---
@@ -261,7 +293,7 @@ formato novo é a **1.4.1**.
 ## 1.5.0 — gerada em 2026-10-19
 
 > Gerada a pedido do usuário em 2026-10-19, com os itens abaixo ainda
-> 🧪. Notas no app, em `src/renderer/src/lib/releaseNotes.ts`.
+> ✅. Notas no app, em `src/renderer/src/lib/releaseNotes.ts`.
 >
 > ⭐ **Destaque da versão: agora dá para usar um GIF como avatar!**
 > Envie um GIF animado pela janela de Perfil e ele aparece se mexendo em
@@ -274,36 +306,36 @@ formato novo é a **1.4.1**.
 
 ### Novidades
 
-- 🧪 ⭐ Seu avatar agora pode ser um **GIF animado** — envie um pela
+- ✅ ⭐ Seu avatar agora pode ser um **GIF animado** — envie um pela
   janela de Perfil e ele aparece se mexendo em todo lugar do Prisma, no
   app e no Prisma Web.
-- 🧪 Nova janela de **Perfil**: clique no seu avatar e em "Ver perfil"
+- ✅ Nova janela de **Perfil**: clique no seu avatar e em "Ver perfil"
   para ver e editar sua foto e seu nome, com tudo explicado.
-- 🧪 Agora dá para **trocar a senha** pelo próprio app, direto na janela
+- ✅ Agora dá para **trocar a senha** pelo próprio app, direto na janela
   de Perfil: enviamos um código para o seu e-mail, você confirma e
   escolhe a senha nova — sem precisar sair da conta.
 
 ### Melhorias
 
-- 🧪 As miniaturas das janelas e das telas na hora de escolher o que
+- ✅ As miniaturas das janelas e das telas na hora de escolher o que
   transmitir ficaram mais nítidas.
-- 🧪 A lista de janelas não trava mais a rolagem quando se atualiza
+- ✅ A lista de janelas não trava mais a rolagem quando se atualiza
   sozinha.
-- 🧪 Quem assiste agora também ouve o som de entrada ao entrar numa
+- ✅ Quem assiste agora também ouve o som de entrada ao entrar numa
   live, e o de saída ao sair dela.
 
 ### Correções
 
-- 🧪 Entrar no app com uma live já no ar não toca mais o som de "live
+- ✅ Entrar no app com uma live já no ar não toca mais o som de "live
   nova". O som continua tocando quando alguém entra ao vivo depois.
-- 🧪 A lista de jogos reconhecidos voltou a ser atualizada ao abrir o
+- ✅ A lista de jogos reconhecidos voltou a ser atualizada ao abrir o
   app (falhava antes do login). Ela agora é baixada em segundo plano
   durante o carregamento, sem a tela de "Atualizando dependências".
-- 🧪 A tela principal já abre com a lista de lives atualizada, logo
+- ✅ A tela principal já abre com a lista de lives atualizada, logo
   depois do login.
-- 🧪 Janelas que não estão abertas de verdade não aparecem mais na
+- ✅ Janelas que não estão abertas de verdade não aparecem mais na
   lista de janelas.
-- 🧪 Depois que quem transmite atualizava a live (trocando a fonte, a
+- ✅ Depois que quem transmite atualizava a live (trocando a fonte, a
   resolução ou o FPS), quem estava assistindo podia ficar sem ouvir o
   som. Corrigido.
 

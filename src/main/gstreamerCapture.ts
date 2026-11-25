@@ -9,6 +9,7 @@ import {
   findDiscordPid
 } from './nativeCaptureTargets'
 import { getGstreamerLogPath, logGstreamer } from './gstreamerLog'
+import { CAPTURE_PACING_LOG_PATH, CapturePacingSession, capturePacingEnv } from './capturePacingLog'
 import { deleteIngress, deleteRoom } from './livekit'
 import { EXTRA_WINDOW_PREFIX, WINDOW_HANDLE_PREFIX, screenDisplayName } from './screenCapture'
 import {
@@ -748,7 +749,20 @@ async function startPipeline(
   )
   logGstreamer(`log completo em: ${getGstreamerLogPath()}`)
 
-  const child = spawn(exePath, args, { env: gstreamerEnv() })
+  // capturePacing: log TEMPORÁRIO do ritmo da captura (ver
+  // capturePacingLog.ts). Sai depois dos testes a 120 Hz.
+  const capturePacing = new CapturePacingSession({
+    sourceId: params.sourceId,
+    captureArgName: captureArg.name,
+    captureArgValue: captureArg.value,
+    width: params.width,
+    height: params.height,
+    fps: params.fps,
+    bitrateKbps: params.bitrateKbps
+  })
+  logGstreamer(`ritmo da captura em: ${CAPTURE_PACING_LOG_PATH}`)
+
+  const child = spawn(exePath, args, { env: { ...gstreamerEnv(), ...capturePacingEnv() } })
   gstProcess = child
 
   // O PIPELINE ESTÁ RODANDO (2026-10-13, pedido do usuário: "fast start")
@@ -794,7 +808,16 @@ async function startPipeline(
     logGstreamer('pipeline em PLAYING — avisando o renderer (fast start)')
     mainWindow.webContents.send('gstreamer:playing', { roomCode: params.roomCode })
   })
-  child.stderr.on('data', (chunk) => logGstreamer(`stderr: ${chunk}`))
+  child.stderr.on('data', (chunk) => {
+    // capturePacing: as linhas da captura vão pro log próprio; o resto
+    // segue pro gstreamer-debug.log como antes.
+    const resto = capturePacing.feed(String(chunk))
+    if (resto) logGstreamer(`stderr: ${resto}`)
+  })
+  // `end` e não o `exit` do processo: o stop e a troca de fonte tiram os
+  // listeners de `exit` antes de matar (ver killCurrentProcess).
+  child.stderr.on('end', () => capturePacing.end())
+  child.on('error', () => capturePacing.end())
   // Os dois handlers abaixo só rodam numa morte INESPERADA: o
   // `killCurrentProcess()` (usado pelo stop e pelo update) remove os
   // listeners antes de matar, justamente pra uma troca de fonte não

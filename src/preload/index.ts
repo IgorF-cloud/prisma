@@ -180,7 +180,7 @@ const api = {
     clear: () => ipcRenderer.invoke('session:clear')
   },
   screenCapture: {
-    listSources: (options?: { thumbnails?: boolean; maxAgeMs?: number }) =>
+    listSources: (options?: { thumbnails?: boolean }) =>
       ipcRenderer.invoke('screenCapture:listSources', options),
     prefetch: () => ipcRenderer.invoke('screenCapture:prefetch')
   },
